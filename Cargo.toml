@@ -46,6 +46,10 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 thiserror = "2"
 anyhow = "1"
+# 配置发现需要平台配置/数据目录（XDG、macOS、Windows 各不相同）。
+dirs = "6"
+# 仅用于测试：把结构体序列化成 JSON 后检查字段名，守住「配置里不得出现密钥字段」。
+serde_json = "1"
 blake3 = "1"
 secrecy = "0.10"
 zeroize = "1"
