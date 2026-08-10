@@ -86,10 +86,13 @@ fn captures_one_second_of_16k_mono_pcm_with_nonzero_rms() {
                         got.device_channels
                     );
                     let expected = TARGET_SAMPLE_RATE as usize;
-                    assert_eq!(
+                    // 不断言相等：重采样器在跨度边界上会少给几十个样本（CI 实测 15936/16000）。
+                    // 断言的是完成度门，它把那种取整与真实截断（实测 484 ms）分开。
+                    assert!(
+                        capture::meets_completion(got.samples.len(), expected),
+                        "一秒 16 kHz 单声道应接近 {expected} 个样本，实际 {}（{:?}）",
                         got.samples.len(),
-                        expected,
-                        "一秒 16 kHz 单声道应为 {expected} 个样本"
+                        got.duration()
                     );
                     let rms = got.rms();
                     if rms <= SILENCE_FLOOR {

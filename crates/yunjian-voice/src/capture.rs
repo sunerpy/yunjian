@@ -82,6 +82,27 @@ pub fn capture_from(name: &str, duration: Duration) -> Result<Capture, VoiceErro
     capture_inner(Some(name.to_owned()), duration)
 }
 
+/// 可接受的最低完成度。低于此比例即判定采集被截断。
+///
+/// 0.95 的依据是两个实测数字之间有一个数量级的空隙：重采样器边界少给 64 个样本
+/// （15936/16000 = 0.996），而真实截断只拿到 7744/16000 = 0.484。任何落在 0.95 以下的
+/// 缺口都不可能是取整造成的。
+pub const MIN_COMPLETION: f64 = 0.95;
+
+/// 样本数是否达到可接受的完成度。
+#[must_use]
+pub fn meets_completion(got: usize, wanted: usize) -> bool {
+    if wanted == 0 {
+        return true;
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "样本数远小于 f64 的精确整数范围，比例判定不受影响"
+    )]
+    let ratio = got as f64 / wanted as f64;
+    ratio >= MIN_COMPLETION
+}
+
 /// 采集线程停摆的判定余量：目标时长的三倍再加两秒。
 ///
 /// 三倍是因为重采样与环形缓冲都会引入落后；固定加两秒覆盖设备打开本身的耗时。
@@ -178,12 +199,15 @@ fn run_capture(name: Option<&str>, duration: Duration) -> Result<Capture, VoiceE
         });
     }
 
-    // 短于请求时长即报错，不当成功返回。`Microphone` 的迭代器只在流报错时返回 `None`，
-    // 所以任何缺口都意味着采集中途断了——实测过一次 `alsa::poll() spuriously returned`
-    // 让一秒的请求只拿到 484 ms。**默默接受截断是最坏的结果**：调用方拿到的是一段
-    // 标着「一秒」的半段音频，背诵评分会把它算成没背完，于是一次设备故障变成一个
-    // 错误的分数，而不是一条可见的失败。
-    if samples.len() < wanted_samples {
+    // 明显短于请求时长即报错，不当成功返回。**默默接受截断是最坏的结果**：调用方拿到的是
+    // 一段标着「一秒」的半段音频，背诵评分会把它算成没背完，于是一次设备故障变成一个
+    // 错误的分数，而不是一条可见的失败。实测过一次 `alsa::poll() spuriously returned`
+    // 让一秒的请求只拿到 484 ms。
+    //
+    // 但**不是**「一个样本都不能少」：重采样器在跨度边界上会少给几十个样本
+    // （CI 上实测 15936/16000，即 996 ms），那是 4 ms 的取整而不是故障。因此判据是
+    // 比例而不是相等，[`MIN_COMPLETION`] 把两者分开——484 ms 落在门下，996 ms 落在门上。
+    if !meets_completion(samples.len(), wanted_samples) {
         return Err(VoiceError::CaptureTruncated {
             got: samples.len(),
             wanted: wanted_samples,
@@ -237,6 +261,19 @@ mod tests {
             deadline <= Duration::from_secs(10),
             "不要等到测试超时：{deadline:?}"
         );
+    }
+
+    #[test]
+    fn completion_gate_separates_resampler_rounding_from_real_truncation() {
+        // CI 实测：重采样器边界少给 64 个样本，996 ms，是取整不是故障。
+        assert!(super::meets_completion(15_936, 16_000));
+        // 本机实测：alsa::poll() 报错后只拿到 484 ms，是真截断。
+        assert!(!super::meets_completion(7_744, 16_000));
+        assert!(super::meets_completion(16_000, 16_000));
+        // 恰好在门上与门下各一个点，钉住 0.95 这个数而不只是「大概」。
+        assert!(super::meets_completion(15_200, 16_000));
+        assert!(!super::meets_completion(15_199, 16_000));
+        assert!(super::meets_completion(0, 0), "零长请求不该判成截断");
     }
 
     #[test]
