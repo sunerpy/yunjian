@@ -12,6 +12,9 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+# `corpus-measure` 量 gzip 后的工件体积。必须与 todo 21 打包用的是同一个实现，
+# 否则量出来的数不是将来真正发出去的那个数。
+flate2 = { workspace = true }
 # `index-spike` 直接用应用侧同一个 bundled SQLite 建索引并测延迟：写入者与读取者
 # 必须是同一个 SQLite，否则实测出来的 detail 模式行为对产物不成立。
 rusqlite = { workspace = true }

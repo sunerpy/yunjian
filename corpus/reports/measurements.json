@@ -1,0 +1,869 @@
+{
+  "schema_version": 1,
+  "budget": {
+    "artifact_gzip_bytes": 262144000,
+    "p95_ms": 150.0,
+    "declared_by": "方案 todo 20 事先声明：随包工件 <= 250 MB（gzip 后），p95 查询延迟 <= 150 ms（参考机）"
+  },
+  "environment": {
+    "reference_machine": "linux/x86_64，32 逻辑核",
+    "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+    "memory_total_kib": 64767892,
+    "disk_kind": "nvme0n1=SSD/NVMe, nvme1n1=SSD/NVMe",
+    "sqlite_version": "3.53.2",
+    "page_size": 4096,
+    "index_detail_mode": "full",
+    "ngram_aux_enabled": true,
+    "repeats_per_query": 25,
+    "warmup_per_query": 3
+  },
+  "scales": [
+    {
+      "scale": "10k",
+      "scope": "唐宋集合按 stable_id 排序的确定性前 1 万首",
+      "state": "measured",
+      "blocked_reason": null,
+      "measurement": {
+        "poem_count": 10000,
+        "input_rows": 798763,
+        "raw_text_bytes": 2269631,
+        "poem_table_bytes": 10911744,
+        "poem_fts_bytes": 7221248,
+        "ngram_table_bytes": 71745536,
+        "ngram_rows": 1184326,
+        "table_bytes": [
+          {
+            "name": "defect",
+            "bytes": 148709376,
+            "share_of_file": 0.5046
+          },
+          {
+            "name": "disposition",
+            "bytes": 49475584,
+            "share_of_file": 0.1679
+          },
+          {
+            "name": "ngram_gram_idx",
+            "bytes": 36466688,
+            "share_of_file": 0.1238
+          },
+          {
+            "name": "ngram",
+            "bytes": 35278848,
+            "share_of_file": 0.1197
+          },
+          {
+            "name": "poem",
+            "bytes": 9441280,
+            "share_of_file": 0.032
+          },
+          {
+            "name": "poem_fts_data",
+            "bytes": 7081984,
+            "share_of_file": 0.024
+          },
+          {
+            "name": "poem_last_char",
+            "bytes": 1445888,
+            "share_of_file": 0.0049
+          },
+          {
+            "name": "poem_last_char_idx",
+            "bytes": 1445888,
+            "share_of_file": 0.0049
+          },
+          {
+            "name": "poem_rhyme_group",
+            "bytes": 901120,
+            "share_of_file": 0.0031
+          },
+          {
+            "name": "poem_rhyme_group_idx",
+            "bytes": 704512,
+            "share_of_file": 0.0024
+          },
+          {
+            "name": "rhyme",
+            "bytes": 696320,
+            "share_of_file": 0.0024
+          },
+          {
+            "name": "poem_first_line_idx",
+            "bytes": 565248,
+            "share_of_file": 0.0019
+          },
+          {
+            "name": "rhyme_character_idx",
+            "bytes": 544768,
+            "share_of_file": 0.0018
+          },
+          {
+            "name": "sqlite_autoindex_poem_2",
+            "bytes": 524288,
+            "share_of_file": 0.0018
+          },
+          {
+            "name": "poem_title_idx",
+            "bytes": 339968,
+            "share_of_file": 0.0012
+          },
+          {
+            "name": "sqlite_autoindex_poem_1",
+            "bytes": 245760,
+            "share_of_file": 0.0008
+          },
+          {
+            "name": "poem_work_group_idx",
+            "bytes": 204800,
+            "share_of_file": 0.0007
+          },
+          {
+            "name": "poem_author_idx",
+            "bytes": 159744,
+            "share_of_file": 0.0005
+          },
+          {
+            "name": "poem_dynasty_idx",
+            "bytes": 114688,
+            "share_of_file": 0.0004
+          },
+          {
+            "name": "poem_fts_docsize",
+            "bytes": 98304,
+            "share_of_file": 0.0003
+          },
+          {
+            "name": "poem_ci_tune_idx",
+            "bytes": 86016,
+            "share_of_file": 0.0003
+          },
+          {
+            "name": "author",
+            "bytes": 36864,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "poem_fts_idx",
+            "bytes": 36864,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "variant_map",
+            "bytes": 36864,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "sqlite_schema",
+            "bytes": 12288,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "commentary",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "corpus_meta",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_fts_config",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag_idx",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          }
+        ],
+        "fts_to_poem_ratio": 0.6618,
+        "index_to_raw_ratio": 34.7928,
+        "bytes_before_vacuum": 311500800,
+        "bytes_after_vacuum": 294678528,
+        "gzip_bytes": 95661338,
+        "gzip_ratio": 0.3246,
+        "build_seconds": 73.107,
+        "queries": [
+          {
+            "id": "two_char_ngram",
+            "kind": "两字查询「明月」经 n-gram 覆盖索引",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 156,
+            "p50_ms": 0.124,
+            "p95_ms": 0.151,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "three_char_match",
+            "kind": "三字 FTS5 MATCH（trigram）「明月光」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.poem_fts MATCH ?1",
+            "hits": 3,
+            "p50_ms": 0.009,
+            "p95_ms": 0.01,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:M1",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "full_line_like",
+            "kind": "整句 LIKE（trigram 约束），绑定库内最高频值「一双十指玉纤纤，不是风流物不拈。」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.body LIKE ?1",
+            "hits": 2,
+            "p50_ms": 0.042,
+            "p95_ms": 0.054,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:L0",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "author_lookup",
+            "kind": "作者等值（B-tree），绑定库内最高频值「陸游」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE author = ?1",
+            "hits": 202,
+            "p50_ms": 0.05,
+            "p95_ms": 0.056,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_author_idx (author=?)"
+            ]
+          },
+          {
+            "id": "first_line_prefix",
+            "kind": "首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE first_line >= ?1 AND first_line < ?2",
+            "hits": 27,
+            "p50_ms": 0.012,
+            "p95_ms": 0.02,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+            ]
+          },
+          {
+            "id": "rhyme_group_join",
+            "kind": "韵部连接，绑定库内最高频值「四支」",
+            "sql_shape": "SELECT g.poem_id FROM poem_rhyme_group g JOIN poem p ON p.stable_id = g.poem_id WHERE g.rhyme_book = ?1 AND g.rhyme_group = ?2",
+            "hits": 923,
+            "p50_ms": 0.239,
+            "p95_ms": 0.253,
+            "explain_query_plan": [
+              "SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?)",
+              "SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "tag_filter",
+            "kind": "标签过滤（规范化多对多表），poem_tag 表为空，本条为零命中基线",
+            "sql_shape": "SELECT poem_id FROM poem_tag WHERE tag = ?1",
+            "hits": 0,
+            "p50_ms": 0.004,
+            "p95_ms": 0.004,
+            "explain_query_plan": [
+              "SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"
+            ]
+          },
+          {
+            "id": "cold_open_first_query",
+            "kind": "冷启动后首查（每轮重开连接，不预热）「明月」",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 156,
+            "p50_ms": 0.669,
+            "p95_ms": 0.889,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          }
+        ],
+        "worst_p95_ms": 0.889,
+        "within_p95_budget": true,
+        "within_artifact_budget": true
+      }
+    },
+    {
+      "scale": "tang-song",
+      "scope": "chinese-poetry 全唐诗 + 全宋诗 + 宋词，加 Werneror 唐宋分桶",
+      "state": "measured",
+      "blocked_reason": null,
+      "measurement": {
+        "poem_count": 474162,
+        "input_rows": 798763,
+        "raw_text_bytes": 106719670,
+        "poem_table_bytes": 518754304,
+        "poem_fts_bytes": 239755264,
+        "ngram_table_bytes": 3477270528,
+        "ngram_rows": 55730018,
+        "table_bytes": [
+          {
+            "name": "ngram_gram_idx",
+            "bytes": 1761746944,
+            "share_of_file": 0.3763
+          },
+          {
+            "name": "ngram",
+            "bytes": 1715523584,
+            "share_of_file": 0.3664
+          },
+          {
+            "name": "poem",
+            "bytes": 446324736,
+            "share_of_file": 0.0953
+          },
+          {
+            "name": "poem_fts_data",
+            "bytes": 233857024,
+            "share_of_file": 0.05
+          },
+          {
+            "name": "defect",
+            "bytes": 148709376,
+            "share_of_file": 0.0318
+          },
+          {
+            "name": "poem_last_char",
+            "bytes": 66916352,
+            "share_of_file": 0.0143
+          },
+          {
+            "name": "poem_last_char_idx",
+            "bytes": 66908160,
+            "share_of_file": 0.0143
+          },
+          {
+            "name": "disposition",
+            "bytes": 48775168,
+            "share_of_file": 0.0104
+          },
+          {
+            "name": "poem_rhyme_group",
+            "bytes": 42704896,
+            "share_of_file": 0.0091
+          },
+          {
+            "name": "poem_rhyme_group_idx",
+            "bytes": 33353728,
+            "share_of_file": 0.0071
+          },
+          {
+            "name": "poem_first_line_idx",
+            "bytes": 28299264,
+            "share_of_file": 0.006
+          },
+          {
+            "name": "sqlite_autoindex_poem_2",
+            "bytes": 24903680,
+            "share_of_file": 0.0053
+          },
+          {
+            "name": "poem_title_idx",
+            "bytes": 16314368,
+            "share_of_file": 0.0035
+          },
+          {
+            "name": "sqlite_autoindex_poem_1",
+            "bytes": 11902976,
+            "share_of_file": 0.0025
+          },
+          {
+            "name": "poem_work_group_idx",
+            "bytes": 9977856,
+            "share_of_file": 0.0021
+          },
+          {
+            "name": "poem_author_idx",
+            "bytes": 7847936,
+            "share_of_file": 0.0017
+          },
+          {
+            "name": "poem_dynasty_idx",
+            "bytes": 5693440,
+            "share_of_file": 0.0012
+          },
+          {
+            "name": "poem_fts_docsize",
+            "bytes": 4820992,
+            "share_of_file": 0.001
+          },
+          {
+            "name": "poem_ci_tune_idx",
+            "bytes": 4296704,
+            "share_of_file": 0.0009
+          },
+          {
+            "name": "poem_fts_idx",
+            "bytes": 1073152,
+            "share_of_file": 0.0002
+          },
+          {
+            "name": "rhyme",
+            "bytes": 696320,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "rhyme_character_idx",
+            "bytes": 544768,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "author",
+            "bytes": 229376,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "variant_map",
+            "bytes": 45056,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "sqlite_schema",
+            "bytes": 12288,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "commentary",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "corpus_meta",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_fts_config",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag_idx",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          }
+        ],
+        "fts_to_poem_ratio": 0.4622,
+        "index_to_raw_ratio": 34.8298,
+        "bytes_before_vacuum": 4995809280,
+        "bytes_after_vacuum": 4681506816,
+        "gzip_bytes": 1854419638,
+        "gzip_ratio": 0.3961,
+        "build_seconds": 654.894,
+        "queries": [
+          {
+            "id": "two_char_ngram",
+            "kind": "两字查询「明月」经 n-gram 覆盖索引",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 7291,
+            "p50_ms": 14.396,
+            "p95_ms": 15.798,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "three_char_match",
+            "kind": "三字 FTS5 MATCH（trigram）「明月光」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.poem_fts MATCH ?1",
+            "hits": 80,
+            "p50_ms": 0.042,
+            "p95_ms": 0.049,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:M1",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "full_line_like",
+            "kind": "整句 LIKE（trigram 约束），绑定库内最高频值「□□□□□□□，□□□□□□□。」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.body LIKE ?1",
+            "hits": 54,
+            "p50_ms": 0.538,
+            "p95_ms": 0.67,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:L0",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "author_lookup",
+            "kind": "作者等值（B-tree），绑定库内最高频值「陸游」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE author = ?1",
+            "hits": 9272,
+            "p50_ms": 9.602,
+            "p95_ms": 11.555,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_author_idx (author=?)"
+            ]
+          },
+          {
+            "id": "first_line_prefix",
+            "kind": "首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE first_line >= ?1 AND first_line < ?2",
+            "hits": 1452,
+            "p50_ms": 1.921,
+            "p95_ms": 1.945,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+            ]
+          },
+          {
+            "id": "rhyme_group_join",
+            "kind": "韵部连接，绑定库内最高频值「四支」",
+            "sql_shape": "SELECT g.poem_id FROM poem_rhyme_group g JOIN poem p ON p.stable_id = g.poem_id WHERE g.rhyme_book = ?1 AND g.rhyme_group = ?2",
+            "hits": 43237,
+            "p50_ms": 15.597,
+            "p95_ms": 16.383,
+            "explain_query_plan": [
+              "SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?)",
+              "SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "tag_filter",
+            "kind": "标签过滤（规范化多对多表），poem_tag 表为空，本条为零命中基线",
+            "sql_shape": "SELECT poem_id FROM poem_tag WHERE tag = ?1",
+            "hits": 0,
+            "p50_ms": 0.004,
+            "p95_ms": 0.004,
+            "explain_query_plan": [
+              "SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"
+            ]
+          },
+          {
+            "id": "cold_open_first_query",
+            "kind": "冷启动后首查（每轮重开连接，不预热）「明月」",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 7291,
+            "p50_ms": 14.52,
+            "p95_ms": 15.321,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          }
+        ],
+        "worst_p95_ms": 16.383,
+        "within_p95_budget": true,
+        "within_artifact_budget": false
+      }
+    },
+    {
+      "scale": "full",
+      "scope": "chinese-poetry 全部可分发资产，加 Werneror 全部古典朝代分桶",
+      "state": "measured",
+      "blocked_reason": null,
+      "measurement": {
+        "poem_count": 896127,
+        "input_rows": 1212114,
+        "raw_text_bytes": 207962978,
+        "poem_table_bytes": 986058752,
+        "poem_fts_bytes": 464207872,
+        "ngram_table_bytes": 6788583424,
+        "ngram_rows": 108657086,
+        "table_bytes": [
+          {
+            "name": "ngram_gram_idx",
+            "bytes": 3441672192,
+            "share_of_file": 0.3851
+          },
+          {
+            "name": "ngram",
+            "bytes": 3346911232,
+            "share_of_file": 0.3745
+          },
+          {
+            "name": "poem",
+            "bytes": 850710528,
+            "share_of_file": 0.0952
+          },
+          {
+            "name": "poem_fts_data",
+            "bytes": 453001216,
+            "share_of_file": 0.0507
+          },
+          {
+            "name": "defect",
+            "bytes": 153030656,
+            "share_of_file": 0.0171
+          },
+          {
+            "name": "poem_last_char",
+            "bytes": 131366912,
+            "share_of_file": 0.0147
+          },
+          {
+            "name": "poem_last_char_idx",
+            "bytes": 131358720,
+            "share_of_file": 0.0147
+          },
+          {
+            "name": "poem_rhyme_group",
+            "bytes": 82722816,
+            "share_of_file": 0.0093
+          },
+          {
+            "name": "disposition",
+            "bytes": 71327744,
+            "share_of_file": 0.008
+          },
+          {
+            "name": "poem_rhyme_group_idx",
+            "bytes": 64614400,
+            "share_of_file": 0.0072
+          },
+          {
+            "name": "poem_first_line_idx",
+            "bytes": 50458624,
+            "share_of_file": 0.0056
+          },
+          {
+            "name": "sqlite_autoindex_poem_2",
+            "bytes": 39178240,
+            "share_of_file": 0.0044
+          },
+          {
+            "name": "poem_title_idx",
+            "bytes": 31850496,
+            "share_of_file": 0.0036
+          },
+          {
+            "name": "sqlite_autoindex_poem_1",
+            "bytes": 22511616,
+            "share_of_file": 0.0025
+          },
+          {
+            "name": "poem_work_group_idx",
+            "bytes": 18886656,
+            "share_of_file": 0.0021
+          },
+          {
+            "name": "poem_author_idx",
+            "bytes": 15003648,
+            "share_of_file": 0.0017
+          },
+          {
+            "name": "poem_dynasty_idx",
+            "bytes": 10817536,
+            "share_of_file": 0.0012
+          },
+          {
+            "name": "poem_fts_docsize",
+            "bytes": 9125888,
+            "share_of_file": 0.001
+          },
+          {
+            "name": "poem_ci_tune_idx",
+            "bytes": 8331264,
+            "share_of_file": 0.0009
+          },
+          {
+            "name": "poem_fts_idx",
+            "bytes": 2076672,
+            "share_of_file": 0.0002
+          },
+          {
+            "name": "rhyme",
+            "bytes": 696320,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "rhyme_character_idx",
+            "bytes": 544768,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "author",
+            "bytes": 430080,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "variant_map",
+            "bytes": 45056,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "sqlite_schema",
+            "bytes": 12288,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "commentary",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "corpus_meta",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_fts_config",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag_idx",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          }
+        ],
+        "fts_to_poem_ratio": 0.4708,
+        "index_to_raw_ratio": 34.8754,
+        "bytes_before_vacuum": 9534541824,
+        "bytes_after_vacuum": 8936714240,
+        "gzip_bytes": 3514729916,
+        "gzip_ratio": 0.3933,
+        "build_seconds": 2670.285,
+        "queries": [
+          {
+            "id": "two_char_ngram",
+            "kind": "两字查询「明月」经 n-gram 覆盖索引",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 17749,
+            "p50_ms": 37.73,
+            "p95_ms": 38.601,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "three_char_match",
+            "kind": "三字 FTS5 MATCH（trigram）「明月光」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.poem_fts MATCH ?1",
+            "hits": 275,
+            "p50_ms": 0.454,
+            "p95_ms": 0.484,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:M1",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "full_line_like",
+            "kind": "整句 LIKE（trigram 约束），绑定库内最高频值「□□□□□□□，□□□□□□□。」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.body LIKE ?1",
+            "hits": 109,
+            "p50_ms": 0.813,
+            "p95_ms": 0.883,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:L0",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "author_lookup",
+            "kind": "作者等值（B-tree），绑定库内最高频值「陸游」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE author = ?1",
+            "hits": 9272,
+            "p50_ms": 10.229,
+            "p95_ms": 11.882,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_author_idx (author=?)"
+            ]
+          },
+          {
+            "id": "first_line_prefix",
+            "kind": "首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE first_line >= ?1 AND first_line < ?2",
+            "hits": 2040,
+            "p50_ms": 3.197,
+            "p95_ms": 3.358,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+            ]
+          },
+          {
+            "id": "rhyme_group_join",
+            "kind": "韵部连接，绑定库内最高频值「四支」",
+            "sql_shape": "SELECT g.poem_id FROM poem_rhyme_group g JOIN poem p ON p.stable_id = g.poem_id WHERE g.rhyme_book = ?1 AND g.rhyme_group = ?2",
+            "hits": 80068,
+            "p50_ms": 30.329,
+            "p95_ms": 32.525,
+            "explain_query_plan": [
+              "SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?)",
+              "SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "tag_filter",
+            "kind": "标签过滤（规范化多对多表），poem_tag 表为空，本条为零命中基线",
+            "sql_shape": "SELECT poem_id FROM poem_tag WHERE tag = ?1",
+            "hits": 0,
+            "p50_ms": 0.004,
+            "p95_ms": 0.004,
+            "explain_query_plan": [
+              "SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"
+            ]
+          },
+          {
+            "id": "cold_open_first_query",
+            "kind": "冷启动后首查（每轮重开连接，不预热）「明月」",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 17749,
+            "p50_ms": 37.453,
+            "p95_ms": 40.365,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          }
+        ],
+        "worst_p95_ms": 40.365,
+        "within_p95_budget": true,
+        "within_artifact_budget": false
+      }
+    }
+  ],
+  "verdict": {
+    "within_budget": false,
+    "full_scale_measured": true,
+    "largest_measured_scale": "full",
+    "summary": "超预算：tang-song（474162 首）gzip 1768 MB 超体积预算，最差 p95 16.383 ms；full（896127 首）gzip 3351 MB 超体积预算，最差 p95 40.365 ms。占字节最多的是 `ngram_gram_idx`（38.5%），不是正文——按朝代缩小集合只能按比例缩小整个文件，削不掉这一项。已采用缓解措施 `no_measured_subset_fits_budget`。",
+    "mitigation": {
+      "id": "no_measured_subset_fits_budget",
+      "statement": "已实测的任何子集都不满足预算，因此「限制默认集」无法解决问题。必须由人决定：进一步缩小默认集（例如仅唐诗），或带论证地提高预算。本子命令不擅自提高预算。",
+      "implemented_by": "todo 21（需先由人裁决默认集范围或预算）"
+    },
+    "dominant_table": {
+      "name": "ngram_gram_idx",
+      "bytes": 3441672192,
+      "share_of_file": 0.3851
+    }
+  }
+}

@@ -88,7 +88,29 @@ struct BuildMetadata {
     ngram_aux_enabled: bool,
 }
 
+/// 一次构建过程中只能在构建期观测到的量。
+///
+/// 为什么要单独回传：`VACUUM` 发生在 [`write_database`] 内部、临时文件重命名之前，
+/// 所以「VACUUM 前的文件字节」在构建结束后**已经不存在了**——拿最终产物再 VACUUM
+/// 一次只会得到同一个数。todo 20 的预算结论需要这个差值来说明紧凑化省了多少，
+/// 于是由构建方在恰当的时刻量一次并回传，而不是让调用方去估。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildStats {
+    /// 全部数据、索引与 FTS 写完、`VACUUM` 之前的文件字节。
+    pub bytes_before_vacuum: u64,
+    /// `VACUUM` 之后的文件字节，即随包产物的真实大小。
+    pub bytes_after_vacuum: u64,
+}
+
 pub fn build_database(path: impl AsRef<Path>, input: &CorpusDbInput) -> Result<()> {
+    build_database_with_stats(path, input).map(|_| ())
+}
+
+/// 与 [`build_database`] 完全相同的构建路径，额外回传 [`BuildStats`]。
+pub fn build_database_with_stats(
+    path: impl AsRef<Path>,
+    input: &CorpusDbInput,
+) -> Result<BuildStats> {
     let path = path.as_ref();
     let metadata = validate_input(input)?;
     if let Some(parent) = path.parent()
@@ -100,16 +122,18 @@ pub fn build_database(path: impl AsRef<Path>, input: &CorpusDbInput) -> Result<(
     if temporary.exists() {
         std::fs::remove_file(&temporary)?;
     }
-    let result = write_database(&temporary, input, &metadata);
-    if let Err(error) = result {
-        let _ = std::fs::remove_file(&temporary);
-        return Err(error);
-    }
+    let stats = match write_database(&temporary, input, &metadata) {
+        Ok(stats) => stats,
+        Err(error) => {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(error);
+        }
+    };
     if path.exists() {
         std::fs::remove_file(path)?;
     }
     std::fs::rename(&temporary, path)?;
-    Ok(())
+    Ok(stats)
 }
 
 pub fn open_corpus(path: impl AsRef<Path>) -> std::result::Result<Connection, OpenCorpusError> {
@@ -262,7 +286,11 @@ fn validate_input(input: &CorpusDbInput) -> Result<BuildMetadata> {
     })
 }
 
-fn write_database(path: &Path, input: &CorpusDbInput, metadata: &BuildMetadata) -> Result<()> {
+fn write_database(
+    path: &Path,
+    input: &CorpusDbInput,
+    metadata: &BuildMetadata,
+) -> Result<BuildStats> {
     let mut connection = Connection::open(path)?;
     connection.execute_batch(SCHEMA_SQL)?;
     let builder_sqlite_version =
@@ -502,7 +530,9 @@ fn write_database(path: &Path, input: &CorpusDbInput, metadata: &BuildMetadata) 
         metadata.ngram_aux_enabled,
     )?;
     verify_database_conservation(&connection)?;
+    let bytes_before_vacuum = file_bytes(path)?;
     connection.execute_batch("VACUUM")?;
+    let bytes_after_vacuum = file_bytes(path)?;
     let integrity =
         connection.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))?;
     if integrity != "ok" {
@@ -511,7 +541,14 @@ fn write_database(path: &Path, input: &CorpusDbInput, metadata: &BuildMetadata) 
         )));
     }
     verify_query_only(&connection)?;
-    Ok(())
+    Ok(BuildStats {
+        bytes_before_vacuum,
+        bytes_after_vacuum,
+    })
+}
+
+fn file_bytes(path: &Path) -> Result<u64> {
+    Ok(std::fs::metadata(path)?.len())
 }
 
 fn verify_database_conservation(connection: &Connection) -> Result<()> {

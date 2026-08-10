@@ -124,13 +124,13 @@ corpus-gate: ## 语料门禁：许可、10k 规模黄金查询契约、质量基
 	}
 	@echo "==> xtask commentary-index --check（集评出处索引漂移门禁）"
 	@$(CARGO) run -p xtask -- commentary-index --check
-	@echo "==> xtask corpus-measure --scale 10k（todo 20；未注册时跳过并说明）"
-	@if $(CARGO) run -q -p xtask -- --help 2>/dev/null | grep -q 'corpus-measure'; then \
-		$(CARGO) run -p xtask -- corpus-measure --scale 10k; \
-	else \
-		echo "corpus-measure 尚未注册（todo 20 未落地）。这不是永久跳过：" \
-		     "探测的是子命令是否存在，todo 20 一注册本步骤就自动开始执行。"; \
-	fi
+	@echo "==> xtask corpus-measure --render-only（校验已提交的实测报告仍然通过门禁）"
+	@# 刻意**不**在 CI 里重跑实测：`corpus-measure` 要求三个上游检出（合计约 830 MB），
+	@# 而全量规模一次构建约 48 分钟。CI 里能验、且值得验的是另一件事——已提交的
+	@# `measurements.json` 是否仍然解析得开并通过校验器（占位符、缺测量值、零值、
+	@# 超预算不指名缓解措施都会失败）。这正是 todo 21 打包时要读的那份文件，所以
+	@# 这一步守的是「结论文件没有腐坏」，而不是「数字是新的」。
+	@$(CARGO) run -p xtask -- corpus-measure --render-only
 	@echo "==> 黄金查询契约：fixture 自检 + FTS5 索引回归"
 	@$(CARGO) test -p yunjian-core --test golden_queries
 	@$(CARGO) test -p yunjian-corpus fts::
