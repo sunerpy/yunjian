@@ -1,0 +1,32 @@
+# git hooks 只做两件事：提交前把格式化掉，推送前把门禁跑完。
+#
+# 安装走 `make hooks`（等价于
+# `pre-commit install --hook-type pre-commit --hook-type pre-push`）。
+# 两个钩子的实现都只是调用 Makefile 目标，所以钩子、CI、本机三方跑的是同一组命令。
+#
+# 不要用 `git commit --no-verify` / `git push --no-verify` 绕过它们：钩子存在的
+# 全部意义就是让未格式化的代码与跑不过的测试无法离开本机。
+minimum_pre_commit_version: "4.0.0"
+
+repos:
+  - repo: local
+    hooks:
+      # 提交前格式化而不是校验：让开发者少一次「跑 fmt 再重来」的往返。
+      - id: fmt
+        name: 格式化（cargo fmt + oxfmt）
+        entry: make fmt
+        language: system
+        stages: [pre-commit]
+        # 目标本身就作用于整个工作区，传文件名既无用又会让 make 把它们当目标。
+        pass_filenames: false
+        always_run: true
+
+      # 推送前跑完整门禁。id 叫 test 是因为它的主体是测试，但它等于 make ci，
+      # 也就是 fmt-check + clippy + test 三步。
+      - id: test
+        name: 门禁（make ci = fmt-check + clippy + test）
+        entry: make ci
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true

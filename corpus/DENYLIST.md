@@ -1,7 +1,7 @@
 # 拒绝的上游数据源
 
 `cargo run -p xtask -- verify-sources` 会解析本文件。**只有** `## 拒绝清单` 一节里
-形如 `` - `标识符` —— 理由 `` 的列表项会被当作条目；标识符对 `corpus/sources.toml`
+形如 ``- `标识符` —— 理由`` 的列表项会被当作条目；标识符对 `corpus/sources.toml`
 里每个 source 的 `name` 与 `url` 做大小写无关的子串匹配，命中即构建失败。
 
 匹配只针对 **source 级** 的 `name` / `url`，绝不针对 asset 的 `path`。这一点是刻意的：

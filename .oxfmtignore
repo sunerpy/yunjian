@@ -1,0 +1,26 @@
+# oxfmt 的忽略清单。
+#
+# 必须经 `--ignore-path .oxfmtignore` 显式传入：oxfmt 默认只读 `.gitignore` 与
+# `.prettierignore`，**不会自动发现本文件**。`make fmt` / `make fmt-check` 已经
+# 同时传入本文件与 `.gitignore`，请通过 make 调用，不要裸跑 `oxfmt`。
+
+# ---- 工具自有的产物：人改就会和生成方打架 ----
+# 这些文件由 release-please 与 git-cliff 生成并持有。重新格式化会产生假 diff，
+# 更糟的是会让发布 PR 上的 fmt-check 无法变绿——而发布 PR 恰恰是必须绿的那一个。
+changelog/
+CHANGELOG.md
+.release-please-manifest.json
+release-please-config.json
+
+# ---- 逐字节受保护：上游 LICENSE 原文 ----
+# `corpus/licenses/` 下是上游仓库 LICENSE 的原样副本，其 SHA-256 由
+# `cargo run -p xtask -- verify-sources` 校验，改动一个字节即构建失败。
+# 当前 oxfmt 不认识 `.LICENSE` 扩展名，因此这条是纵深防御：一旦有人在此目录下
+# 放入 `.md` 之类可识别的文件，它就是唯一的拦阻。
+corpus/licenses/
+
+# ---- 生成物与本地状态 ----
+# 语料构建产物由 xtask 从公共领域源重新生成，不属于人工维护的文本。
+corpus/build/
+target/
+.omo/
