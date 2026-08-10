@@ -1,0 +1,343 @@
+# 黄金查询契约的自包含 fixture 语料。
+#
+# 存在的理由：`../queries.toml` 里每条契约都用 `expect_top_id` 锚定到本文件里的一首诗，
+# 因此契约在真实语料（todo 11/12）落地之前就可以运行和自检。没有这层锚定，契约就只是
+# 一串没人能验证的字符串。
+#
+# 全部为公有领域文本（唐宋诗词），逐字校对，**不含任何第三方现代注释、译文或赏析**——
+# 这是 decisions.md 第 1 条「版权墙就是架构」的直接体现。
+#
+# 字段语义：
+#   stable_id    本文件内唯一。`fixture:` 前缀是刻意的：它宣告这不是真实语料的
+#                `stable_id`（真实的由 todo 10 从 source_locator 铸造），避免两套 id 混淆。
+#   title        题目。词作写成「词牌·题目」的合成形式，与上游 `rhythmic` 的实际形态一致。
+#   ci_tune      词牌。诗为空字符串。
+#   body         规范简体正文，含标点。索引与子串检索都针对这一列（todo 19）。
+#   first_line   首句（不含句末标点），对应 todo 17 预计算的 `first_line` 列。
+#   last_chars   逐句末字，对应 todo 17 预计算的 `last_chars`；尾字检索（todo 26）用它。
+#   rhyme_book / rhyme_group
+#                仅在编者有把握时填写；把不确定的韵部留空，而不是编一个出来。
+#                空字符串表示「本 fixture 不参与韵部检索断言」。
+#   tags         主题标签，取自 todo 27 的策展词表方向；此处是测试用的极小子集。
+#
+# **todo 22 如何把 fixture 对应到真实语料**：按 `(author, title)` 二元组解析。
+# 真实语料里同一首诗的 `stable_id` 与此处不同，但作者 + 题目是稳定的匹配键。
+# 因此 `expect_min_hits` 被刻意定义为**下界**：语料变大只会让命中数上升，断言不会因此变脆。
+#
+# 本文件是契约的一部分，与 `queries.toml` 同为不可变契约。改动正文即等于改动契约，
+# 必须同步 `queries.toml` 并在 PR 里说明理由。
+
+schema_version = 1
+
+# 测试用的极小 繁简 / 异体 映射表。
+#
+# 它**不是** todo 13 的真实 `variant_map`（那张表由 `ferrous-opencc` 在构建期生成，
+# 覆盖上万字）。此处只收契约里实际出现的字，用途是让契约的可满足性能够在没有语料的
+# 情况下被证明：`normalize_query` 把繁体/异体输入映射到简体后，必须能在 `body` 里找到。
+[[variant]]
+from = "國"
+to = "国"
+
+[[variant]]
+from = "舉"
+to = "举"
+
+[[variant]]
+from = "頭"
+to = "头"
+
+[[variant]]
+from = "鄉"
+to = "乡"
+
+[[variant]]
+from = "側"
+to = "侧"
+
+# 峯 是 峰 的异体字（不是繁体），氷 是 冰 的异体字。两者与繁简同走一张映射表，
+# 这正是 todo 24 `normalize_query` 的设计：调用方无需区分输入是繁体还是异体。
+[[variant]]
+from = "峯"
+to = "峰"
+
+[[variant]]
+from = "氷"
+to = "冰"
+
+[[variant]]
+from = "時"
+to = "时"
+
+[[variant]]
+from = "關"
+to = "关"
+
+[[variant]]
+from = "還"
+to = "还"
+
+[[poem]]
+stable_id = "fixture:tang-libai-jingyesi"
+title = "静夜思"
+author = "李白"
+dynasty = "唐"
+ci_tune = ""
+body = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+first_line = "床前明月光"
+last_chars = ["光", "霜", "月", "乡"]
+rhyme_book = "平水韵"
+rhyme_group = "下平七阳"
+tags = ["思乡", "月"]
+note = "契约里被引用次数最多的锚：两字词、三字短语、整句五言、繁体输入、首句前缀、尾字、韵部、标签、纯标点与无三字连续段九类都指向它。"
+
+[[poem]]
+stable_id = "fixture:tang-dufu-chunwang"
+title = "春望"
+author = "杜甫"
+dynasty = "唐"
+ci_tune = ""
+body = "国破山河在，城春草木深。感时花溅泪，恨别鸟惊心。烽火连三月，家书抵万金。白头搔更短，浑欲不胜簪。"
+first_line = "国破山河在"
+last_chars = ["在", "深", "泪", "心", "月", "金", "短", "簪"]
+rhyme_book = "平水韵"
+rhyme_group = "下平十二侵"
+tags = ["忧国", "战乱"]
+note = "繁体输入类的锚（國破山河在）。八句律诗，四个韵脚落在同一韵部，适合韵部检索断言。"
+
+[[poem]]
+stable_id = "fixture:tang-wangzhihuan-dengguanquelou"
+title = "登鹳雀楼"
+author = "王之涣"
+dynasty = "唐"
+ci_tune = ""
+body = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+first_line = "白日依山尽"
+last_chars = ["尽", "流", "目", "楼"]
+rhyme_book = "平水韵"
+rhyme_group = "下平十一尤"
+tags = ["登高", "哲理"]
+note = "四字短语与整句五言的第二个锚，避免整个契约都压在《静夜思》一首上。"
+
+[[poem]]
+stable_id = "fixture:tang-libai-zaofabaidicheng"
+title = "早发白帝城"
+author = "李白"
+dynasty = "唐"
+ci_tune = ""
+body = "朝辞白帝彩云间，千里江陵一日还。两岸猿声啼不住，轻舟已过万重山。"
+first_line = "朝辞白帝彩云间"
+last_chars = ["间", "还", "住", "山"]
+rhyme_book = "平水韵"
+rhyme_group = "上平十五删"
+tags = ["行旅"]
+note = "整句七言的锚。七言整句是 detail=none / detail=column 下最先失效的形态。"
+
+[[poem]]
+stable_id = "fixture:tang-zhangji-fengqiaoyebo"
+title = "枫桥夜泊"
+author = "张继"
+dynasty = "唐"
+ci_tune = ""
+body = "月落乌啼霜满天，江枫渔火对愁眠。姑苏城外寒山寺，夜半钟声到客船。"
+first_line = "月落乌啼霜满天"
+last_chars = ["天", "眠", "寺", "船"]
+rhyme_book = "平水韵"
+rhyme_group = "下平一先"
+tags = ["羁旅", "秋"]
+note = "整句七言的第二个锚。"
+
+[[poem]]
+stable_id = "fixture:tang-wangwei-xiangsi"
+title = "相思"
+author = "王维"
+dynasty = "唐"
+ci_tune = ""
+body = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+first_line = "红豆生南国"
+last_chars = ["国", "枝", "撷", "思"]
+rhyme_book = "平水韵"
+rhyme_group = "上平四支"
+tags = ["相思"]
+note = "两字词「相思」的锚。题目与正文同时命中，因此也覆盖「题目恰好是常用词」这种歧义形态。"
+
+[[poem]]
+stable_id = "fixture:tang-zhangruoxu-chunjianghuayueye"
+title = "春江花月夜"
+author = "张若虚"
+dynasty = "唐"
+ci_tune = ""
+body = "春江潮水连海平，海上明月共潮生。滟滟随波千万里，何处春江无月明。"
+first_line = "春江潮水连海平"
+last_chars = ["平", "生", "里", "明"]
+rhyme_book = "平水韵"
+rhyme_group = "下平八庚"
+tags = ["月", "春"]
+note = "四字短语「海上明月」的锚，同时为两字词「明月」提供第二处命中。"
+
+[[poem]]
+stable_id = "fixture:song-sushi-niannujiao-chibihuaigu"
+title = "念奴娇·赤壁怀古"
+author = "苏轼"
+dynasty = "宋"
+ci_tune = "念奴娇"
+body = "大江东去，浪淘尽，千古风流人物。故垒西边，人道是，三国周郎赤壁。"
+first_line = "大江东去"
+last_chars = ["去", "尽", "物", "边", "是", "壁"]
+rhyme_book = ""
+rhyme_group = ""
+tags = ["怀古"]
+note = "词牌检索与「词牌·题目」检索的锚。韵部留空：词韵归部需要 todo 18 的投票机制，不在此处臆断。"
+
+[[poem]]
+stable_id = "fixture:song-sushi-shuidiaogetou-mingyue"
+title = "水调歌头·明月几时有"
+author = "苏轼"
+dynasty = "宋"
+ci_tune = "水调歌头"
+body = "明月几时有，把酒问青天。不知天上宫阙，今夕是何年。"
+first_line = "明月几时有"
+last_chars = ["有", "天", "阙", "年"]
+rhyme_book = ""
+rhyme_group = ""
+tags = ["月", "中秋"]
+note = "词牌检索的第二个锚。题目里含「明月」，因此题目检索与正文检索会给出不同结果集——这是 todo 26 必须处理的形态。"
+
+[[poem]]
+stable_id = "fixture:song-sushi-tixilinbi"
+title = "题西林壁"
+author = "苏轼"
+dynasty = "宋"
+ci_tune = ""
+body = "横看成岭侧成峰，远近高低各不同。不识庐山真面目，只缘身在此山中。"
+first_line = "横看成岭侧成峰"
+last_chars = ["峰", "同", "目", "中"]
+rhyme_book = "平水韵"
+rhyme_group = "上平一东"
+tags = ["哲理", "山水"]
+note = "异体字输入的锚：查询写作「側成峯」，经异体映射后应命中「侧成峰」。"
+
+[[poem]]
+stable_id = "fixture:tang-libai-xinglunan"
+title = "行路难"
+author = "李白"
+dynasty = "唐"
+ci_tune = ""
+body = "欲渡黄河冰塞川，将登太行雪满山。闲来垂钓碧溪上，忽复乘舟梦日边。"
+first_line = "欲渡黄河冰塞川"
+last_chars = ["川", "山", "上", "边"]
+rhyme_book = ""
+rhyme_group = ""
+tags = ["失意"]
+note = "异体字输入的第二个锚：「氷塞川」→「冰塞川」。韵脚跨韵部，故韵部留空。"
+
+[[poem]]
+stable_id = "fixture:tang-libai-shudaonan"
+title = "蜀道难"
+author = "李白"
+dynasty = "唐"
+ci_tune = ""
+body = "噫吁嚱，危乎高哉！蜀道之难，难于上青天。蚕丛及鱼凫，开国何茫然。"
+first_line = "噫吁嚱"
+last_chars = ["嚱", "哉", "难", "天", "凫", "然"]
+rhyme_book = ""
+rhyme_group = ""
+tags = ["山水", "蜀"]
+note = "生僻字类的锚。「嚱」是全语料中极低频的字，与「明月」构成 trigram 选择性的两个极端——一个高选择性、一个几乎无选择性，正是路由规则要区分的两种情况。"
+
+[[poem]]
+stable_id = "fixture:song-wanganshi-yuanri"
+title = "元日"
+author = "王安石"
+dynasty = "宋"
+ci_tune = ""
+body = "爆竹声中一岁除，春风送暖入屠苏。千门万户曈曈日，总把新桃换旧符。"
+first_line = "爆竹声中一岁除"
+last_chars = ["除", "苏", "日", "符"]
+rhyme_book = "平水韵"
+rhyme_group = "上平七虞"
+tags = ["节令", "春"]
+note = "两字词「春风」的锚。"
+
+[[poem]]
+stable_id = "fixture:song-wanganshi-bochuanguazhou"
+title = "泊船瓜洲"
+author = "王安石"
+dynasty = "宋"
+ci_tune = ""
+body = "京口瓜洲一水间，钟山只隔数重山。春风又绿江南岸，明月何时照我还。"
+first_line = "京口瓜洲一水间"
+last_chars = ["间", "山", "岸", "还"]
+rhyme_book = "平水韵"
+rhyme_group = "上平十五删"
+tags = ["思乡", "春"]
+note = "同时为「春风」「明月」「思乡」三条契约提供第二处命中，把这三条的下界抬到 2，使断言不会因单点改动而失效。"
+
+[[poem]]
+stable_id = "fixture:tang-dufu-jueju"
+title = "绝句"
+author = "杜甫"
+dynasty = "唐"
+ci_tune = ""
+body = "两个黄鹂鸣翠柳，一行白鹭上青天。窗含西岭千秋雪，门泊东吴万里船。"
+first_line = "两个黄鹂鸣翠柳"
+last_chars = ["柳", "天", "雪", "船"]
+rhyme_book = "平水韵"
+rhyme_group = "下平一先"
+tags = ["春", "写景"]
+note = "作者检索「杜甫」的第二处命中。题目「绝句」是上游极常见的泛用题名，适合暴露题目检索的歧义。"
+
+[[poem]]
+stable_id = "fixture:tang-wangchangling-chusai"
+title = "出塞"
+author = "王昌龄"
+dynasty = "唐"
+ci_tune = ""
+body = "秦时明月汉时关，万里长征人未还。但使龙城飞将在，不教胡马度阴山。"
+first_line = "秦时明月汉时关"
+last_chars = ["关", "还", "在", "山"]
+rhyme_book = "平水韵"
+rhyme_group = "上平十五删"
+tags = ["边塞", "月"]
+note = "标签检索「边塞」的锚。"
+
+[[poem]]
+stable_id = "fixture:tang-libai-huangheloused"
+title = "黄鹤楼送孟浩然之广陵"
+author = "李白"
+dynasty = "唐"
+ci_tune = ""
+body = "故人西辞黄鹤楼，烟花三月下扬州。孤帆远影碧空尽，唯见长江天际流。"
+first_line = "故人西辞黄鹤楼"
+last_chars = ["楼", "州", "尽", "流"]
+rhyme_book = "平水韵"
+rhyme_group = "下平十一尤"
+tags = ["送别"]
+note = "三字短语「故人西」的锚，也是尾字「流」的第二处命中。"
+
+[[poem]]
+stable_id = "fixture:tang-libai-sanwuqiyan"
+title = "三五七言"
+author = "李白"
+dynasty = "唐"
+ci_tune = ""
+body = "秋风清，秋月明。落叶聚还散，寒鸦栖复惊。相思相见知何日，此时此夜难为情。"
+first_line = "秋风清"
+last_chars = ["清", "明", "散", "惊", "日", "情"]
+rhyme_book = "平水韵"
+rhyme_group = "下平八庚"
+tags = ["相思", "秋"]
+note = "两字词「相思」的第二处命中。句长参差（三言 + 五言 + 七言），可验证按标点切句的实现不假定等长句。"
+
+[[poem]]
+stable_id = "fixture:tang-dufu-chunyexiyu"
+title = "春夜喜雨"
+author = "杜甫"
+dynasty = "唐"
+ci_tune = ""
+body = "好雨知时节，当春乃发生。随风潜入夜，润物细无声。"
+first_line = "好雨知时节"
+last_chars = ["节", "生", "夜", "声"]
+rhyme_book = "平水韵"
+rhyme_group = "下平八庚"
+tags = ["春", "雨"]
+note = "作者检索「杜甫」的第三处命中，把该条下界抬到 2 之上。"

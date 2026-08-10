@@ -12,7 +12,12 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+# `index-spike` 直接用应用侧同一个 bundled SQLite 建索引并测延迟：写入者与读取者
+# 必须是同一个 SQLite，否则实测出来的 detail 模式行为对产物不成立。
+rusqlite = { workspace = true }
 serde = { workspace = true }
+# `index-spike` 的裁决文件是 JSON（todo 19 / 24 读它）。
+serde_json = { workspace = true }
 sha2 = { workspace = true }
 toml = { workspace = true }
 ureq = { workspace = true }
