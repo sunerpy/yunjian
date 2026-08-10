@@ -7,6 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+build = "build.rs"
 
 # 包名为 `yunjian-cli`（crates.io 上的裸名 `yunjian` 已被 2021 年的废弃占位包占用，
 # 且 crates.io 不释放未撤回的名字），但对外分发的可执行文件必须叫 `yunjian`。
@@ -15,4 +16,11 @@ authors.workspace = true
 name = "yunjian"
 path = "src/main.rs"
 
+[features]
+default = []
+# 语音能力从这里向下透传。默认关闭：不开时二进制不链接 onnxruntime，
+# 词典与默写功能因此不受原生依赖的成败影响。
+voice = ["yunjian-voice/voice"]
+
 [dependencies]
+yunjian-voice = { path = "../yunjian-voice" }
