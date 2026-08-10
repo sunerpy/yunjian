@@ -14,6 +14,7 @@ use clap::{Parser, Subcommand};
 
 // 子命令模块在此注册（每个任务追加一行）。
 mod commentary_index;
+mod corpus_quality;
 mod index_spike;
 mod verify_sources;
 
@@ -63,6 +64,21 @@ enum Commands {
         #[arg(long)]
         offline: bool,
     },
+
+    /// 产出重出分组与数据缺陷报告：`corpus/reports/defects.{json,md}`（一行一个
+    /// finding）与 `dispositions.json`（一行一条输入记录），并按
+    /// `corpus/reports/baseline.json` 的逐 code 容差守住回归基线。
+    CorpusQuality {
+        /// `chinese-poetry` 检出目录。省略则跑随仓 fixture。
+        #[arg(long, requires = "werneror_dir")]
+        chinese_poetry_dir: Option<std::path::PathBuf>,
+        /// `Werneror/Poetry` 检出目录。省略则跑随仓 fixture。
+        #[arg(long, requires = "chinese_poetry_dir")]
+        werneror_dir: Option<std::path::PathBuf>,
+        /// 用本次实测重写基线，而不是拿基线校验本次实测。
+        #[arg(long)]
+        write_baseline: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -72,6 +88,11 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::IndexSpike { scale, repeats }) => index_spike::run(scale, repeats),
         Some(Commands::CommentaryIndex { check }) => commentary_index::run(check),
         Some(Commands::VerifySources { offline }) => verify_sources::run(offline),
+        Some(Commands::CorpusQuality {
+            chinese_poetry_dir,
+            werneror_dir,
+            write_baseline,
+        }) => corpus_quality::run(chinese_poetry_dir, werneror_dir, write_baseline),
         None => Ok(()),
     }
 }

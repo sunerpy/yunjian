@@ -9,4 +9,5 @@ pub mod commentary;
 pub mod ingest;
 pub mod model;
 pub mod normalize;
+pub mod quality;
 pub mod rhyme;

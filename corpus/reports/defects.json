@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "scope": "fixtures",
+  "summary": {
+    "conflicting_attribution": 4,
+    "conversion_unstable": 1,
+    "duplicate_in_group": 6,
+    "empty_body": 1,
+    "excluded_by_policy": 6,
+    "lossy_char": 3,
+    "restricted_license": 0,
+    "suspect_length": 2,
+    "unknown_dynasty": 0
+  },
+  "findings": [
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "lossy_char",
+      "detail": "《五郊乐章 赤帝徵音 雍和》的 内容 含 CJK 上下文中的半角 `?`，原字不可恢复；整条隔离留档，不进主表也不自动补字",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "lossy_char",
+      "detail": "《小重山 予可自解?霜脂粉也》的 题目、内容 含 CJK 上下文中的半角 `?`，原字不可恢复；整条隔离留档，不进主表也不自动补字",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "lossy_char",
+      "detail": "《狐援辞》的 内容 含 CJK 上下文中的半角 `?`，原字不可恢复；整条隔离留档，不进主表也不自动补字",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "empty_body",
+      "detail": "无传作者 没有小传正文",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "excluded_by_policy",
+      "detail": "当代.csv：已知近现代/当代分桶，保护期未过（已知近现代/当代分桶，保护期未过；已数出 2 行，全部不入库）",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "excluded_by_policy",
+      "detail": "当代.csv：已知近现代/当代分桶，保护期未过（已知近现代/当代分桶，保护期未过；已数出 2 行，全部不入库）",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "excluded_by_policy",
+      "detail": "整文件为现代编者撰写（字段 desc），无古典正文可分离，按 sources.toml 的 shippable=false 排除",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "excluded_by_policy",
+      "detail": "整文件为现代编者撰写（字段 desc），无古典正文可分离，按 sources.toml 的 shippable=false 排除",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "excluded_by_policy",
+      "detail": "未来.csv：不在古典朝代白名单上（不在古典朝代白名单上；已数出 2 行，全部不入库）",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": null,
+      "reason_code": "excluded_by_policy",
+      "detail": "未来.csv：不在古典朝代白名单上（不在古典朝代白名单上；已数出 2 行，全部不入库）",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": "3b39ba5f68e2",
+      "reason_code": "duplicate_in_group",
+      "detail": "《帝京篇十首 一》与 chinese-poetry 已收录作品同组（判重键 3b39ba5f68e2），按逐来源取舍不重复入库",
+      "source": "werneror"
+    },
+    {
+      "stable_id": null,
+      "work_group": "604856534eb6",
+      "reason_code": "duplicate_in_group",
+      "detail": "《关雎》与 chinese-poetry 已收录作品同组（判重键 604856534eb6），按逐来源取舍不重复入库",
+      "source": "werneror"
+    },
+    {
+      "stable_id": "18ac9c381444dc78",
+      "work_group": "99c1e5516651",
+      "reason_code": "duplicate_in_group",
+      "detail": "《殘句》与同组另 1 条记录重出（互见），全部保留只作标注；同组 locator：quality-fixture:aa11bb22-cc33-4d44-8e55-6f7788990011、quality-fixture:bb22cc33-dd44-4e55-8f66-778899001122",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "18ac9c381444dc78",
+      "work_group": "99c1e5516651",
+      "reason_code": "conflicting_attribution",
+      "detail": "《殘句》同一作品分组内出现 2 个作者：乙、甲。本阶段不自动裁定归属，只报告。",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "18ac9c381444dc78",
+      "work_group": "99c1e5516651",
+      "reason_code": "suspect_length",
+      "detail": "《殘句》正文只有 3 个汉字，少于 4，不足以做韵脚与平仄分析",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "1ba071390604dc00",
+      "work_group": "71d8ae0a7348",
+      "reason_code": "duplicate_in_group",
+      "detail": "《赤壁》与同组另 1 条记录重出（互见），全部保留只作标注；同组 locator：quality-fixture:0c2f2b0e-4a5f-4d21-9d3c-6d0b1f7e5a11、quality-fixture:7b9a1d64-2c33-4f08-8a17-3e5c9b2d4f88",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "1ba071390604dc00",
+      "work_group": "71d8ae0a7348",
+      "reason_code": "conflicting_attribution",
+      "detail": "《赤壁》同一作品分组内出现 2 个作者：李商隱、杜牧。本阶段不自动裁定归属，只报告。",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "33a6b424e09a868f",
+      "work_group": "f24b015e8905",
+      "reason_code": "conversion_unstable",
+      "detail": "经繁体往返后不同：暱暱儿女语，恩怨相尔汝。\n划然变轩昂，勇士赴敌场。",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "c0e8db5167fc289d",
+      "work_group": "99c1e5516651",
+      "reason_code": "duplicate_in_group",
+      "detail": "《殘句》与同组另 1 条记录重出（互见），全部保留只作标注；同组 locator：quality-fixture:aa11bb22-cc33-4d44-8e55-6f7788990011、quality-fixture:bb22cc33-dd44-4e55-8f66-778899001122",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "c0e8db5167fc289d",
+      "work_group": "99c1e5516651",
+      "reason_code": "conflicting_attribution",
+      "detail": "《殘句》同一作品分组内出现 2 个作者：乙、甲。本阶段不自动裁定归属，只报告。",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "c0e8db5167fc289d",
+      "work_group": "99c1e5516651",
+      "reason_code": "suspect_length",
+      "detail": "《殘句》正文只有 3 个汉字，少于 4，不足以做韵脚与平仄分析",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "f115833557832456",
+      "work_group": "71d8ae0a7348",
+      "reason_code": "duplicate_in_group",
+      "detail": "《赤壁》与同组另 1 条记录重出（互见），全部保留只作标注；同组 locator：quality-fixture:0c2f2b0e-4a5f-4d21-9d3c-6d0b1f7e5a11、quality-fixture:7b9a1d64-2c33-4f08-8a17-3e5c9b2d4f88",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "f115833557832456",
+      "work_group": "71d8ae0a7348",
+      "reason_code": "conflicting_attribution",
+      "detail": "《赤壁》同一作品分组内出现 2 个作者：李商隱、杜牧。本阶段不自动裁定归属，只报告。",
+      "source": "quality-fixture"
+    }
+  ]
+}
