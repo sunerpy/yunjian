@@ -1,0 +1,5238 @@
+{
+  "schema_version": 1,
+  "chosen_mode": "full",
+  "ngram_aux_enabled": true,
+  "justification": "detail=full+ngram=on 是同时通过「每条契约达到 expect_min_hits」与「每条 p95 <= 150 ms（含外推到 853385 首发布规模）」两条硬门槛的配置中索引字节最小者（28925952 B）；detail=none 在 whole_five_char_line 类上召回不足（fts5: phrase queries are not supported (detail!=full)）；detail=full+ngram=off 召回全对但被延迟门槛否掉（q02-two-char-xiangsi 走 BareLikeFts 在发布规模下外推为 428.0 ms）；n-gram 表在 100000 首规模上把两字查询的 p95 从 52.356 ms 降到 0.525 ms（99.7x）。",
+  "selection_rule": {
+    "p95_budget_ms": 150.0,
+    "production_scale": 853385,
+    "hits_gate": "每一条契约都达到其 expect_min_hits",
+    "latency_gate": "每一条契约的 p95 <= 150 ms，且外推到 853385 首发布规模后依然 <= 150 ms",
+    "tiebreaker": "仅在两条门槛都通过的配置之间，取索引字节最小者"
+  },
+  "environment": {
+    "sqlite_version": "3.53.2",
+    "page_size": 4096,
+    "repeats_per_query": 25,
+    "warmup_per_query": 3,
+    "reference_machine": "linux/x86_64, 32 逻辑核"
+  },
+  "corpus": {
+    "poem_count": 10000,
+    "provenance": "合成样本，非真实语料。字表与字频取自随仓 19 首公有领域 fixture 诗的实测字频（按频率加权抽样，保留真实汉语的长尾分布），句式沿用五言/七言/长短句三种真实形态，19 首 fixture 诗逐字嵌入以保证契约锚点存在。固定种子的 SplitMix64，同规模下逐字节可复现。不下载、不 vendor 任何上游语料——真实语料入库是 todo 11/12 的工作。",
+    "synthesis_seed": 6446179707525361153,
+    "distinct_chars": 620,
+    "total_body_chars": 239338,
+    "fixture_poems_embedded": 19
+  },
+  "contract": {
+    "path": "crates/yunjian-core/tests/queries.toml",
+    "schema_version": 1,
+    "entry_count": 37,
+    "class_count": 18
+  },
+  "results": [
+    {
+      "config_id": "detail=none+ngram=off",
+      "detail_mode": "none",
+      "ngram_aux": false,
+      "index_bytes": 2359296,
+      "fts_bytes": 2359296,
+      "ngram_bytes": 0,
+      "ngram_rows": 0,
+      "total_file_bytes": 7352320,
+      "build_ms": 559,
+      "passes_hits_gate": false,
+      "passes_latency_gate": true,
+      "passes_projected_latency_gate": false,
+      "hits_shortfall": [
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        }
+      ],
+      "latency_violations": [],
+      "projected_latency_violations": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.966,
+          "projected_p95_ms": 423.791
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.015,
+          "projected_p95_ms": 342.634
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.957,
+          "projected_p95_ms": 423.023
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.828,
+          "projected_p95_ms": 412.014
+        }
+      ],
+      "acknowledged_full_scans": [
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.17,
+          "projected_p95_ms": 270.523
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.368,
+          "projected_p95_ms": 287.42
+        }
+      ],
+      "projected_near_misses": [],
+      "per_class": [
+        {
+          "class": "ci_tune_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "ci_tune_title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "first_line_prefix",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.028
+        },
+        {
+          "class": "four_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.075
+        },
+        {
+          "class": "last_char_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.082
+        },
+        {
+          "class": "no_three_char_run",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 3.368
+        },
+        {
+          "class": "punctuation_only",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.007
+        },
+        {
+          "class": "rare_char",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 4.828
+        },
+        {
+          "class": "rhyme_group_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.013
+        },
+        {
+          "class": "tag_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.018
+        },
+        {
+          "class": "three_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.035
+        },
+        {
+          "class": "title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "traditional_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "two_char_author",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.02
+        },
+        {
+          "class": "two_char_word",
+          "entries": 3,
+          "entries_meeting_min_hits": 3,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 4.966
+        },
+        {
+          "class": "variant_char_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.057
+        },
+        {
+          "class": "whole_five_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "whole_seven_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        }
+      ],
+      "queries": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "query": "明月",
+          "normalized": "明月",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 3,
+          "hits": 25,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.966,
+          "median_ms": 4.065,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "query": "相思",
+          "normalized": "相思",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 2,
+          "hits": 4,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.015,
+          "median_ms": 3.816,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "query": "春风",
+          "normalized": "春风",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 2,
+          "hits": 9,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.957,
+          "median_ms": 4.177,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q04-two-char-author-libai",
+          "class": "two_char_author",
+          "query": "李白",
+          "normalized": "李白",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 3,
+          "hits": 6,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.02,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q05-two-char-author-dufu",
+          "class": "two_char_author",
+          "query": "杜甫",
+          "normalized": "杜甫",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 3,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.018,
+          "median_ms": 0.018,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q06-three-char-mingyueguang",
+          "class": "three_char_phrase",
+          "query": "明月光",
+          "normalized": "明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.035,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q07-three-char-gurenxi",
+          "class": "three_char_phrase",
+          "query": "故人西",
+          "normalized": "故人西",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.035,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q08-four-char-bairiyishan",
+          "class": "four_char_phrase",
+          "query": "白日依山",
+          "normalized": "白日依山",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.073,
+          "median_ms": 0.061,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q09-four-char-haishangmingyue",
+          "class": "four_char_phrase",
+          "query": "海上明月",
+          "normalized": "海上明月",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.075,
+          "median_ms": 0.063,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "query": "床前明月光",
+          "normalized": "床前明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "query": "白日依山尽",
+          "normalized": "白日依山尽",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "query": "两岸猿声啼不住",
+          "normalized": "两岸猿声啼不住",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "query": "姑苏城外寒山寺",
+          "normalized": "姑苏城外寒山寺",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "query": "國破山河在",
+          "normalized": "国破山河在",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "query": "舉頭望明月",
+          "normalized": "举头望明月",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q16-variant-cechengfeng",
+          "class": "variant_char_input",
+          "query": "側成峯",
+          "normalized": "侧成峰",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.043,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q17-variant-bingsaichuan",
+          "class": "variant_char_input",
+          "query": "氷塞川",
+          "normalized": "冰塞川",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.057,
+          "median_ms": 0.042,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q18-rare-yixuxi",
+          "class": "rare_char",
+          "query": "噫吁嚱",
+          "normalized": "噫吁嚱",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.045,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "query": "吁嚱",
+          "normalized": "吁嚱",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.828,
+          "median_ms": 3.928,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q20-title-jingyesi",
+          "class": "title_lookup",
+          "query": "静夜思",
+          "normalized": "静夜思",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q21-title-chunwang",
+          "class": "title_lookup",
+          "query": "春望",
+          "normalized": "春望",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q22-citune-niannujiao",
+          "class": "ci_tune_lookup",
+          "query": "念奴娇",
+          "normalized": "念奴娇",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q23-citune-shuidiaogetou",
+          "class": "ci_tune_lookup",
+          "query": "水调歌头",
+          "normalized": "水调歌头",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q24-citune-title-chibihuaigu",
+          "class": "ci_tune_title_lookup",
+          "query": "念奴娇·赤壁怀古",
+          "normalized": "念奴娇·赤壁怀古",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q25-citune-title-mingyuejishiyou",
+          "class": "ci_tune_title_lookup",
+          "query": "水调歌头·明月几时有",
+          "normalized": "水调歌头·明月几时有",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q26-firstline-chuangqian",
+          "class": "first_line_prefix",
+          "query": "床前",
+          "normalized": "床前",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.02,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q27-firstline-guoposhan",
+          "class": "first_line_prefix",
+          "query": "国破山",
+          "normalized": "国破山",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.028,
+          "median_ms": 0.019,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q28-lastchar-shuang",
+          "class": "last_char_lookup",
+          "query": "霜",
+          "normalized": "霜",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 146,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.081,
+          "median_ms": 0.071,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q29-lastchar-liu",
+          "class": "last_char_lookup",
+          "query": "流",
+          "normalized": "流",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 138,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.082,
+          "median_ms": 0.067,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q30-rhyme-xiapingqiyang",
+          "class": "rhyme_group_query",
+          "query": "下平七阳",
+          "normalized": "下平七阳",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.013,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q31-rhyme-xiapingshiersqin",
+          "class": "rhyme_group_query",
+          "query": "下平十二侵",
+          "normalized": "下平十二侵",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.013,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q32-tag-sixiang",
+          "class": "tag_query",
+          "query": "思乡",
+          "normalized": "思乡",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.018,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q33-tag-biansai",
+          "class": "tag_query",
+          "query": "边塞",
+          "normalized": "边塞",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.018,
+          "median_ms": 0.013,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q34-punct-comma-period",
+          "class": "punctuation_only",
+          "query": "，。",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q35-punct-mixed",
+          "class": "punctuation_only",
+          "query": "？！；",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "query": "明%光",
+          "normalized": "明%光",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 31,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.17,
+          "median_ms": 2.523,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "query": "月%霜",
+          "normalized": "月%霜",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 102,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.368,
+          "median_ms": 2.571,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        }
+      ]
+    },
+    {
+      "config_id": "detail=none+ngram=on",
+      "detail_mode": "none",
+      "ngram_aux": true,
+      "index_bytes": 28397568,
+      "fts_bytes": 2359296,
+      "ngram_bytes": 26038272,
+      "ngram_rows": 461559,
+      "total_file_bytes": 33390592,
+      "build_ms": 2589,
+      "passes_hits_gate": false,
+      "passes_latency_gate": true,
+      "passes_projected_latency_gate": true,
+      "hits_shortfall": [
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        }
+      ],
+      "latency_violations": [],
+      "projected_latency_violations": [],
+      "acknowledged_full_scans": [
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.434,
+          "projected_p95_ms": 293.052
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 2.767,
+          "projected_p95_ms": 236.132
+        }
+      ],
+      "projected_near_misses": [],
+      "per_class": [
+        {
+          "class": "ci_tune_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.016
+        },
+        {
+          "class": "ci_tune_title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.016
+        },
+        {
+          "class": "first_line_prefix",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.026
+        },
+        {
+          "class": "four_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.076
+        },
+        {
+          "class": "last_char_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.079
+        },
+        {
+          "class": "no_three_char_run",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 3.434
+        },
+        {
+          "class": "punctuation_only",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.009
+        },
+        {
+          "class": "rare_char",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.036
+        },
+        {
+          "class": "rhyme_group_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.013
+        },
+        {
+          "class": "tag_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.015
+        },
+        {
+          "class": "three_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.043
+        },
+        {
+          "class": "title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "traditional_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "two_char_author",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.024
+        },
+        {
+          "class": "two_char_word",
+          "entries": 3,
+          "entries_meeting_min_hits": 3,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.074
+        },
+        {
+          "class": "variant_char_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.036
+        },
+        {
+          "class": "whole_five_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "whole_seven_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        }
+      ],
+      "queries": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "query": "明月",
+          "normalized": "明月",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 3,
+          "hits": 25,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.074,
+          "median_ms": 0.06,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "query": "相思",
+          "normalized": "相思",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 2,
+          "hits": 4,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.044,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "query": "春风",
+          "normalized": "春风",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 2,
+          "hits": 9,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.047,
+          "median_ms": 0.042,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q04-two-char-author-libai",
+          "class": "two_char_author",
+          "query": "李白",
+          "normalized": "李白",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 3,
+          "hits": 6,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.024,
+          "median_ms": 0.019,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q05-two-char-author-dufu",
+          "class": "two_char_author",
+          "query": "杜甫",
+          "normalized": "杜甫",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 3,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.018,
+          "median_ms": 0.017,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q06-three-char-mingyueguang",
+          "class": "three_char_phrase",
+          "query": "明月光",
+          "normalized": "明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.035,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q07-three-char-gurenxi",
+          "class": "three_char_phrase",
+          "query": "故人西",
+          "normalized": "故人西",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.043,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q08-four-char-bairiyishan",
+          "class": "four_char_phrase",
+          "query": "白日依山",
+          "normalized": "白日依山",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.075,
+          "median_ms": 0.061,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q09-four-char-haishangmingyue",
+          "class": "four_char_phrase",
+          "query": "海上明月",
+          "normalized": "海上明月",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.076,
+          "median_ms": 0.061,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "query": "床前明月光",
+          "normalized": "床前明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "query": "白日依山尽",
+          "normalized": "白日依山尽",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "query": "两岸猿声啼不住",
+          "normalized": "两岸猿声啼不住",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "query": "姑苏城外寒山寺",
+          "normalized": "姑苏城外寒山寺",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "query": "國破山河在",
+          "normalized": "国破山河在",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "query": "舉頭望明月",
+          "normalized": "举头望明月",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q16-variant-cechengfeng",
+          "class": "variant_char_input",
+          "query": "側成峯",
+          "normalized": "侧成峰",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.036,
+          "median_ms": 0.032,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q17-variant-bingsaichuan",
+          "class": "variant_char_input",
+          "query": "氷塞川",
+          "normalized": "冰塞川",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.033,
+          "median_ms": 0.032,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q18-rare-yixuxi",
+          "class": "rare_char",
+          "query": "噫吁嚱",
+          "normalized": "噫吁嚱",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.035,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "query": "吁嚱",
+          "normalized": "吁嚱",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.036,
+          "median_ms": 0.029,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q20-title-jingyesi",
+          "class": "title_lookup",
+          "query": "静夜思",
+          "normalized": "静夜思",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q21-title-chunwang",
+          "class": "title_lookup",
+          "query": "春望",
+          "normalized": "春望",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q22-citune-niannujiao",
+          "class": "ci_tune_lookup",
+          "query": "念奴娇",
+          "normalized": "念奴娇",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q23-citune-shuidiaogetou",
+          "class": "ci_tune_lookup",
+          "query": "水调歌头",
+          "normalized": "水调歌头",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q24-citune-title-chibihuaigu",
+          "class": "ci_tune_title_lookup",
+          "query": "念奴娇·赤壁怀古",
+          "normalized": "念奴娇·赤壁怀古",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q25-citune-title-mingyuejishiyou",
+          "class": "ci_tune_title_lookup",
+          "query": "水调歌头·明月几时有",
+          "normalized": "水调歌头·明月几时有",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q26-firstline-chuangqian",
+          "class": "first_line_prefix",
+          "query": "床前",
+          "normalized": "床前",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.02,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q27-firstline-guoposhan",
+          "class": "first_line_prefix",
+          "query": "国破山",
+          "normalized": "国破山",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.026,
+          "median_ms": 0.019,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q28-lastchar-shuang",
+          "class": "last_char_lookup",
+          "query": "霜",
+          "normalized": "霜",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 146,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.079,
+          "median_ms": 0.068,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q29-lastchar-liu",
+          "class": "last_char_lookup",
+          "query": "流",
+          "normalized": "流",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 138,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.072,
+          "median_ms": 0.066,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q30-rhyme-xiapingqiyang",
+          "class": "rhyme_group_query",
+          "query": "下平七阳",
+          "normalized": "下平七阳",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.013,
+          "median_ms": 0.013,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q31-rhyme-xiapingshiersqin",
+          "class": "rhyme_group_query",
+          "query": "下平十二侵",
+          "normalized": "下平十二侵",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.013,
+          "median_ms": 0.013,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q32-tag-sixiang",
+          "class": "tag_query",
+          "query": "思乡",
+          "normalized": "思乡",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.015,
+          "median_ms": 0.014,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q33-tag-biansai",
+          "class": "tag_query",
+          "query": "边塞",
+          "normalized": "边塞",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.014,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q34-punct-comma-period",
+          "class": "punctuation_only",
+          "query": "，。",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.009,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q35-punct-mixed",
+          "class": "punctuation_only",
+          "query": "？！；",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.008,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "query": "明%光",
+          "normalized": "明%光",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 31,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.434,
+          "median_ms": 2.504,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "query": "月%霜",
+          "normalized": "月%霜",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 102,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 2.767,
+          "median_ms": 2.51,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        }
+      ]
+    },
+    {
+      "config_id": "detail=column+ngram=off",
+      "detail_mode": "column",
+      "ngram_aux": false,
+      "index_bytes": 2887680,
+      "fts_bytes": 2887680,
+      "ngram_bytes": 0,
+      "ngram_rows": 0,
+      "total_file_bytes": 7880704,
+      "build_ms": 603,
+      "passes_hits_gate": false,
+      "passes_latency_gate": true,
+      "passes_projected_latency_gate": false,
+      "hits_shortfall": [
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        }
+      ],
+      "latency_violations": [],
+      "projected_latency_violations": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 5.041,
+          "projected_p95_ms": 430.191
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.546,
+          "projected_p95_ms": 387.949
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 5.0,
+          "projected_p95_ms": 426.693
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.778,
+          "projected_p95_ms": 407.747
+        }
+      ],
+      "acknowledged_full_scans": [
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 2.758,
+          "projected_p95_ms": 235.364
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.635,
+          "projected_p95_ms": 310.205
+        }
+      ],
+      "projected_near_misses": [],
+      "per_class": [
+        {
+          "class": "ci_tune_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "ci_tune_title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.024
+        },
+        {
+          "class": "first_line_prefix",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.021
+        },
+        {
+          "class": "four_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.077
+        },
+        {
+          "class": "last_char_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.11
+        },
+        {
+          "class": "no_three_char_run",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 3.635
+        },
+        {
+          "class": "punctuation_only",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.009
+        },
+        {
+          "class": "rare_char",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 4.778
+        },
+        {
+          "class": "rhyme_group_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.016
+        },
+        {
+          "class": "tag_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.023
+        },
+        {
+          "class": "three_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.046
+        },
+        {
+          "class": "title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.016
+        },
+        {
+          "class": "traditional_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "two_char_author",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.02
+        },
+        {
+          "class": "two_char_word",
+          "entries": 3,
+          "entries_meeting_min_hits": 3,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 5.041
+        },
+        {
+          "class": "variant_char_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.041
+        },
+        {
+          "class": "whole_five_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "whole_seven_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        }
+      ],
+      "queries": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "query": "明月",
+          "normalized": "明月",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 3,
+          "hits": 25,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 5.041,
+          "median_ms": 3.996,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "query": "相思",
+          "normalized": "相思",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 2,
+          "hits": 4,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.546,
+          "median_ms": 3.919,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "query": "春风",
+          "normalized": "春风",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 2,
+          "hits": 9,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 5.0,
+          "median_ms": 4.041,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q04-two-char-author-libai",
+          "class": "two_char_author",
+          "query": "李白",
+          "normalized": "李白",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 3,
+          "hits": 6,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.02,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q05-two-char-author-dufu",
+          "class": "two_char_author",
+          "query": "杜甫",
+          "normalized": "杜甫",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 3,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.018,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q06-three-char-mingyueguang",
+          "class": "three_char_phrase",
+          "query": "明月光",
+          "normalized": "明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.046,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q07-three-char-gurenxi",
+          "class": "three_char_phrase",
+          "query": "故人西",
+          "normalized": "故人西",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.042,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q08-four-char-bairiyishan",
+          "class": "four_char_phrase",
+          "query": "白日依山",
+          "normalized": "白日依山",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.077,
+          "median_ms": 0.061,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q09-four-char-haishangmingyue",
+          "class": "four_char_phrase",
+          "query": "海上明月",
+          "normalized": "海上明月",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.071,
+          "median_ms": 0.062,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "query": "床前明月光",
+          "normalized": "床前明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "query": "白日依山尽",
+          "normalized": "白日依山尽",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "query": "两岸猿声啼不住",
+          "normalized": "两岸猿声啼不住",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "query": "姑苏城外寒山寺",
+          "normalized": "姑苏城外寒山寺",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "query": "國破山河在",
+          "normalized": "国破山河在",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "query": "舉頭望明月",
+          "normalized": "举头望明月",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q16-variant-cechengfeng",
+          "class": "variant_char_input",
+          "query": "側成峯",
+          "normalized": "侧成峰",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.036,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q17-variant-bingsaichuan",
+          "class": "variant_char_input",
+          "query": "氷塞川",
+          "normalized": "冰塞川",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.041,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q18-rare-yixuxi",
+          "class": "rare_char",
+          "query": "噫吁嚱",
+          "normalized": "噫吁嚱",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.042,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "query": "吁嚱",
+          "normalized": "吁嚱",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.778,
+          "median_ms": 3.931,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q20-title-jingyesi",
+          "class": "title_lookup",
+          "query": "静夜思",
+          "normalized": "静夜思",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q21-title-chunwang",
+          "class": "title_lookup",
+          "query": "春望",
+          "normalized": "春望",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q22-citune-niannujiao",
+          "class": "ci_tune_lookup",
+          "query": "念奴娇",
+          "normalized": "念奴娇",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q23-citune-shuidiaogetou",
+          "class": "ci_tune_lookup",
+          "query": "水调歌头",
+          "normalized": "水调歌头",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q24-citune-title-chibihuaigu",
+          "class": "ci_tune_title_lookup",
+          "query": "念奴娇·赤壁怀古",
+          "normalized": "念奴娇·赤壁怀古",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.024,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q25-citune-title-mingyuejishiyou",
+          "class": "ci_tune_title_lookup",
+          "query": "水调歌头·明月几时有",
+          "normalized": "水调歌头·明月几时有",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q26-firstline-chuangqian",
+          "class": "first_line_prefix",
+          "query": "床前",
+          "normalized": "床前",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.021,
+          "median_ms": 0.02,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q27-firstline-guoposhan",
+          "class": "first_line_prefix",
+          "query": "国破山",
+          "normalized": "国破山",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.019,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q28-lastchar-shuang",
+          "class": "last_char_lookup",
+          "query": "霜",
+          "normalized": "霜",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 146,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.085,
+          "median_ms": 0.071,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q29-lastchar-liu",
+          "class": "last_char_lookup",
+          "query": "流",
+          "normalized": "流",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 138,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.11,
+          "median_ms": 0.092,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q30-rhyme-xiapingqiyang",
+          "class": "rhyme_group_query",
+          "query": "下平七阳",
+          "normalized": "下平七阳",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q31-rhyme-xiapingshiersqin",
+          "class": "rhyme_group_query",
+          "query": "下平十二侵",
+          "normalized": "下平十二侵",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q32-tag-sixiang",
+          "class": "tag_query",
+          "query": "思乡",
+          "normalized": "思乡",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.014,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q33-tag-biansai",
+          "class": "tag_query",
+          "query": "边塞",
+          "normalized": "边塞",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.023,
+          "median_ms": 0.013,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q34-punct-comma-period",
+          "class": "punctuation_only",
+          "query": "，。",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.009,
+          "median_ms": 0.009,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q35-punct-mixed",
+          "class": "punctuation_only",
+          "query": "？！；",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "query": "明%光",
+          "normalized": "明%光",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 31,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 2.758,
+          "median_ms": 2.529,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "query": "月%霜",
+          "normalized": "月%霜",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 102,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.635,
+          "median_ms": 2.705,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        }
+      ]
+    },
+    {
+      "config_id": "detail=column+ngram=on",
+      "detail_mode": "column",
+      "ngram_aux": true,
+      "index_bytes": 28925952,
+      "fts_bytes": 2887680,
+      "ngram_bytes": 26038272,
+      "ngram_rows": 461559,
+      "total_file_bytes": 33918976,
+      "build_ms": 2649,
+      "passes_hits_gate": false,
+      "passes_latency_gate": true,
+      "passes_projected_latency_gate": true,
+      "hits_shortfall": [
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "expected_min_hits": 1,
+          "actual_hits": 0,
+          "reason": "fts5: phrase queries are not supported (detail!=full)"
+        }
+      ],
+      "latency_violations": [],
+      "projected_latency_violations": [],
+      "acknowledged_full_scans": [
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.169,
+          "projected_p95_ms": 270.438
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.876,
+          "projected_p95_ms": 330.772
+        }
+      ],
+      "projected_near_misses": [],
+      "per_class": [
+        {
+          "class": "ci_tune_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.016
+        },
+        {
+          "class": "ci_tune_title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.019
+        },
+        {
+          "class": "first_line_prefix",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.026
+        },
+        {
+          "class": "four_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.08
+        },
+        {
+          "class": "last_char_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.121
+        },
+        {
+          "class": "no_three_char_run",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 3.876
+        },
+        {
+          "class": "punctuation_only",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.007
+        },
+        {
+          "class": "rare_char",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.045
+        },
+        {
+          "class": "rhyme_group_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "tag_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "three_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.044
+        },
+        {
+          "class": "title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.035
+        },
+        {
+          "class": "traditional_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "two_char_author",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.026
+        },
+        {
+          "class": "two_char_word",
+          "entries": 3,
+          "entries_meeting_min_hits": 3,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.075
+        },
+        {
+          "class": "variant_char_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.045
+        },
+        {
+          "class": "whole_five_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        },
+        {
+          "class": "whole_seven_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 0,
+          "hit_rate": 0.0,
+          "worst_p95_ms": 0.0
+        }
+      ],
+      "queries": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "query": "明月",
+          "normalized": "明月",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 3,
+          "hits": 25,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.075,
+          "median_ms": 0.061,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "query": "相思",
+          "normalized": "相思",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 2,
+          "hits": 4,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.046,
+          "median_ms": 0.044,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "query": "春风",
+          "normalized": "春风",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 2,
+          "hits": 9,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.059,
+          "median_ms": 0.058,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q04-two-char-author-libai",
+          "class": "two_char_author",
+          "query": "李白",
+          "normalized": "李白",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 3,
+          "hits": 6,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.026,
+          "median_ms": 0.025,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q05-two-char-author-dufu",
+          "class": "two_char_author",
+          "query": "杜甫",
+          "normalized": "杜甫",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 3,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.022,
+          "median_ms": 0.018,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q06-three-char-mingyueguang",
+          "class": "three_char_phrase",
+          "query": "明月光",
+          "normalized": "明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.044,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q07-three-char-gurenxi",
+          "class": "three_char_phrase",
+          "query": "故人西",
+          "normalized": "故人西",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.039,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q08-four-char-bairiyishan",
+          "class": "four_char_phrase",
+          "query": "白日依山",
+          "normalized": "白日依山",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.08,
+          "median_ms": 0.062,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q09-four-char-haishangmingyue",
+          "class": "four_char_phrase",
+          "query": "海上明月",
+          "normalized": "海上明月",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.077,
+          "median_ms": 0.062,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "query": "床前明月光",
+          "normalized": "床前明月光",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "query": "白日依山尽",
+          "normalized": "白日依山尽",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "query": "两岸猿声啼不住",
+          "normalized": "两岸猿声啼不住",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "query": "姑苏城外寒山寺",
+          "normalized": "姑苏城外寒山寺",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "query": "國破山河在",
+          "normalized": "国破山河在",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "query": "舉頭望明月",
+          "normalized": "举头望明月",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 0,
+          "meets_min_hits": false,
+          "anchor_found": false,
+          "p95_ms": 0.0,
+          "median_ms": 0.0,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": "fts5: phrase queries are not supported (detail!=full)"
+        },
+        {
+          "id": "q16-variant-cechengfeng",
+          "class": "variant_char_input",
+          "query": "側成峯",
+          "normalized": "侧成峰",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.045,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q17-variant-bingsaichuan",
+          "class": "variant_char_input",
+          "query": "氷塞川",
+          "normalized": "冰塞川",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.035,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q18-rare-yixuxi",
+          "class": "rare_char",
+          "query": "噫吁嚱",
+          "normalized": "噫吁嚱",
+          "expect_plan": "Match",
+          "executed_plan": "MatchUnsupported",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.045,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "query": "吁嚱",
+          "normalized": "吁嚱",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.04,
+          "median_ms": 0.036,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q20-title-jingyesi",
+          "class": "title_lookup",
+          "query": "静夜思",
+          "normalized": "静夜思",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.035,
+          "median_ms": 0.02,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q21-title-chunwang",
+          "class": "title_lookup",
+          "query": "春望",
+          "normalized": "春望",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.019,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q22-citune-niannujiao",
+          "class": "ci_tune_lookup",
+          "query": "念奴娇",
+          "normalized": "念奴娇",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q23-citune-shuidiaogetou",
+          "class": "ci_tune_lookup",
+          "query": "水调歌头",
+          "normalized": "水调歌头",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q24-citune-title-chibihuaigu",
+          "class": "ci_tune_title_lookup",
+          "query": "念奴娇·赤壁怀古",
+          "normalized": "念奴娇·赤壁怀古",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q25-citune-title-mingyuejishiyou",
+          "class": "ci_tune_title_lookup",
+          "query": "水调歌头·明月几时有",
+          "normalized": "水调歌头·明月几时有",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.019,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q26-firstline-chuangqian",
+          "class": "first_line_prefix",
+          "query": "床前",
+          "normalized": "床前",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.026,
+          "median_ms": 0.02,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q27-firstline-guoposhan",
+          "class": "first_line_prefix",
+          "query": "国破山",
+          "normalized": "国破山",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.019,
+          "median_ms": 0.019,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q28-lastchar-shuang",
+          "class": "last_char_lookup",
+          "query": "霜",
+          "normalized": "霜",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 146,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.121,
+          "median_ms": 0.105,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q29-lastchar-liu",
+          "class": "last_char_lookup",
+          "query": "流",
+          "normalized": "流",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 138,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.099,
+          "median_ms": 0.069,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q30-rhyme-xiapingqiyang",
+          "class": "rhyme_group_query",
+          "query": "下平七阳",
+          "normalized": "下平七阳",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q31-rhyme-xiapingshiersqin",
+          "class": "rhyme_group_query",
+          "query": "下平十二侵",
+          "normalized": "下平十二侵",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q32-tag-sixiang",
+          "class": "tag_query",
+          "query": "思乡",
+          "normalized": "思乡",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.014,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q33-tag-biansai",
+          "class": "tag_query",
+          "query": "边塞",
+          "normalized": "边塞",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.013,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q34-punct-comma-period",
+          "class": "punctuation_only",
+          "query": "，。",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q35-punct-mixed",
+          "class": "punctuation_only",
+          "query": "？！；",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "query": "明%光",
+          "normalized": "明%光",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 31,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.169,
+          "median_ms": 2.597,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "query": "月%霜",
+          "normalized": "月%霜",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 102,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.876,
+          "median_ms": 2.673,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        }
+      ]
+    },
+    {
+      "config_id": "detail=full+ngram=off",
+      "detail_mode": "full",
+      "ngram_aux": false,
+      "index_bytes": 2887680,
+      "fts_bytes": 2887680,
+      "ngram_bytes": 0,
+      "ngram_rows": 0,
+      "total_file_bytes": 7880704,
+      "build_ms": 608,
+      "passes_hits_gate": true,
+      "passes_latency_gate": true,
+      "passes_projected_latency_gate": false,
+      "hits_shortfall": [],
+      "latency_violations": [],
+      "projected_latency_violations": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.898,
+          "projected_p95_ms": 417.988
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 5.015,
+          "projected_p95_ms": 427.973
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 4.417,
+          "projected_p95_ms": 376.94
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "executed_plan": "BareLikeFts",
+          "measured_p95_ms": 3.99,
+          "projected_p95_ms": 340.501
+        }
+      ],
+      "acknowledged_full_scans": [
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 2.71,
+          "projected_p95_ms": 231.267
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 2.781,
+          "projected_p95_ms": 237.326
+        }
+      ],
+      "projected_near_misses": [],
+      "per_class": [
+        {
+          "class": "ci_tune_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.026
+        },
+        {
+          "class": "ci_tune_title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.02
+        },
+        {
+          "class": "first_line_prefix",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.026
+        },
+        {
+          "class": "four_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.099
+        },
+        {
+          "class": "last_char_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.083
+        },
+        {
+          "class": "no_three_char_run",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 2.781
+        },
+        {
+          "class": "punctuation_only",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.007
+        },
+        {
+          "class": "rare_char",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 3.99
+        },
+        {
+          "class": "rhyme_group_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.016
+        },
+        {
+          "class": "tag_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.025
+        },
+        {
+          "class": "three_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.057
+        },
+        {
+          "class": "title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.017
+        },
+        {
+          "class": "traditional_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.101
+        },
+        {
+          "class": "two_char_author",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.02
+        },
+        {
+          "class": "two_char_word",
+          "entries": 3,
+          "entries_meeting_min_hits": 3,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 5.015
+        },
+        {
+          "class": "variant_char_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.057
+        },
+        {
+          "class": "whole_five_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.079
+        },
+        {
+          "class": "whole_seven_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.124
+        }
+      ],
+      "queries": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "query": "明月",
+          "normalized": "明月",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 3,
+          "hits": 25,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.898,
+          "median_ms": 4.251,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "query": "相思",
+          "normalized": "相思",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 2,
+          "hits": 4,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 5.015,
+          "median_ms": 3.989,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "query": "春风",
+          "normalized": "春风",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 2,
+          "hits": 9,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 4.417,
+          "median_ms": 4.087,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q04-two-char-author-libai",
+          "class": "two_char_author",
+          "query": "李白",
+          "normalized": "李白",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 3,
+          "hits": 6,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.019,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q05-two-char-author-dufu",
+          "class": "two_char_author",
+          "query": "杜甫",
+          "normalized": "杜甫",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 3,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.018,
+          "median_ms": 0.017,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q06-three-char-mingyueguang",
+          "class": "three_char_phrase",
+          "query": "明月光",
+          "normalized": "明月光",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.057,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q07-three-char-gurenxi",
+          "class": "three_char_phrase",
+          "query": "故人西",
+          "normalized": "故人西",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.043,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q08-four-char-bairiyishan",
+          "class": "four_char_phrase",
+          "query": "白日依山",
+          "normalized": "白日依山",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.099,
+          "median_ms": 0.078,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q09-four-char-haishangmingyue",
+          "class": "four_char_phrase",
+          "query": "海上明月",
+          "normalized": "海上明月",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.095,
+          "median_ms": 0.072,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "query": "床前明月光",
+          "normalized": "床前明月光",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.079,
+          "median_ms": 0.063,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "query": "白日依山尽",
+          "normalized": "白日依山尽",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.079,
+          "median_ms": 0.064,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "query": "两岸猿声啼不住",
+          "normalized": "两岸猿声啼不住",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.112,
+          "median_ms": 0.098,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "query": "姑苏城外寒山寺",
+          "normalized": "姑苏城外寒山寺",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.124,
+          "median_ms": 0.097,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "query": "國破山河在",
+          "normalized": "国破山河在",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.087,
+          "median_ms": 0.067,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "query": "舉頭望明月",
+          "normalized": "举头望明月",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.101,
+          "median_ms": 0.08,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q16-variant-cechengfeng",
+          "class": "variant_char_input",
+          "query": "側成峯",
+          "normalized": "侧成峰",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.057,
+          "median_ms": 0.039,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q17-variant-bingsaichuan",
+          "class": "variant_char_input",
+          "query": "氷塞川",
+          "normalized": "冰塞川",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.034,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q18-rare-yixuxi",
+          "class": "rare_char",
+          "query": "噫吁嚱",
+          "normalized": "噫吁嚱",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.041,
+          "median_ms": 0.032,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "query": "吁嚱",
+          "normalized": "吁嚱",
+          "expect_plan": "Ngram",
+          "executed_plan": "BareLikeFts",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.99,
+          "median_ms": 3.847,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q20-title-jingyesi",
+          "class": "title_lookup",
+          "query": "静夜思",
+          "normalized": "静夜思",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.017,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q21-title-chunwang",
+          "class": "title_lookup",
+          "query": "春望",
+          "normalized": "春望",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q22-citune-niannujiao",
+          "class": "ci_tune_lookup",
+          "query": "念奴娇",
+          "normalized": "念奴娇",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.026,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q23-citune-shuidiaogetou",
+          "class": "ci_tune_lookup",
+          "query": "水调歌头",
+          "normalized": "水调歌头",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q24-citune-title-chibihuaigu",
+          "class": "ci_tune_title_lookup",
+          "query": "念奴娇·赤壁怀古",
+          "normalized": "念奴娇·赤壁怀古",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.016,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q25-citune-title-mingyuejishiyou",
+          "class": "ci_tune_title_lookup",
+          "query": "水调歌头·明月几时有",
+          "normalized": "水调歌头·明月几时有",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.015,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q26-firstline-chuangqian",
+          "class": "first_line_prefix",
+          "query": "床前",
+          "normalized": "床前",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.026,
+          "median_ms": 0.02,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q27-firstline-guoposhan",
+          "class": "first_line_prefix",
+          "query": "国破山",
+          "normalized": "国破山",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.019,
+          "median_ms": 0.019,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q28-lastchar-shuang",
+          "class": "last_char_lookup",
+          "query": "霜",
+          "normalized": "霜",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 146,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.083,
+          "median_ms": 0.07,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q29-lastchar-liu",
+          "class": "last_char_lookup",
+          "query": "流",
+          "normalized": "流",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 138,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.069,
+          "median_ms": 0.066,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q30-rhyme-xiapingqiyang",
+          "class": "rhyme_group_query",
+          "query": "下平七阳",
+          "normalized": "下平七阳",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q31-rhyme-xiapingshiersqin",
+          "class": "rhyme_group_query",
+          "query": "下平十二侵",
+          "normalized": "下平十二侵",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.012,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q32-tag-sixiang",
+          "class": "tag_query",
+          "query": "思乡",
+          "normalized": "思乡",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.025,
+          "median_ms": 0.014,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q33-tag-biansai",
+          "class": "tag_query",
+          "query": "边塞",
+          "normalized": "边塞",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.013,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q34-punct-comma-period",
+          "class": "punctuation_only",
+          "query": "，。",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q35-punct-mixed",
+          "class": "punctuation_only",
+          "query": "？！；",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "query": "明%光",
+          "normalized": "明%光",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 31,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 2.71,
+          "median_ms": 2.526,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "query": "月%霜",
+          "normalized": "月%霜",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 102,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 2.781,
+          "median_ms": 2.555,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        }
+      ]
+    },
+    {
+      "config_id": "detail=full+ngram=on",
+      "detail_mode": "full",
+      "ngram_aux": true,
+      "index_bytes": 28925952,
+      "fts_bytes": 2887680,
+      "ngram_bytes": 26038272,
+      "ngram_rows": 461559,
+      "total_file_bytes": 33918976,
+      "build_ms": 2662,
+      "passes_hits_gate": true,
+      "passes_latency_gate": true,
+      "passes_projected_latency_gate": true,
+      "hits_shortfall": [],
+      "latency_violations": [],
+      "projected_latency_violations": [],
+      "acknowledged_full_scans": [
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.247,
+          "projected_p95_ms": 277.094
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "executed_plan": "FullScan",
+          "measured_p95_ms": 3.533,
+          "projected_p95_ms": 301.501
+        }
+      ],
+      "projected_near_misses": [],
+      "per_class": [
+        {
+          "class": "ci_tune_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.022
+        },
+        {
+          "class": "ci_tune_title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.02
+        },
+        {
+          "class": "first_line_prefix",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.027
+        },
+        {
+          "class": "four_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.09
+        },
+        {
+          "class": "last_char_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.082
+        },
+        {
+          "class": "no_three_char_run",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 3.533
+        },
+        {
+          "class": "punctuation_only",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.007
+        },
+        {
+          "class": "rare_char",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.038
+        },
+        {
+          "class": "rhyme_group_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.014
+        },
+        {
+          "class": "tag_query",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.016
+        },
+        {
+          "class": "three_char_phrase",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.053
+        },
+        {
+          "class": "title_lookup",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.022
+        },
+        {
+          "class": "traditional_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.102
+        },
+        {
+          "class": "two_char_author",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.024
+        },
+        {
+          "class": "two_char_word",
+          "entries": 3,
+          "entries_meeting_min_hits": 3,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.093
+        },
+        {
+          "class": "variant_char_input",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.035
+        },
+        {
+          "class": "whole_five_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.091
+        },
+        {
+          "class": "whole_seven_char_line",
+          "entries": 2,
+          "entries_meeting_min_hits": 2,
+          "hit_rate": 1.0,
+          "worst_p95_ms": 0.12
+        }
+      ],
+      "queries": [
+        {
+          "id": "q01-two-char-mingyue",
+          "class": "two_char_word",
+          "query": "明月",
+          "normalized": "明月",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 3,
+          "hits": 25,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.093,
+          "median_ms": 0.062,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q02-two-char-xiangsi",
+          "class": "two_char_word",
+          "query": "相思",
+          "normalized": "相思",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 2,
+          "hits": 4,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.046,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q03-two-char-chunfeng",
+          "class": "two_char_word",
+          "query": "春风",
+          "normalized": "春风",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 2,
+          "hits": 9,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.047,
+          "median_ms": 0.042,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q04-two-char-author-libai",
+          "class": "two_char_author",
+          "query": "李白",
+          "normalized": "李白",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 3,
+          "hits": 6,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.024,
+          "median_ms": 0.019,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q05-two-char-author-dufu",
+          "class": "two_char_author",
+          "query": "杜甫",
+          "normalized": "杜甫",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 3,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.018,
+          "median_ms": 0.017,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_author_idx (author=?)"],
+          "error": null
+        },
+        {
+          "id": "q06-three-char-mingyueguang",
+          "class": "three_char_phrase",
+          "query": "明月光",
+          "normalized": "明月光",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.053,
+          "median_ms": 0.034,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q07-three-char-gurenxi",
+          "class": "three_char_phrase",
+          "query": "故人西",
+          "normalized": "故人西",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.045,
+          "median_ms": 0.043,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q08-four-char-bairiyishan",
+          "class": "four_char_phrase",
+          "query": "白日依山",
+          "normalized": "白日依山",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.09,
+          "median_ms": 0.062,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q09-four-char-haishangmingyue",
+          "class": "four_char_phrase",
+          "query": "海上明月",
+          "normalized": "海上明月",
+          "expect_plan": "Like",
+          "executed_plan": "Like",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.08,
+          "median_ms": 0.062,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:L0",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q10-line5-chuangqianmingyueguang",
+          "class": "whole_five_char_line",
+          "query": "床前明月光",
+          "normalized": "床前明月光",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.088,
+          "median_ms": 0.063,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q11-line5-bairiyishanjin",
+          "class": "whole_five_char_line",
+          "query": "白日依山尽",
+          "normalized": "白日依山尽",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.091,
+          "median_ms": 0.066,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q12-line7-lianganyuansheng",
+          "class": "whole_seven_char_line",
+          "query": "两岸猿声啼不住",
+          "normalized": "两岸猿声啼不住",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.111,
+          "median_ms": 0.099,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q13-line7-gusuchengwai",
+          "class": "whole_seven_char_line",
+          "query": "姑苏城外寒山寺",
+          "normalized": "姑苏城外寒山寺",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.12,
+          "median_ms": 0.096,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q14-traditional-guopo",
+          "class": "traditional_input",
+          "query": "國破山河在",
+          "normalized": "国破山河在",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.102,
+          "median_ms": 0.088,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q15-traditional-jutouwangmingyue",
+          "class": "traditional_input",
+          "query": "舉頭望明月",
+          "normalized": "举头望明月",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.066,
+          "median_ms": 0.065,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q16-variant-cechengfeng",
+          "class": "variant_char_input",
+          "query": "側成峯",
+          "normalized": "侧成峰",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.035,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q17-variant-bingsaichuan",
+          "class": "variant_char_input",
+          "query": "氷塞川",
+          "normalized": "冰塞川",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.033,
+          "median_ms": 0.033,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q18-rare-yixuxi",
+          "class": "rare_char",
+          "query": "噫吁嚱",
+          "normalized": "噫吁嚱",
+          "expect_plan": "Match",
+          "executed_plan": "Match",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.033,
+          "median_ms": 0.032,
+          "explain_query_plan": [
+            "SCAN f VIRTUAL TABLE INDEX 0:M1",
+            "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q19-rare-two-char-xuxi",
+          "class": "rare_char",
+          "query": "吁嚱",
+          "normalized": "吁嚱",
+          "expect_plan": "Ngram",
+          "executed_plan": "Ngram",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.038,
+          "median_ms": 0.029,
+          "explain_query_plan": [
+            "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+            "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q20-title-jingyesi",
+          "class": "title_lookup",
+          "query": "静夜思",
+          "normalized": "静夜思",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.022,
+          "median_ms": 0.019,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q21-title-chunwang",
+          "class": "title_lookup",
+          "query": "春望",
+          "normalized": "春望",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.022,
+          "median_ms": 0.019,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q22-citune-niannujiao",
+          "class": "ci_tune_lookup",
+          "query": "念奴娇",
+          "normalized": "念奴娇",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.019,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q23-citune-shuidiaogetou",
+          "class": "ci_tune_lookup",
+          "query": "水调歌头",
+          "normalized": "水调歌头",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.022,
+          "median_ms": 0.02,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_ci_tune_idx (ci_tune=?)"],
+          "error": null
+        },
+        {
+          "id": "q24-citune-title-chibihuaigu",
+          "class": "ci_tune_title_lookup",
+          "query": "念奴娇·赤壁怀古",
+          "normalized": "念奴娇·赤壁怀古",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.019,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q25-citune-title-mingyuejishiyou",
+          "class": "ci_tune_title_lookup",
+          "query": "水调歌头·明月几时有",
+          "normalized": "水调歌头·明月几时有",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.02,
+          "median_ms": 0.018,
+          "explain_query_plan": ["SEARCH poem USING INDEX poem_title_idx (title=?)"],
+          "error": null
+        },
+        {
+          "id": "q26-firstline-chuangqian",
+          "class": "first_line_prefix",
+          "query": "床前",
+          "normalized": "床前",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.027,
+          "median_ms": 0.02,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q27-firstline-guoposhan",
+          "class": "first_line_prefix",
+          "query": "国破山",
+          "normalized": "国破山",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.019,
+          "median_ms": 0.019,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q28-lastchar-shuang",
+          "class": "last_char_lookup",
+          "query": "霜",
+          "normalized": "霜",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 146,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.082,
+          "median_ms": 0.067,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q29-lastchar-liu",
+          "class": "last_char_lookup",
+          "query": "流",
+          "normalized": "流",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 138,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.079,
+          "median_ms": 0.065,
+          "explain_query_plan": [
+            "SEARCH poem_last_char USING COVERING INDEX poem_last_char_idx (ch=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q30-rhyme-xiapingqiyang",
+          "class": "rhyme_group_query",
+          "query": "下平七阳",
+          "normalized": "下平七阳",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q31-rhyme-xiapingshiersqin",
+          "class": "rhyme_group_query",
+          "query": "下平十二侵",
+          "normalized": "下平十二侵",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.012,
+          "median_ms": 0.012,
+          "explain_query_plan": [
+            "SEARCH poem USING INDEX poem_rhyme_idx (ANY(rhyme_book) AND rhyme_group=?)"
+          ],
+          "error": null
+        },
+        {
+          "id": "q32-tag-sixiang",
+          "class": "tag_query",
+          "query": "思乡",
+          "normalized": "思乡",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 2,
+          "hits": 2,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.014,
+          "median_ms": 0.014,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q33-tag-biansai",
+          "class": "tag_query",
+          "query": "边塞",
+          "normalized": "边塞",
+          "expect_plan": "Meta",
+          "executed_plan": "Meta",
+          "expect_min_hits": 1,
+          "hits": 1,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 0.016,
+          "median_ms": 0.013,
+          "explain_query_plan": ["SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"],
+          "error": null
+        },
+        {
+          "id": "q34-punct-comma-period",
+          "class": "punctuation_only",
+          "query": "，。",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q35-punct-mixed",
+          "class": "punctuation_only",
+          "query": "？！；",
+          "normalized": "",
+          "expect_plan": "Empty",
+          "executed_plan": "Empty",
+          "expect_min_hits": 0,
+          "hits": 0,
+          "meets_min_hits": true,
+          "anchor_found": false,
+          "p95_ms": 0.007,
+          "median_ms": 0.007,
+          "explain_query_plan": ["SCAN poem USING COVERING INDEX sqlite_autoindex_poem_1"],
+          "error": null
+        },
+        {
+          "id": "q36-nofullrun-ming-guang",
+          "class": "no_three_char_run",
+          "query": "明%光",
+          "normalized": "明%光",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 31,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.247,
+          "median_ms": 2.617,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        },
+        {
+          "id": "q37-nofullrun-yue-shuang",
+          "class": "no_three_char_run",
+          "query": "月%霜",
+          "normalized": "月%霜",
+          "expect_plan": "FullScan",
+          "executed_plan": "FullScan",
+          "expect_min_hits": 1,
+          "hits": 102,
+          "meets_min_hits": true,
+          "anchor_found": true,
+          "p95_ms": 3.533,
+          "median_ms": 2.662,
+          "explain_query_plan": ["SCAN poem"],
+          "error": null
+        }
+      ]
+    }
+  ],
+  "scale_projection": [
+    {
+      "poem_count": 10000,
+      "ngram_path_p95_ms": 0.083,
+      "bare_like_fts_p95_ms": 6.037,
+      "bare_like_base_p95_ms": 4.022,
+      "speedup": 72.735,
+      "ngram_rows": 461559,
+      "ngram_bytes": 26038272
+    },
+    {
+      "poem_count": 50000,
+      "ngram_path_p95_ms": 0.26,
+      "bare_like_fts_p95_ms": 25.926,
+      "bare_like_base_p95_ms": 16.376,
+      "speedup": 99.715,
+      "ngram_rows": 2304752,
+      "ngram_bytes": 130187264
+    },
+    {
+      "poem_count": 100000,
+      "ngram_path_p95_ms": 0.525,
+      "bare_like_fts_p95_ms": 52.356,
+      "bare_like_base_p95_ms": 34.236,
+      "speedup": 99.726,
+      "ngram_rows": 4609093,
+      "ngram_bytes": 262377472
+    }
+  ]
+}

@@ -1,0 +1,446 @@
+# 云笺黄金查询契约 —— 不可变契约文件
+#
+# 这份文件是检索能力的**验收基准**，也是「存储实现可替换」这句话唯一成立的依据：
+# 只要下面每一条在新实现上仍然成立，底层从 SQLite 换成别的东西就不会静默降级用户体验。
+#
+# 消费方（不要在这些地方复制一份，它只有一处）：
+#   todo 19  建 FTS5 索引后用它证明索引真的被用上
+#   todo 22  语料 CI 作业逐条跑，任何一条结果变化而本文件未同步修改即失败
+#   todo 24  查询归一与长度路由的行为基准（`expect_plan` 就是它 `plan_query` 的期望输出）
+#   todo 25  全文与残句检索的召回基准
+#   todo 43  本次去风险实测：三种 `detail` 模式各跑一遍完整契约，据此选定索引模式
+#   F1       终态回归
+#
+# ## 字段语义
+#
+#   id                稳定标识，重命名等于换一条契约。`golden_queries.rs` 里每条 id
+#                     对应一个 `#[test]`，因此 `--list` 的枚举数就是契约条数。
+#   query             **用户原样输入的字符串**，不是归一化之后的。繁体、异体、标点、
+#                     通配符都保留原形——归一化本身就是被测对象（todo 24）。
+#   class             18 个类别之一，见下方「类别覆盖」。类别是覆盖度的度量单位：
+#                     元测试断言 18 类一个不缺，所以后续无法悄悄删掉某一类。
+#   expect_plan       期望的查询计划，取值 Ngram | Match | Like | Empty | FullScan | Meta。
+#                     语义见下方「计划取值」。
+#   expect_top_id     本条锚定的 fixture（见 `fixtures/poems.toml`）。它有两个作用：
+#                     (1) 让契约在真实语料存在之前就可被证明「可满足」——元测试会检查
+#                         归一化后的查询确实能在该 fixture 上命中；
+#                     (2) 给排序实现（todo 25）一个具名的期望首位。
+#                     注意：`expect_min_hits = 0` 的条目（纯标点）也保留锚，记录的是
+#                     该输入的**来源**——它是从那首诗的标点里取的。检索期望完全由
+#                     `expect_min_hits` 与 `expect_plan` 承载。
+#   expect_min_hits   命中数**下界**，不是精确值。语料变大只会让它更容易满足，
+#                     所以同一份契约既能跑 fixture 集，也能跑 85 万首的真实语料。
+#   note              这一条为什么存在。不是描述，是理由。
+#
+# ## 计划取值（todo 24 的 `QueryPlan` 必须用这几个名字）
+#
+#   Ngram     归一化后字面长度 < 3。**必须**走辅助 n-gram 候选表再回表 LIKE 核对。
+#             裸 `LIKE '%明月%'` 推不出任何 trigram 约束，会退化成整列扫描——
+#             对最常见的查询形态而言这不是一个可接受的计划，所以此处是正确性要求。
+#   Match     长度 == 3（恰好一个 trigram），或长度 > 3 且所选 detail 模式支持
+#             phrase 查询。整句检索走这条。
+#   Like      长度 > 3，走带 trigram 约束的索引 LIKE。
+#   Empty     归一化后为空（例如纯标点）。返回空结果，不得报错，也不得扫全表。
+#   FullScan  字面串里没有任何长度 >= 3 的非通配连续段，索引无从下手。
+#             必须**显式标记**以便调用方提示用户，而不是静默耗掉几秒。
+#   Meta      不经全文索引的元数据检索（题目 / 作者 / 词牌 / 首句 / 尾字 / 韵部 / 标签）。
+#             走普通 B-tree 索引，由 todo 26、27 实现，**不得触碰 FTS 表**。
+#
+# ## 类别覆盖（18 类，元测试逐一断言）
+#
+#   two_char_word            两字词          明月 / 相思 / 春风
+#   two_char_author          两字人名        李白 / 杜甫
+#   three_char_phrase        三字短语
+#   four_char_phrase         四字短语
+#   whole_five_char_line     整句五言
+#   whole_seven_char_line    整句七言
+#   traditional_input        繁体输入
+#   variant_char_input       异体字输入
+#   rare_char                生僻字
+#   title_lookup             题目
+#   ci_tune_lookup           词牌
+#   ci_tune_title_lookup     词牌·题目
+#   first_line_prefix        首句前缀
+#   last_char_lookup         尾字
+#   rhyme_group_query        韵部
+#   tag_query                标签
+#   punctuation_only         纯标点          期望 Empty
+#   no_three_char_run        无三字连续段    期望 FullScan
+#
+# ## 为什么两字查询是这份契约里最关键的部分
+#
+# FTS5 官方限制：**trigram 分词器下，长度不足 3 的子串匹配不到任何行**。而「明月」
+# 「相思」「李白」正是用户最常输入的形态。这三条的非空结果就是那个陷阱的回归测试；
+# 它们一旦变成 0 命中，说明路由被改坏了，而这种坏法在功能测试里完全看不出来。
+
+schema_version = 1
+fixture_file = "fixtures/poems.toml"
+
+# ---------------------------------------------------------------- 两字词（3 条）
+
+[[query]]
+id = "q01-two-char-mingyue"
+query = "明月"
+class = "two_char_word"
+expect_plan = "Ngram"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 3
+note = "整份契约里最重要的一条。两个字面字符推不出任何 trigram 约束，裸 LIKE 会扫全列；本条的 p95 就是辅助 n-gram 表是否值得存在的判据。"
+
+[[query]]
+id = "q02-two-char-xiangsi"
+query = "相思"
+class = "two_char_word"
+expect_plan = "Ngram"
+expect_top_id = "fixture:tang-wangwei-xiangsi"
+expect_min_hits = 2
+note = "第二个高频两字词，且它同时是一首诗的题目，可暴露正文检索与题目检索被混为一谈的实现。"
+
+[[query]]
+id = "q03-two-char-chunfeng"
+query = "春风"
+class = "two_char_word"
+expect_plan = "Ngram"
+expect_top_id = "fixture:song-wanganshi-yuanri"
+expect_min_hits = 2
+note = "第三个两字词，锚在宋诗上，避免两字词这一类全部由唐诗承担。"
+
+# ------------------------------------------------------------ 两字人名（2 条）
+
+[[query]]
+id = "q04-two-char-author-libai"
+query = "李白"
+class = "two_char_author"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 3
+note = "两字人名走作者索引而非全文索引。若实现把它误当成正文两字词，结果会既慢又错——「李白」几乎不出现在正文里。"
+
+[[query]]
+id = "q05-two-char-author-dufu"
+query = "杜甫"
+class = "two_char_author"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-dufu-chunwang"
+expect_min_hits = 2
+note = "第二位作者，用于验证作者检索返回的是该作者的多首作品而不是首条即止。"
+
+# ------------------------------------------------------------ 三字短语（2 条）
+
+[[query]]
+id = "q06-three-char-mingyueguang"
+query = "明月光"
+class = "three_char_phrase"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "长度恰好 3，是唯一被 FTS5 trigram MATCH 保证可服务的长度。三分支路由的中间那一支只有这一种输入。"
+
+[[query]]
+id = "q07-three-char-gurenxi"
+query = "故人西"
+class = "three_char_phrase"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-libai-huangheloused"
+expect_min_hits = 1
+note = "第二个三字短语，且它跨越了词的边界（「故人」+「西辞」），可验证实现按字而非按词切分——文言检索必须是字级的。"
+
+# ------------------------------------------------------------ 四字短语（2 条）
+
+[[query]]
+id = "q08-four-char-bairiyishan"
+query = "白日依山"
+class = "four_char_phrase"
+expect_plan = "Like"
+expect_top_id = "fixture:tang-wangzhihuan-dengguanquelou"
+expect_min_hits = 1
+note = "长度 4，落在 LIKE 分支。四字是「记得半句」最常见的残句长度，因此这一支的索引可用性必须有 EXPLAIN QUERY PLAN 证据，不能靠推断。"
+
+[[query]]
+id = "q09-four-char-haishangmingyue"
+query = "海上明月"
+class = "four_char_phrase"
+expect_plan = "Like"
+expect_top_id = "fixture:tang-zhangruoxu-chunjianghuayueye"
+expect_min_hits = 1
+note = "第二个四字短语，内含两字词「明月」。同一个子串在长查询里高选择性、在两字查询里几乎无选择性，正是路由存在的原因。"
+
+# ---------------------------------------------------------- 整句五言（2 条）
+
+[[query]]
+id = "q10-line5-chuangqianmingyueguang"
+query = "床前明月光"
+class = "whole_five_char_line"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "整句检索，需要 phrase 匹配，因此需要位置信息。这一条是 detail 模式选型的判据：detail=none 与 detail=column 都会在此报错而不是少召回，属于会静默上线的缺陷。"
+
+[[query]]
+id = "q11-line5-bairiyishanjin"
+query = "白日依山尽"
+class = "whole_five_char_line"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-wangzhihuan-dengguanquelou"
+expect_min_hits = 1
+note = "第二条整句五言，确保上一条不是孤例。"
+
+# ---------------------------------------------------------- 整句七言（2 条）
+
+[[query]]
+id = "q12-line7-lianganyuansheng"
+query = "两岸猿声啼不住"
+class = "whole_seven_char_line"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-libai-zaofabaidicheng"
+expect_min_hits = 1
+note = "七言整句是最长的常见查询形态，trigram 数最多，对 phrase 支持的要求也最高。"
+
+[[query]]
+id = "q13-line7-gusuchengwai"
+query = "姑苏城外寒山寺"
+class = "whole_seven_char_line"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-zhangji-fengqiaoyebo"
+expect_min_hits = 1
+note = "第二条整句七言，锚在另一首诗上，确保整句七言不是靠单首 fixture 侥幸通过。"
+
+# ---------------------------------------------------------- 繁体输入（2 条）
+
+[[query]]
+id = "q14-traditional-guopo"
+query = "國破山河在"
+class = "traditional_input"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-dufu-chunwang"
+expect_min_hits = 1
+note = "繁体输入必须经 variant_map 改写后命中简体索引，而不是靠建第二套索引（todo 19 明确禁止）。只要有一个字没被映射，整句就 0 命中。"
+
+[[query]]
+id = "q15-traditional-jutouwangmingyue"
+query = "舉頭望明月"
+class = "traditional_input"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "第二条繁体整句，需要同时映射两个字（舉、頭），比只错一个字的情形更能暴露逐字映射的漏项。"
+
+# -------------------------------------------------------- 异体字输入（2 条）
+
+[[query]]
+id = "q16-variant-cechengfeng"
+query = "側成峯"
+class = "variant_char_input"
+expect_plan = "Match"
+expect_top_id = "fixture:song-sushi-tixilinbi"
+expect_min_hits = 1
+note = "峯 是 峰 的异体字而非繁体。异体与繁简必须走同一张映射表，否则用户得先知道自己输的是哪一种才能搜到。"
+
+[[query]]
+id = "q17-variant-bingsaichuan"
+query = "氷塞川"
+class = "variant_char_input"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-libai-xinglunan"
+expect_min_hits = 1
+note = "第二条异体字输入，锚在另一首诗上，避免异体字这一类只由一首诗承担。"
+
+# ------------------------------------------------------------ 生僻字（2 条）
+
+[[query]]
+id = "q18-rare-yixuxi"
+query = "噫吁嚱"
+class = "rare_char"
+expect_plan = "Match"
+expect_top_id = "fixture:tang-libai-shudaonan"
+expect_min_hits = 1
+note = "极低频 trigram，选择性接近 1。与「明月」构成两个极端，用来证明延迟差异来自选择性而不是实现抖动。"
+
+[[query]]
+id = "q19-rare-two-char-xuxi"
+query = "吁嚱"
+class = "rare_char"
+expect_plan = "Ngram"
+expect_top_id = "fixture:tang-libai-shudaonan"
+expect_min_hits = 1
+note = "同为两字查询，但高选择性。它与「明月」的对照能区分「两字慢」是因为长度不足推不出约束，还是因为候选集大——前者是结构问题，后者只是数据分布。"
+
+# -------------------------------------------------------------- 题目（2 条）
+
+[[query]]
+id = "q20-title-jingyesi"
+query = "静夜思"
+class = "title_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "题目检索走 B-tree，不得进 FTS 表（todo 17 明确禁止把 title 放入任何 FTS 表）。"
+
+[[query]]
+id = "q21-title-chunwang"
+query = "春望"
+class = "title_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-dufu-chunwang"
+expect_min_hits = 1
+note = "第二个题目，两字题名——短题目不受 trigram 长度限制影响，正因为它根本不走那条路。"
+
+# -------------------------------------------------------------- 词牌（2 条）
+
+[[query]]
+id = "q22-citune-niannujiao"
+query = "念奴娇"
+class = "ci_tune_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:song-sushi-niannujiao-chibihuaigu"
+expect_min_hits = 1
+note = "上游宋词的题目在 rhythmic 字段里且常是「词牌·题目」的合成形式，因此单独查词牌必须能匹配合成题目的前半段。"
+
+[[query]]
+id = "q23-citune-shuidiaogetou"
+query = "水调歌头"
+class = "ci_tune_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:song-sushi-shuidiaogetou-mingyue"
+expect_min_hits = 1
+note = "第二个词牌，四字，用于验证词牌匹配不是按长度而是按 词牌允许列表 判定的。"
+
+# --------------------------------------------------------- 词牌·题目（2 条）
+
+[[query]]
+id = "q24-citune-title-chibihuaigu"
+query = "念奴娇·赤壁怀古"
+class = "ci_tune_title_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:song-sushi-niannujiao-chibihuaigu"
+expect_min_hits = 1
+note = "完整合成题目。中点是 U+00B7，用户也可能输成其它间隔符，因此这一条同时钉住分隔符的处理。"
+
+[[query]]
+id = "q25-citune-title-mingyuejishiyou"
+query = "水调歌头·明月几时有"
+class = "ci_tune_title_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:song-sushi-shuidiaogetou-mingyue"
+expect_min_hits = 1
+note = "第二条合成题目，其题目部分恰好是首句，可验证题目检索与首句检索互不串扰。"
+
+# ---------------------------------------------------------- 首句前缀（2 条）
+
+[[query]]
+id = "q26-firstline-chuangqian"
+query = "床前"
+class = "first_line_prefix"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "首句前缀走预计算的 first_line 列做前缀匹配。它只有两个字，若被误路由到全文两字路径就会既慢又混入正文命中。"
+
+[[query]]
+id = "q27-firstline-guoposhan"
+query = "国破山"
+class = "first_line_prefix"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-dufu-chunwang"
+expect_min_hits = 1
+note = "第二条首句前缀，三字，与三字短语类形成对照：同样长度但期望的计划完全不同。"
+
+# ---------------------------------------------------------------- 尾字（2 条）
+
+[[query]]
+id = "q28-lastchar-shuang"
+query = "霜"
+class = "last_char_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "尾字检索针对预计算的逐句末字，而不是「正文里含这个字」。《枫桥夜泊》正文有「霜」但不在句末，因此这一条能区分两种语义。"
+
+[[query]]
+id = "q29-lastchar-liu"
+query = "流"
+class = "last_char_lookup"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-wangzhihuan-dengguanquelou"
+expect_min_hits = 2
+note = "第二个尾字，跨两首诗，验证返回集而非单条。"
+
+# ---------------------------------------------------------------- 韵部（2 条）
+
+[[query]]
+id = "q30-rhyme-xiapingqiyang"
+query = "下平七阳"
+class = "rhyme_group_query"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "按平水韵韵部检索。韵部归属由 todo 18 的韵脚投票产出，confidence 为 unresolved 的诗不得被算作命中。"
+
+[[query]]
+id = "q31-rhyme-xiapingshiersqin"
+query = "下平十二侵"
+class = "rhyme_group_query"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-dufu-chunwang"
+expect_min_hits = 1
+note = "第二个韵部，锚在一首八句律诗上，四个韵脚同部，是投票机制的正例。"
+
+# ---------------------------------------------------------------- 标签（2 条）
+
+[[query]]
+id = "q32-tag-sixiang"
+query = "思乡"
+class = "tag_query"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 2
+note = "标签来自构建期的策展词表（todo 27），不是运行时生成的。这一条跨两首诗，确保标签是多对多而不是单标签字段。"
+
+[[query]]
+id = "q33-tag-biansai"
+query = "边塞"
+class = "tag_query"
+expect_plan = "Meta"
+expect_top_id = "fixture:tang-wangchangling-chusai"
+expect_min_hits = 1
+note = "第二个标签，只命中一首，用于验证标签检索在单条结果时也返回集合而不是报错。"
+
+# ------------------------------------------------------------ 纯标点（2 条）
+
+[[query]]
+id = "q34-punct-comma-period"
+query = "，。"
+class = "punctuation_only"
+expect_plan = "Empty"
+expect_min_hits = 0
+expect_top_id = "fixture:tang-libai-jingyesi"
+note = "归一化后为空。必须返回空结果而不是报错，也不能因为「模式里没有三字连续段」就退化成全表扫描——那会让一次误触耗掉几秒。锚记录的是这两个标点的来源。"
+
+[[query]]
+id = "q35-punct-mixed"
+query = "？！；"
+class = "punctuation_only"
+expect_plan = "Empty"
+expect_min_hits = 0
+expect_top_id = "fixture:tang-libai-shudaonan"
+note = "第二条纯标点，含全角问号、叹号、分号，用于验证标点剥离覆盖 CJK 标点而不只是 ASCII。"
+
+# ------------------------------------------------------ 无三字连续段（2 条）
+
+[[query]]
+id = "q36-nofullrun-ming-guang"
+query = "明%光"
+class = "no_three_char_run"
+expect_plan = "FullScan"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "字面连续段只有「明」和「光」，都不足 3 字，索引无从下手。结果仍然正确，但计划必须被显式标成 FullScan 以便提示用户，而不是让人以为这是一次普通检索。"
+
+[[query]]
+id = "q37-nofullrun-yue-shuang"
+query = "月%霜"
+class = "no_three_char_run"
+expect_plan = "FullScan"
+expect_top_id = "fixture:tang-libai-jingyesi"
+expect_min_hits = 1
+note = "第二条无三字连续段，跨句匹配（「明月光」到「地上霜」），验证 FullScan 分支的语义是整篇正文而不是单句。"

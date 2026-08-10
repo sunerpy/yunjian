@@ -113,8 +113,11 @@ impl Usage {
 /// 所以这里的 stdout 是正当的。但豁免仍然收在**一个函数**上而不是整个 crate：
 /// crate 级豁免会让后续每个新增子命令都能随手打印，收敛不回来。
 ///
+/// 改为 `pub(crate)`：`index_spike` 也要打印终端报告，而给它再开一个
+/// `#[allow(clippy::print_stdout)]` 就等于把「豁免只有一处」这条约束作废。
+/// 复用同一个漏斗，`xtask` 里的豁免仍然只有这一个函数。
 #[allow(clippy::print_stdout)]
-fn emit(line: &str) {
+pub(crate) fn emit(line: &str) {
     println!("{line}");
 }
 
