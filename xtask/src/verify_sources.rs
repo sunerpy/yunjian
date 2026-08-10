@@ -189,7 +189,7 @@ pub fn run(offline: bool) -> Result<()> {
                     emit(&format!(
                         "  OK   源 {}  rev {}  {}  LICENSE {} 字节 sha256 {}  用途 {}",
                         src.name,
-                        src.git_rev,
+                        &src.git_rev,
                         src.license,
                         bytes.len(),
                         &actual[..16],
