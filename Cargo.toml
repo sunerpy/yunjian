@@ -49,12 +49,7 @@ ferrous-opencc = "0.4"
 pinyin = "0.11"
 inputx-phonetic-edit = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = [
-  "env-filter",
-  "fmt",
-  "json",
-  "local-time",
-] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json", "local-time"] }
 tracing-appender = "0.2"
 # 时间戳格式化：`tracing-subscriber` 的 `OffsetTime` 需要 `time` 的 `UtcOffset` 与
 # `Rfc3339`。显式声明特性而不依赖 `tracing-subscriber` 的特性合并，否则上游改动

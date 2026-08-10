@@ -24,6 +24,4 @@ disallowed-methods = [
 # `std::dbg` 留着：`dbg_macro` 已在工作区 deny，这里按宏名再封一道属于不同的 lint，
 # 于是局部 `#[allow(clippy::dbg_macro)]` 无法把口子重新打开；而 build script 从不用
 # `dbg!`，没有上面那种代价。
-disallowed-macros = [
-  { path = "std::dbg", reason = "调试残留写 stdout，且从不该进入提交；与 dbg_macro 互为双保险" },
-]
+disallowed-macros = [{ path = "std::dbg", reason = "调试残留写 stdout，且从不该进入提交；与 dbg_macro 互为双保险" }]
