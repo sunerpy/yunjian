@@ -1,0 +1,321 @@
+name: release
+
+# 发版的唯一入口。链路固定为：
+#
+#   release-please  → 维护那个长期存在的发布 PR；**它被合并时**才切 tag 并建 draft Release
+#   verify-ci       → 查（不重跑）tag 所在提交在 ci.yml 上的结论，与构建并行
+#   build-binaries  → 以切出的 tag 为准编译平台二进制
+#   upload-assets   → 渲染 git-cliff 说明、把产物挂到 **draft** 上
+#   publish-release → 前面全绿才把 draft 翻成正式发布
+#
+# 两条硬规则：
+#
+# 1. **只有发布 PR 被合并才发版。** 普通功能 PR 合进 main 只会刷新那个发布 PR；
+#    重活全部挂在 `needs.release-please.outputs.build_artifacts == 'true'` 上，
+#    该值来自 release-please 的 `release_created`。
+# 2. **Release 在全部构建成功前保持 draft。** 任一步失败就停在 draft：现象是「多了一个
+#    草稿」而不是「发出去一个没有产物的版本」，可观测且可修复。
+#
+# 当前的 build-binaries 只有一个 Linux 目标，是刻意的骨架。五平台矩阵、
+# `--features voice,mcp`、桌面安装包、校验和与移动端产物属于 todo 74，在此之上扩展。
+
+on:
+  push:
+    branches: [main]
+  # 补挂产物用：tag 已经发出去了，但当时某个构建失败、产物没传上去。
+  # 这条路径不重新切 tag，只重建并补挂到既有 tag 上。
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "已存在的 tag（例如 v0.1.0）"
+        required: true
+        type: string
+      version:
+        description: "产物文件名里的版本号（例如 0.1.0）"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  # verify-ci 要读 ci.yml 的运行记录与作业结论。
+  actions: read
+
+# 刻意 `cancel-in-progress: false`：发版跑到一半被后一次 push 取消，会留下一个
+# 切了 tag、建了 draft 却没有产物的中间状态。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BINARY_NAME: yunjian
+  CLI_CRATE: yunjian-cli
+  GIT_CLIFF_VERSION: 2.13.1
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      build_artifacts: ${{ steps.gate.outputs.build_artifacts }}
+      tag_name: ${{ steps.gate.outputs.tag_name }}
+      version: ${{ steps.gate.outputs.version }}
+    steps:
+      - name: 运行 release-please
+        id: release
+        if: github.event_name == 'push'
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # 把两种触发方式收敛成同一组输出，后面的作业只看 build_artifacts，
+      # 不必各自去分辨自己是被谁触发的。
+      - name: 汇总构建门控
+        id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            {
+              echo "build_artifacts=true"
+              echo "tag_name=${INPUT_TAG}"
+              echo "version=${INPUT_VERSION}"
+            } >> "$GITHUB_OUTPUT"
+            echo "手动补挂：tag=${INPUT_TAG} version=${INPUT_VERSION}"
+          else
+            {
+              echo "build_artifacts=${RELEASE_CREATED:-false}"
+              echo "tag_name=${RELEASE_TAG:-}"
+              echo "version=${RELEASE_VERSION:-}"
+            } >> "$GITHUB_OUTPUT"
+            if [ "${RELEASE_CREATED:-false}" = "true" ]; then
+              echo "发布 PR 已合并，切出 ${RELEASE_TAG}，进入构建。"
+            else
+              echo "本次只刷新发布 PR，不发版。"
+            fi
+          fi
+
+  # 发布门禁：正式发布必须建立在「tag 那个提交的 CI 是绿的」之上。
+  #
+  # 只查询、不重跑（重跑等于把 ci.yml 抄第二遍，两套标准迟早漂移）。与 build-binaries
+  # 并行，门禁在 upload-assets 处生效——CI 红则产物永远挂不上去，Release 留在 draft。
+  #
+  # 必须**始终执行**而不能被跳过：upload-assets 把它写进了 needs，被跳过的 needs
+  # 会连带把 upload-assets 一起跳过。因此这里用与其他作业相同的 build_artifacts 门控，
+  # 并给 workflow_dispatch 留一个空操作成功分支（补挂既有 tag 时没有新的 CI 可查）。
+  verify-ci:
+    name: Verify CI Passed
+    needs: release-please
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 手动补挂：跳过 CI 门禁（空操作）
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "补挂既有 tag，没有新的 CI 运行可查，直接放行。"
+
+      - name: 检出 tag
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: 解析 tag 指向的提交
+        id: sha
+        if: github.event_name == 'push'
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-list -n1 "${TAG_NAME}")" >> "$GITHUB_OUTPUT"
+
+      # 查的是 main 分支上那次 push 的运行，而不是 tag 自己的：release-please 用
+      # GITHUB_TOKEN 创建 tag，而 GITHUB_TOKEN 触发的事件不会再启动工作流，
+      # 所以 refs/tags/vX.Y.Z 根本不存在对应的 CI 运行，等它等于永久挂起。
+      #
+      # 定位运行用 `actions/runs?head_sha=` 再按 `.path` 过滤，不用
+      # `actions/workflows/ci.yml/runs?head_sha=`——实测后者带 head_sha 过滤时返回空列表。
+      # 按 `.path` 而不是按 `.name` 认工作流：`name:` 字段随时可以改，文件路径不会。
+      - name: 等待 tag 提交上的 CI Success
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          max_iters=100
+          sleep_secs=15
+          run_id=""
+          for i in $(seq 1 "${max_iters}"); do
+            run_id=$(gh api "repos/${REPO}/actions/runs?head_sha=${HEAD_SHA}&event=push&per_page=100" \
+              --jq '[.workflow_runs[] | select(.path == ".github/workflows/ci.yml")]
+                    | sort_by(.created_at) | last | .id // empty')
+            if [ -n "${run_id}" ]; then
+              echo "找到 ${HEAD_SHA} 的 CI 运行：${run_id}"
+              break
+            fi
+            echo "${HEAD_SHA} 还没有 CI 运行（${i}/${max_iters}），等待 ${sleep_secs}s……"
+            sleep "${sleep_secs}"
+          done
+          if [ -z "${run_id}" ]; then
+            echo "::error::等不到 CI 运行，拒绝发布（Release 保持 draft）"
+            exit 1
+          fi
+          for i in $(seq 1 "${max_iters}"); do
+            jobs_json=$(gh api "repos/${REPO}/actions/runs/${run_id}/jobs?per_page=100")
+            status=$(echo "${jobs_json}" | jq -r '.jobs[] | select(.name == "CI Success") | .status')
+            conclusion=$(echo "${jobs_json}" | jq -r '.jobs[] | select(.name == "CI Success") | .conclusion // ""')
+            if [ "${status}" != "completed" ]; then
+              echo "CI Success 尚未结束（status='${status}'，${i}/${max_iters}），等待 ${sleep_secs}s……"
+              sleep "${sleep_secs}"
+              continue
+            fi
+            if [ "${conclusion}" = "success" ]; then
+              echo "${HEAD_SHA} 的 CI Success 已通过。"
+              exit 0
+            fi
+            # cancelled 也在这里落地。main 上紧接着的下一次合并会因
+            # cancel-in-progress 取消掉本提交的 CI 运行，此时需要人工重跑那次 CI
+            # 再重跑本作业；Release 在此期间安全地停在 draft。
+            echo "::error::CI Success 结论为 '${conclusion}'，拒绝发布（Release 保持 draft）"
+            exit 1
+          done
+          echo "::error::等不到 CI Success 结束，拒绝发布（Release 保持 draft）"
+          exit 1
+
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    needs: release-please
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      # 骨架：先只有一个原生目标，证明「切 tag → 编译 → 挂产物 → 翻牌」这条链路成立。
+      # todo 74 在这里补齐 Linux/macOS/Windows 五平台、交叉编译与桌面安装包。
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      # 只编 CLI 那个包。默认特性不含 voice：它要拉 libclang 与网络下载的原生产物，
+      # 分发物许可也与默认构建不同（见 docs/VOICE-BUILD.zh.md）。
+      # todo 74 会显式加上 `--features voice,mcp` 并处理随之而来的原生依赖。
+      - name: 编译
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release -p "${CLI_CRATE}" --target "${TARGET}"
+
+      - name: 打包
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          archive="${BINARY_NAME}-${VERSION}-${TARGET}.tar.gz"
+          tar -czf "dist/${archive}" -C "target/${TARGET}/release" "${BINARY_NAME}"
+          ( cd dist && sha256sum "${archive}" > "${archive}.sha256" )
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          retention-days: 1
+
+  upload-assets:
+    name: Upload Release Assets
+    # verify-ci 写在这里就是门禁本身：CI 红 → 本作业不跑 → publish-release 连带不跑
+    # → Release 停在 draft。
+    needs: [release-please, build-binaries, verify-ci]
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      # 用 git-cliff 官方预编译产物，不引第三方 action：orhun/git-cliff-action
+      # 星数远低于采用门槛，而工具本身有官方 release。与 ci.yml 里 cargo-audit
+      # 的处理方式一致。解到 RUNNER_TEMP 而不是工作树，避免污染仓库。
+      - name: 安装 git-cliff（官方预编译产物）
+        run: |
+          set -euo pipefail
+          dir="git-cliff-${GIT_CLIFF_VERSION}"
+          url="https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/${dir}-x86_64-unknown-linux-musl.tar.gz"
+          curl -sSLf -o "${RUNNER_TEMP}/git-cliff.tar.gz" "${url}"
+          tar xzf "${RUNNER_TEMP}/git-cliff.tar.gz" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/${dir}" >> "$GITHUB_PATH"
+
+      - name: 生成发布说明
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git-cliff --version
+          git-cliff --config cliff.toml --latest --strip header --output RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      # 挂产物 + 写正文，但**保持 draft**。翻牌交给 publish-release。
+      - name: 把产物挂到 draft Release 上
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "${TAG_NAME}" --repo "${REPO}" --notes-file RELEASE_NOTES.md
+          gh release upload "${TAG_NAME}" --repo "${REPO}" --clobber dist/*
+          gh release view "${TAG_NAME}" --repo "${REPO}" --json isDraft,assets \
+            --jq '{isDraft, assets: [.assets[].name]}'
+
+  publish-release:
+    name: Publish Release
+    needs: [release-please, verify-ci, build-binaries, upload-assets]
+    if: needs.release-please.outputs.build_artifacts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # 全链路唯一一处把 draft 翻成正式发布。走到这里意味着 CI 绿、每个目标都编译成功、
+      # 产物已经挂上。
+      - name: 翻牌：draft → 正式发布
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release edit "${TAG_NAME}" --repo "${REPO}" --draft=false --latest
+          gh release view "${TAG_NAME}" --repo "${REPO}" --json isDraft,isLatest,assets \
+            --jq '{isDraft, isLatest, assets: [.assets[].name]}'

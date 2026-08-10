@@ -1,0 +1,79 @@
+# git-cliff · 渲染 GitHub Release 页上的发布说明
+#
+# 与 `changelog/CHANGELOG-v0.x.md` 分工明确：那份是 release-please 维护的仓库内长期账本，
+# 这里只负责单次 tag 的公告文本（发版工作流用 `--latest --strip header` 现场生成，
+# 结果写进 GitHub Release 的正文，不落盘进仓库）。
+#
+# 分组名沿用 `release-please-config.json` 里 `changelog-sections` 的同名分类，避免同一次
+# 发布在两处出现两套叫法。但**可见性刻意不同**：变更日志只留用户可感知的类型，
+# Release notes 则把 `ci` / `test` / `build` 之类也列出来——它是这一个 tag 的完整记录，
+# 读它的人想知道「这版到底动了什么」，而不只是「有什么新功能」。
+# 配置文档：https://git-cliff.org/docs/configuration
+
+[changelog]
+header = """
+# 变更日志
+
+"""
+
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [未发布]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim }}
+
+    {% for commit in commits %}\
+        - {% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
+            {% if commit.breaking %}[**不兼容变更**] {% endif %}\
+            {{ commit.message | trim }}
+    {% endfor %}\
+{% endfor %}
+"""
+
+footer = """
+---
+由 [git-cliff](https://github.com/orhun/git-cliff) 生成。
+"""
+
+trim = true
+
+[git]
+conventional_commits = true
+# 不符合 Conventional Commits 的提交一律丢弃。本仓库的提交规范是强制的，
+# 出现不合规提交时宁可让它在发布说明里缺席，也不要污染分类。
+filter_unconventional = true
+split_commits = false
+
+# squash 合并后的主题形如 `feat(x): 主题 (#12)`，把尾部编号变成可点的链接。
+# GitHub 会把 /issues/N 重定向到 /pull/N，因此 PR 与 issue 用同一条规则即可。
+commit_preprocessors = [
+  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/sunerpy/yunjian/issues/${1}))" },
+  { pattern = '  +', replace = " " },
+]
+
+commit_parsers = [
+  { message = "^feat", group = "新功能" },
+  { message = "^fix", group = "缺陷修复" },
+  { message = "^perf", group = "性能优化" },
+  { message = "^deps", group = "依赖更新" },
+  { message = "^revert", group = "回滚" },
+  { message = "^docs", group = "文档" },
+  { message = "^style", group = "代码风格" },
+  { message = "^refactor", group = "重构" },
+  { message = "^test", group = "测试" },
+  { message = "^build", group = "构建" },
+  { message = "^ci", group = "持续集成" },
+  # release-please 自己产生的版本提交不该出现在它所描述的那次发布里。
+  { message = "^chore\\(main\\): release", skip = true },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore", group = "杂项" },
+]
+
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9].*"
+topo_order = false
+sort_commits = "oldest"
