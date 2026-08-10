@@ -13,6 +13,7 @@
 use clap::{Parser, Subcommand};
 
 // 子命令模块在此注册（每个任务追加一行）。
+mod commentary_index;
 mod index_spike;
 mod verify_sources;
 
@@ -48,6 +49,13 @@ enum Commands {
         repeats: usize,
     },
 
+    /// 由 `corpus/commentary/sources/` 重新生成 `index.json`，并逐条校验出处。
+    CommentaryIndex {
+        /// 只校验索引与种子集是否一致，不写文件。
+        #[arg(long)]
+        check: bool,
+    },
+
     /// 校验 `corpus/sources.toml`：锁定 revision、SPDX 允许列表、LICENSE 摘要、
     /// 逐资产授权判定，以及 `corpus/DENYLIST.md` 的拒绝清单。
     VerifySources {
@@ -62,6 +70,7 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         // 新增子命令时在此追加一条分派臂。
         Some(Commands::IndexSpike { scale, repeats }) => index_spike::run(scale, repeats),
+        Some(Commands::CommentaryIndex { check }) => commentary_index::run(check),
         Some(Commands::VerifySources { offline }) => verify_sources::run(offline),
         None => Ok(()),
     }
