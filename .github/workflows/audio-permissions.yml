@@ -89,57 +89,83 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev alsa-utils pulseaudio pulseaudio-utils
+          sudo apt-get install -y libasound2-dev pulseaudio pulseaudio-utils
 
-      # 两条虚拟输入路径都接：
+      # 虚拟输入设备走 PulseAudio 的 null sink + module-sine：把一个 440 Hz 正弦喂进一个
+      # 空 sink，它的 monitor source 就成了一个**有信号**的采集设备。cpal 经
+      # /usr/share/alsa/alsa.conf.d/50-pulseaudio.conf 定义的 `pcm.pulse` 能枚举到它。
       #
-      # 1. snd-aloop 内核回环——ALSA 层的真设备，`default` 会解析到它（runner 上无声卡，
-      #    所以它成为 card 0）。它**只是管道**，没人往播放侧写数据时采集侧读到的是纯零，
-      #    能通过所有格式断言却证明不了任何事，所以必须配一个信号源。
-      # 2. PulseAudio null sink + module-sine——把一个 440 Hz 正弦喂进空 sink，
-      #    它的 monitor source 就成了一个有信号的采集设备。cpal 经
-      #    /usr/share/alsa/alsa.conf.d/50-pulseaudio.conf 定义的 `pcm.pulse` 能枚举到它。
+      # 刻意**不用** snd-aloop：GitHub 的 azure 内核里没有这个模块
+      # （`modprobe: FATAL: Module snd-aloop not found`，实测），而且它只是管道——
+      # 没人往播放侧写数据时采集侧读到的是纯零，能通过所有格式断言却证明不了任何事。
       #
-      # 接两条是因为 `default` 到底落在哪一个取决于两者的加载顺序，而测试断言的是
-      # 「采集通路成立」——它会遍历所有候选设备，任一录到非静音即通过。
+      # 这一步**自己验证信号存在**，不把「设备没接好」的锅甩给测试：`parec` 录两秒，
+      # 峰值为零就在这里失败。否则一次 setup 失误会表现为「采集代码坏了」。
       - name: 接入虚拟输入设备（Linux）
         if: runner.os == 'Linux'
         run: |
-          sudo modprobe snd-aloop || echo "::warning::snd-aloop 加载失败，改由 PulseAudio 路径兜"
-          pulseaudio --start --exit-idle-time=-1 || true
+          set -x
+          pulseaudio --check || pulseaudio --start --exit-idle-time=-1
           sleep 2
-          pactl load-module module-null-sink sink_name=yunjian_test \
-            sink_properties='device.description="Yunjian Test Sink"' || true
-          pactl load-module module-sine sink=yunjian_test frequency=440 || true
-          pactl set-default-source yunjian_test.monitor || true
-          pactl list short sources
-          # snd-aloop 的采集侧（hw:Loopback,0）读的是播放侧（hw:Loopback,1）写入的数据，
-          # 所以信号要喂给 device 1。后台常驻，随作业结束一起消失。
-          if [ -e /dev/snd/pcmC0D1p ] && command -v speaker-test >/dev/null; then
-            nohup speaker-test -D hw:Loopback,1,0 -c 2 -r 48000 -t sine -f 440 \
-              > /dev/null 2>&1 &
-            sleep 1
-          fi
 
-      # macOS runner 没有物理麦克风。BlackHole 是一个虚拟音频设备驱动，装上后
-      # `default` 之外会多出一个可采集设备；但它同样只是管道，需要往它的输出侧播放
-      # 才有信号，因此配一个 afplay 的正弦。
+          # 复用 runner 上已有的 sink（通常是 module-null-sink 建的 auto_null）；
+          # 没有才新建。不传 sink_properties——带空格的属性值在 pactl 参数解析里会
+          # 让模块初始化失败（实测 `Failure: Module initialization failed`）。
+          SINK=$(pactl list short sinks | awk 'NR==1{print $2}')
+          if [ -z "$SINK" ]; then
+            pactl load-module module-null-sink sink_name=yunjian_test
+            SINK=yunjian_test
+          fi
+          pactl load-module module-sine sink="$SINK" frequency=440
+          pactl set-default-source "$SINK.monitor"
+          pactl list short sinks
+          pactl list short sources
+          echo "YUNJIAN_MONITOR=$SINK.monitor" >> "$GITHUB_ENV"
+
+      - name: 验证虚拟输入真的有信号
+        if: runner.os == 'Linux'
+        run: |
+          timeout 3 parec --device="$YUNJIAN_MONITOR" \
+            --format=s16le --rate=16000 --channels=1 --raw > /tmp/probe.raw || true
+          python3 - <<'PY'
+          import struct, sys
+          data = open("/tmp/probe.raw", "rb").read()
+          count = len(data) // 2
+          samples = struct.unpack(f"<{count}h", data[: count * 2]) if count else ()
+          peak = max((abs(s) for s in samples), default=0)
+          print(f"bytes={len(data)} samples={count} peak={peak}")
+          if peak <= 100:
+              sys.exit("虚拟输入设备没有信号——采集测试会因全静音失败，但那是 setup 的问题")
+          PY
+
+      # macOS runner 没有物理麦克风。BlackHole 是一个虚拟音频回环驱动，装上后播放到它的
+      # 输出侧即可从它的输入侧采回。
+      #
+      # `killall coreaudiod` 是必需的一步，不是加固：安装 pkg 只是把驱动放进
+      # /Library/Audio/Plug-Ins/HAL，**coreaudiod 不重启就不会加载它**——实测装完后
+      # `SwitchAudioSource` 报「Could not find an audio device named "BlackHole 2ch"」。
       #
       # **TCC 弹窗在这里不会出现**：命令行进程在无 GUI 会话的 runner 上不触发麦克风
-      # 授权对话框，macOS 对未签名的命令行工具也不走 TCC 的应用授权路径。因此这个
-      # 作业验证的是「采集通路与格式转换成立」，**不是**「TCC 授权流程成立」——
-      # 后者只能在签名产物 + 真机上验证，属 todo 68。
+      # 授权对话框。因此这个作业验证的是「采集通路与格式转换成立」，**不是**
+      # 「TCC 授权流程成立」——后者只能在签名产物 + 真机上验证，属 todo 68。
       - name: 接入虚拟输入设备（macOS）
         if: runner.os == 'macOS'
         run: |
-          brew install blackhole-2ch switchaudio-osx || true
-          sleep 3
-          SwitchAudioSource -a -t input || true
-          SwitchAudioSource -a -t output || true
-          SwitchAudioSource -t output -s "BlackHole 2ch" || true
-          SwitchAudioSource -t input -s "BlackHole 2ch" || true
-          # 生成一个 5 秒 440 Hz 正弦并循环播放到 BlackHole 的输出侧，
-          # 它的输入侧就成了一个有信号的采集设备。
+          set -x
+          brew install blackhole-2ch switchaudio-osx
+          sudo killall coreaudiod || true
+          for _ in $(seq 1 20); do
+            sleep 2
+            if SwitchAudioSource -a -t input | grep -q "BlackHole 2ch"; then break; fi
+          done
+          SwitchAudioSource -a -t input
+          SwitchAudioSource -a -t output
+          if ! SwitchAudioSource -a -t input | grep -q "BlackHole 2ch"; then
+            echo "::error::BlackHole 驱动没被 coreaudiod 加载，采集测试会因全静音失败——那是 setup 的问题"
+            exit 1
+          fi
+          SwitchAudioSource -t output -s "BlackHole 2ch"
+          SwitchAudioSource -t input -s "BlackHole 2ch"
           python3 - <<'PY'
           import math, struct, wave
           rate = 48000
@@ -154,7 +180,7 @@ jobs:
               w.writeframes(bytes(frames))
           PY
           nohup bash -c 'while true; do afplay /tmp/yunjian-sine.wav; done' > /dev/null 2>&1 &
-          sleep 2
+          sleep 3
 
       # Windows runner 同样没有物理麦克风，也没有一个不需要交互式安装的虚拟输入驱动。
       # 因此这里只断言**枚举与错误路径**成立：没有设备时必须报出可降级的

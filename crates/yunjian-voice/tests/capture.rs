@@ -118,16 +118,27 @@ fn a_stalled_device_is_reported_rather_than_hanging_forever() {
 }
 
 #[test]
-fn workflow_wires_a_virtual_input_device_and_never_sets_the_skip_var() {
+fn workflow_wires_a_signal_bearing_virtual_input_and_never_sets_the_skip_var() {
     let workflow = include_str!("../../../.github/workflows/audio-permissions.yml");
     assert!(
         !workflow.contains(SKIP_VAR),
         "CI 一旦设 {SKIP_VAR} 就再也不会真的录音，这条测试也就只是装饰"
     );
-    for needle in ["module-sine", "snd-aloop"] {
+    // 只接一个回环设备是不够的：回环只是管道，没人喂信号时采集侧读到纯零，
+    // 能通过所有格式断言却证明不了任何事。因此断言的是**信号源**的存在。
+    for needle in ["module-sine", "BlackHole"] {
         assert!(
             workflow.contains(needle),
-            "工作流要接入能产出信号的虚拟输入设备，缺 {needle}"
+            "工作流缺信号源 {needle}——一个只产出零的回环设备证明不了任何事"
         );
     }
+    // setup 自己验证信号，否则一次接线失误会表现成「采集代码坏了」。
+    assert!(
+        workflow.contains("parec"),
+        "Linux 侧要在 setup 里用 parec 验证 monitor 真的有信号"
+    );
+    assert!(
+        workflow.contains("killall coreaudiod"),
+        "macOS 装完 BlackHole 必须重启 coreaudiod，否则驱动不会被加载（实测）"
+    );
 }
