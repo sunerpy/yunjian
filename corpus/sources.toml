@@ -1,0 +1,514 @@
+# 云笺上游数据源清单（锁定 revision + 逐资产许可判定）
+#
+# 由 `cargo run -p xtask -- verify-sources` 强制校验，任何不合规条目直接让构建失败。
+#
+# 为什么校验粒度是「逐资产」而不是「逐仓库」：一份仓库级 LICENSE 只能授予该仓库
+# **自身整理工作**的权利，无法为它抓取或转录来的内容授权。本清单落地时这条规则
+# 立刻在 MIT 仓库内部命中了 10 个夹带现代注释/赏析的文件（见各 asset 的 note），
+# 说明「仓库是 MIT 所以内容都能用」是错的。
+#
+# license_class 语义：
+#   public_domain —— 底本为前现代作品，已过保护期
+#   permissive    —— 该仓库自身的整理/计算产物，由其 LICENSE 授权
+#   unverified    —— 授权链未核实（现代出版物、抓取自商业站点、来源不明的现代散文）
+# shippable = false 的资产一律不进入分发产物；`unverified` 且 `shippable = true`
+# 是硬失败。
+
+[[source]]
+name = "chinese-poetry/chinese-poetry"
+url = "https://github.com/chinese-poetry/chinese-poetry"
+git_rev = "b8594f81a89752241442f2ce267d6f66f96704ee"
+license = "MIT"
+license_url = "https://raw.githubusercontent.com/chinese-poetry/chinese-poetry/b8594f81a89752241442f2ce267d6f66f96704ee/LICENSE"
+license_sha256 = "c195319aeaa3ffcbe16aa5d26eec19eae5a42f84337dd2b3dc3c9d5ccbbd6507"
+license_file = "corpus/licenses/chinese-poetry.LICENSE"
+retrieved_at = "2026-08-10"
+usage = "text"
+note = """
+上游 issue #76 把 MIT 的范围说得很清楚：「此数据库(JSON结构化数据)是计算机数据属于软件，
+仅对衍生整理的工作产物保留许可权」。因此原文本身按公有领域对待，整理产物按 MIT 对待。
+注意：草案称该仓库「JSON 只有 {author, paragraphs, title, id}」，实测为假——见下列
+unverified 资产。另：只有 `全唐诗/poet.*` 与 `strains/json/*` 带原生 `id` 字段，
+`宋词/ci.song.*` 等其余集合没有，todo 10 的「优先用上游原生 key」路径覆盖不到它们。
+"""
+
+[[source.assets]]
+path = "全唐诗/poet.tang.*.json, 全唐诗/poet.song.*.json"
+underlying_work = "public-domain: 全唐诗（清康熙敕编）、全宋诗"
+license_class = "public_domain"
+shippable = true
+note = "58 + 255 个分片，每片 1000 条；带原生 `id`，可作 source_locator。字段 {author, id, paragraphs, title}。"
+
+[[source.assets]]
+path = "全唐诗/authors.tang.json, 全唐诗/authors.song.json"
+underlying_work = "public-domain: 全唐诗 原书作者小传（文言）"
+license_class = "public_domain"
+shippable = true
+note = "authors.tang.json 3675 条、2573 条有 desc；实测 desc 是《全唐詩》原有文言小传，非现代撰写。"
+
+[[source.assets]]
+path = "宋词/ci.song.*.json"
+underlying_work = "public-domain: 全宋词"
+license_class = "public_domain"
+shippable = true
+note = "22 个标准分片 + ci.song.2019y.json(3 条)，合计 21050 条，与 issue #261 审计的 21050 吻合。字段 {author, paragraphs, rhythmic}，**无 id**。"
+
+[[source.assets]]
+path = "宋词/ci.db"
+underlying_work = "permissive: 该仓库自建的 SQLite 产物"
+license_class = "permissive"
+shippable = false
+note = "上游构建产物，本项目自行建库，不消费也不分发。"
+
+[[source.assets]]
+path = "五代诗词/huajianji/*.json"
+underlying_work = "public-domain: 花间集 + UNVERIFIED 现代注释（notes 字段）"
+license_class = "unverified"
+shippable = false
+note = "实测 huajianji-1-juan.json 50 条中 48 条 notes 非空，内容是现代白话注释（「小山：女子画眉的式样之一」），撰者不明。若日后只取正文、显式丢弃 notes，可另立一条 public_domain 资产。"
+
+[[source.assets]]
+path = "五代诗词/nantang/poetrys.json"
+underlying_work = "public-domain: 南唐二主词 + UNVERIFIED 现代注释（notes 字段）"
+license_class = "unverified"
+shippable = false
+note = "45 条全部带 notes。"
+
+[[source.assets]]
+path = "五代诗词/nantang/intro.json, 五代诗词/nantang/authors.json"
+underlying_work = "unverified: 现代编者撰写的题解与作者简介"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "水墨唐诗/shuimotangshi.json"
+underlying_work = "public-domain: 唐诗 + UNVERIFIED 现代赏析（prologue 字段）"
+license_class = "unverified"
+shippable = false
+note = "176 条中 152 条 prologue 非空，实测是现代白话赏析/译文（「此诗歌颂了开国之君刘备的历史功绩……」），正是版权墙要挡的东西。"
+
+[[source.assets]]
+path = "御定全唐詩/json/*.json"
+underlying_work = "public-domain: 御定全唐詩（1705 年内府刻本）"
+license_class = "public_domain"
+shippable = true
+note = "繁体底本，带 biography(文言小传)、volume、no#。notes 字段结构上存在但实测全为空串（001.json 88 条 0 条有实际文本）。"
+
+[[source.assets]]
+path = "元曲/yuanqu.json"
+underlying_work = "public-domain: 元曲"
+license_class = "public_domain"
+shippable = true
+note = "11057 条，字段 {author, dynasty, paragraphs, title}。"
+
+[[source.assets]]
+path = "楚辞/chuci.json"
+underlying_work = "public-domain: 楚辞"
+license_class = "public_domain"
+shippable = true
+note = "65 条。"
+
+[[source.assets]]
+path = "诗经/shijing.json"
+underlying_work = "public-domain: 诗经"
+license_class = "public_domain"
+shippable = true
+note = "305 条。"
+
+[[source.assets]]
+path = "论语/lunyu.json"
+underlying_work = "public-domain: 论语"
+license_class = "public_domain"
+shippable = true
+note = "20 篇。"
+
+[[source.assets]]
+path = "四书五经/daxue.json, 四书五经/mengzi.json, 四书五经/zhongyong.json"
+underlying_work = "public-domain: 大学、孟子、中庸"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "幽梦影/youmengying.json"
+underlying_work = "public-domain: 幽梦影（张潮，清初）含同时代友人评语"
+license_class = "public_domain"
+shippable = true
+note = "219 条中 209 条带 comment，实测是清代友人评语（「曹秋岳曰」「庞笔奴曰」「孙恺似曰」），属前现代评点、公有领域——这正是草案 A4 所说可以合法上架的「历代集评」。"
+
+[[source.assets]]
+path = "曹操诗集/caocao.json"
+underlying_work = "public-domain: 曹操诗集"
+license_class = "public_domain"
+shippable = true
+note = "26 条。"
+
+[[source.assets]]
+path = "纳兰性德/纳兰性德诗集.json"
+underlying_work = "public-domain: 纳兰性德词集"
+license_class = "public_domain"
+shippable = true
+note = "258 条，正文键名是 para 而非 paragraphs。"
+
+[[source.assets]]
+path = "蒙学/baijiaxing.json"
+underlying_work = "public-domain: 百家姓"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "蒙学/dizigui.json"
+underlying_work = "public-domain: 弟子规"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "蒙学/qianjiashi.json"
+underlying_work = "public-domain: 千家诗"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "蒙学/qianziwen.json"
+underlying_work = "public-domain: 千字文"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "蒙学/sanzijing-new.json, 蒙学/sanzijing-traditional.json"
+underlying_work = "public-domain: 三字经"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "蒙学/tangshisanbaishou.json"
+underlying_work = "public-domain: 唐诗三百首"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "蒙学/zhuzijiaxun.json"
+underlying_work = "public-domain: 朱子家训"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "蒙学/guwenguanzhi.json"
+underlying_work = "public-domain: 古文观止 + UNVERIFIED 现代 abstract"
+license_class = "unverified"
+shippable = false
+note = "abstract 是现代百科式介绍（「《古文觀止》是清人吳楚材、吳調侯於康熙三十三年（1694年）選定的……」），撰者不明。正文 222 篇本身是公有领域，可在显式丢弃 abstract 后另立资产。"
+
+[[source.assets]]
+path = "蒙学/shenglvqimeng.json"
+underlying_work = "public-domain: 声律启蒙 + UNVERIFIED 现代 abstract"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "蒙学/wenzimengqiu.json"
+underlying_work = "public-domain: 文字蒙求 + UNVERIFIED 现代 abstract/preface"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "蒙学/youxueqionglin.json"
+underlying_work = "public-domain: 幼学琼林 + UNVERIFIED 现代 abstract"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "蒙学/zengguangxianwen.json"
+underlying_work = "public-domain: 增广贤文 + UNVERIFIED 现代 abstract"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "strains/json/*.json"
+underlying_work = "permissive: 该仓库自行计算的逐字平仄，与全唐诗 1:1 对齐"
+license_class = "permissive"
+shippable = true
+note = "313 个文件，字段 {id, strains}；靠 id 与 全唐诗/poet.* 关联。"
+
+[[source]]
+name = "Werneror/Poetry"
+url = "https://github.com/Werneror/Poetry"
+git_rev = "4cfe49c06858e00d15f84d192fe5294295f79689"
+license = "MIT"
+license_url = "https://raw.githubusercontent.com/Werneror/Poetry/4cfe49c06858e00d15f84d192fe5294295f79689/LICENSE"
+license_sha256 = "3c2630eb84efab60868d5195aa656b954f77d3cc1127dc886601e21cfd9fb63b"
+license_file = "corpus/licenses/Werneror-Poetry.LICENSE"
+retrieved_at = "2026-08-10"
+usage = "text"
+note = """
+按朝代分桶的 CSV，表头固定为 "题目","朝代","作者","内容"。**只取古典朝代桶**：
+清末以后的六个桶含近现代与当代作者，保护期未过。已知缺陷：上游把 utf8mb4
+生僻字替换成 `?`，不可逆（实测 13 个小桶里 208 处），todo 12 需隔离这些记录。
+CSV 无任何原生主键，故 todo 10 只能用「文件:序号」定位并依赖位移探测器。
+"""
+
+[[source.assets]]
+path = "先秦.csv"
+underlying_work = "public-domain: 先秦诗歌"
+license_class = "public_domain"
+shippable = true
+note = "570 条（csv 解析实测，含 22 处 `?` 失真）。"
+
+[[source.assets]]
+path = "秦.csv"
+underlying_work = "public-domain: 秦代诗歌"
+license_class = "public_domain"
+shippable = true
+note = "2 条。"
+
+[[source.assets]]
+path = "汉.csv"
+underlying_work = "public-domain: 汉代诗歌"
+license_class = "public_domain"
+shippable = true
+note = "363 条（22 处 `?`）。"
+
+[[source.assets]]
+path = "魏晋.csv"
+underlying_work = "public-domain: 魏晋诗歌"
+license_class = "public_domain"
+shippable = true
+note = "3020 条（31 处 `?`）。"
+
+[[source.assets]]
+path = "魏晋末南北朝初.csv"
+underlying_work = "public-domain: 魏晋末南北朝初诗歌"
+license_class = "public_domain"
+shippable = true
+note = "1 条。"
+
+[[source.assets]]
+path = "南北朝.csv"
+underlying_work = "public-domain: 南北朝诗歌"
+license_class = "public_domain"
+shippable = true
+note = "4586 条（60 处 `?`）。"
+
+[[source.assets]]
+path = "隋.csv"
+underlying_work = "public-domain: 隋代诗歌"
+license_class = "public_domain"
+shippable = true
+note = "1170 条（13 处 `?`）。"
+
+[[source.assets]]
+path = "隋末唐初.csv"
+underlying_work = "public-domain: 隋末唐初诗歌"
+license_class = "public_domain"
+shippable = true
+note = "472 条（1 处 `?`）。"
+
+[[source.assets]]
+path = "唐.csv"
+underlying_work = "public-domain: 唐代诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "唐末宋初.csv"
+underlying_work = "public-domain: 唐末宋初诗歌"
+license_class = "public_domain"
+shippable = true
+note = "1118 条（7 处 `?`）。"
+
+[[source.assets]]
+path = "宋_1.csv, 宋_2.csv, 宋_3.csv, 宋_4.csv"
+underlying_work = "public-domain: 宋代诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "宋末金初.csv"
+underlying_work = "public-domain: 宋末金初诗歌"
+license_class = "public_domain"
+shippable = true
+note = "234 条（1 处 `?`）。"
+
+[[source.assets]]
+path = "宋末元初.csv"
+underlying_work = "public-domain: 宋末元初诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "辽.csv"
+underlying_work = "public-domain: 辽代诗歌"
+license_class = "public_domain"
+shippable = true
+note = "22 条。"
+
+[[source.assets]]
+path = "金.csv"
+underlying_work = "public-domain: 金代诗歌"
+license_class = "public_domain"
+shippable = true
+note = "2741 条（31 处 `?`）。"
+
+[[source.assets]]
+path = "金末元初.csv"
+underlying_work = "public-domain: 金末元初诗歌"
+license_class = "public_domain"
+shippable = true
+note = "3019 条（20 处 `?`）。"
+
+[[source.assets]]
+path = "元.csv"
+underlying_work = "public-domain: 元代诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "元末明初.csv"
+underlying_work = "public-domain: 元末明初诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "明_1.csv, 明_2.csv, 明_3.csv, 明_4.csv"
+underlying_work = "public-domain: 明代诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "明末清初.csv"
+underlying_work = "public-domain: 明末清初诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "清_1.csv, 清_2.csv"
+underlying_work = "public-domain: 清代诗歌"
+license_class = "public_domain"
+shippable = true
+
+[[source.assets]]
+path = "cipai_2.txt"
+underlying_work = "permissive: 该仓库整理的词牌名清单"
+license_class = "permissive"
+shippable = true
+
+[[source.assets]]
+path = "清末民国初.csv"
+underlying_work = "unverified: 含清末民国初作者，保护期可能未过"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "清末近现代初.csv"
+underlying_work = "unverified: 含近现代作者，保护期可能未过"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "近现代.csv"
+underlying_work = "unverified: 近现代作者，保护期普遍未过"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "近现代末当代初.csv"
+underlying_work = "unverified: 近现代末当代初作者，保护期未过"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "民国末当代初.csv"
+underlying_work = "unverified: 民国末当代初作者，保护期未过"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "当代.csv"
+underlying_work = "unverified: 当代作者，在版权保护期内"
+license_class = "unverified"
+shippable = false
+
+[[source]]
+name = "charlesix59/chinese_word_rhyme"
+url = "https://github.com/charlesix59/chinese_word_rhyme"
+git_rev = "ff0e9c13fb037c43e0eaa5dc929c0fe4fa2ffb18"
+license = "MIT"
+license_url = "https://raw.githubusercontent.com/charlesix59/chinese_word_rhyme/ff0e9c13fb037c43e0eaa5dc929c0fe4fa2ffb18/LICENSE"
+license_sha256 = "e1464036d0f0ca738de9ebcb697b8faaf6dc2eafd193dc98555f23b409e87599"
+license_file = "corpus/licenses/charlesix59-chinese_word_rhyme.LICENSE"
+retrieved_at = "2026-08-10"
+usage = "rhyme"
+note = """
+韵书来源。仓库自带 `crawler/` 目录，抓取脚本 getTunes.py / getCilin.py 指向
+sou-yun.cn，所以「哪些文件是自有整理、哪些是抓来的」必须逐文件判定。
+平水韵与词林正韵的 韵部/声部 嵌套顺序相反（实测：平水韵为 声部 -> 韵部，
+词林正韵为 部 -> 声），todo 15 必须按 rhyme_book 分别处理。
+"""
+
+[[source.assets]]
+path = "data/Pingshui_Rhyme.json"
+underlying_work = "public-domain: 平水韵（前现代韵书）"
+license_class = "public_domain"
+shippable = true
+note = "5 个声部键（上声部/上平声部/下平声部/…），10671 个字条。嵌套为 声部 -> 韵部 -> [字]。"
+
+[[source.assets]]
+path = "data/Cilin_Rhyme.json"
+underlying_work = "public-domain: 词林正韵（清 戈载，1821）"
+license_class = "public_domain"
+shippable = true
+note = "19 部，5575 个字条。嵌套为 部 -> 声 -> [字]，与平水韵相反。"
+
+[[source.assets]]
+path = "data/Word_Tune.json"
+underlying_work = "permissive: 由平水韵派生的逐字平仄表"
+license_class = "permissive"
+shippable = true
+note = "8232 个字 -> 平/仄。"
+
+[[source.assets]]
+path = "data/Ci_Word_Tune.json"
+underlying_work = "permissive: 由词林正韵派生的逐字平仄表"
+license_class = "permissive"
+shippable = true
+note = "5037 个字条、10074 个标量叶子。"
+
+[[source.assets]]
+path = "data/Xinyun_Rhyme.json"
+underlying_work = "unverified: 中华新韵（2005 年现代出版物）"
+license_class = "unverified"
+shippable = false
+note = "14 部、7693 字条。仓库的 MIT 无法为 2005 年出版物授权。todo 15 保留 rhyme_book = xinyun 槽位并返回 RhymeBookUnavailable。"
+
+[[source.assets]]
+path = "data/Xinyun_Rhyme_FourRhyme_Edition.json"
+underlying_work = "unverified: 中华新韵 四声版（2005 年现代出版物）"
+license_class = "unverified"
+shippable = false
+note = "14 部、7693 字条。"
+
+[[source.assets]]
+path = "script/data/xinyun.txt"
+underlying_work = "unverified: 中华新韵 原始文本"
+license_class = "unverified"
+shippable = false
+
+[[source.assets]]
+path = "data/Ci_Tunes.json"
+underlying_work = "scraped: sou-yun.cn（19.6 MB 词谱，授权链未核实）"
+license_class = "unverified"
+shippable = false
+note = "含逐字平仄 + rhythm 句读 + shift 换阙，是最完整的词谱，但抓自商业站点。"
+
+[[source.assets]]
+path = "data/Ci_Catalog.json"
+underlying_work = "scraped: sou-yun.cn（词牌目录，授权链未核实）"
+license_class = "unverified"
+shippable = false
+note = "1638 个标量叶子。"
+
+[[source.assets]]
+path = "data/Word_Explain.json"
+underlying_work = "scraped: sou-yun.cn（现代字义解释，授权链未核实）"
+license_class = "unverified"
+shippable = false
+note = "2.4 MB 现代释义，正是版权墙要挡的内容。"
