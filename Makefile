@@ -27,8 +27,12 @@ OXFMT_ARGS := --ignore-path .oxfmtignore --ignore-path .gitignore .
 # 「本地 check 通过、CI 却多跑一步」这种漂移。
 GATE := fmt-check lint test
 
+# 语料门禁跑的样本规模。10k 是方案为 CI 指定的规模：足够大到让索引行为与真实语料同形
+# （两字查询在 19 首上无论怎么查都是零点几毫秒，看不出路径退化），又足够小到能在几秒内跑完。
+CORPUS_GATE_SCALE := 10000
+
 .DEFAULT_GOAL := help
-.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test build check ci hooks
+.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test build check ci corpus-gate hooks
 
 help: ## 列出全部可用目标
 	@echo "云笺 · make 目标"
@@ -90,6 +94,47 @@ check: $(GATE) ## 本地全量校验，与 ci 完全等价
 
 ci: $(GATE) ## 唯一门禁：pre-push 钩子与 CI 都只跑这一条
 	@echo "门禁通过：$(GATE)"
+
+# 语料门禁。**刻意不属于 `ci`**：`ci` 是 pre-push 钩子跑的那一条，加进去会让每次推送
+# 都重建一个一万首的库；语料另有专用工作流（`.github/workflows/corpus.yml`）与每月
+# 定时复验。工作流只调用本目标，因此「本机跑绿」与「语料 CI 跑绿」仍然是同一组命令。
+#
+# 顺序是有意义的：许可判定在最前（不合许可的源根本不该被读进来），契约在质量报告之前
+# （检索坏了就不必再看缺陷计数），工件漂移紧跟在生成它的那一步之后。
+corpus-gate: ## 语料门禁：许可、10k 规模黄金查询契约、质量基线、工件漂移、契约单副本
+	@echo "==> 契约在整个仓库里只有一份"
+	@count=$$(find . -name queries.toml | wc -l); \
+	if [ "$$count" -ne 1 ]; then \
+		echo "仓库里有 $$count 份 queries.toml。契约只有一处，六方共同消费；" >&2; \
+		echo "消费方请引用 crates/yunjian-core/tests/queries.toml，不要复制。" >&2; \
+		find . -name queries.toml >&2; \
+		exit 1; \
+	fi
+	@echo "==> xtask verify-sources --offline（逐资产许可门禁）"
+	@$(CARGO) run -p xtask -- verify-sources --offline
+	@echo "==> xtask corpus-contract --scale $(CORPUS_GATE_SCALE)（建库后逐条跑契约）"
+	@$(CARGO) run -p xtask -- corpus-contract --scale $(CORPUS_GATE_SCALE)
+	@echo "==> xtask corpus-quality（含逐原因码基线漂移门禁）"
+	@$(CARGO) run -p xtask -- corpus-quality
+	@echo "==> 重新生成的语料报告必须与提交的版本逐字节一致"
+	@git diff --exit-code -- corpus/reports/ || { \
+		echo "corpus/reports/ 下的生成物与重新生成的结果不一致。" >&2; \
+		echo "这些文件由 xtask 持有：跑 make corpus-gate 后把改动一起提交，不要手工编辑。" >&2; \
+		exit 1; \
+	}
+	@echo "==> xtask commentary-index --check（集评出处索引漂移门禁）"
+	@$(CARGO) run -p xtask -- commentary-index --check
+	@echo "==> xtask corpus-measure --scale 10k（todo 20；未注册时跳过并说明）"
+	@if $(CARGO) run -q -p xtask -- --help 2>/dev/null | grep -q 'corpus-measure'; then \
+		$(CARGO) run -p xtask -- corpus-measure --scale 10k; \
+	else \
+		echo "corpus-measure 尚未注册（todo 20 未落地）。这不是永久跳过：" \
+		     "探测的是子命令是否存在，todo 20 一注册本步骤就自动开始执行。"; \
+	fi
+	@echo "==> 黄金查询契约：fixture 自检 + FTS5 索引回归"
+	@$(CARGO) test -p yunjian-core --test golden_queries
+	@$(CARGO) test -p yunjian-corpus fts::
+	@echo "语料门禁通过。"
 
 hooks: ## 安装 git hooks：pre-commit 做格式化，pre-push 跑门禁
 	@command -v $(PRE_COMMIT) >/dev/null 2>&1 || { \

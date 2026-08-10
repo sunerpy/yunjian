@@ -432,7 +432,7 @@ fn reference_machine() -> String {
     format!("{os}/{arch}, {cpus} 逻辑核")
 }
 
-fn repo_root() -> Result<PathBuf> {
+pub(crate) fn repo_root() -> Result<PathBuf> {
     // `CARGO_MANIFEST_DIR` 指向 `xtask/`，仓库根是它的父目录。用它而不是当前工作目录：
     // `cargo run -p xtask` 的 cwd 可能是任意子目录。
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -1922,4 +1922,121 @@ fn render_markdown(r: &Report) -> String {
         r.contract.path
     );
     m
+}
+
+// ------------------------------------------------- 契约门禁复用的执行入口（todo 22）
+//
+// `corpus-contract` 走的是**本模块这一条**建库与查询路径，而不是在别处另写一份。
+// 理由与 `commentary-index` 复用 `yunjian-corpus::commentary` 相同：路由 SQL
+// （`plan_sql`）是「哪条查询该走哪条物理路径」的唯一可执行定义，复制一份出去，
+// 门禁校验的就会是另一条与实测报告无关的路径，两边各自变绿而互不知情。
+//
+// 分工是清楚的：本函数只负责**建库、执行、如实记录**，不做任何判定；
+// 什么算失败、退出码怎么给、报告怎么打印，全在 `corpus_contract.rs`。
+
+/// 单条契约在新建语料库上的实测结果。字段一律是观测值，不含判定。
+#[derive(Debug)]
+pub(crate) struct ContractOutcome {
+    pub(crate) id: String,
+    pub(crate) class: String,
+    pub(crate) query: String,
+    pub(crate) normalized: String,
+    pub(crate) expect_plan: String,
+    pub(crate) executed_plan: String,
+    pub(crate) expect_min_hits: usize,
+    pub(crate) expect_top_id: String,
+    pub(crate) hits: usize,
+    pub(crate) anchor_found: bool,
+    pub(crate) error: Option<String>,
+}
+
+/// 一次完整的契约执行。
+#[derive(Debug)]
+pub(crate) struct ContractRun {
+    pub(crate) contract_path: &'static str,
+    pub(crate) schema_version: u32,
+    pub(crate) class_count: usize,
+    pub(crate) poem_count: usize,
+    pub(crate) distinct_chars: usize,
+    pub(crate) sqlite_version: String,
+    pub(crate) detail_mode: String,
+    pub(crate) ngram_aux: bool,
+    pub(crate) ngram_rows: i64,
+    pub(crate) build_ms: u128,
+    pub(crate) outcomes: Vec<ContractOutcome>,
+}
+
+/// 在指定规模的**新建**语料库上逐条执行契约。
+///
+/// `detail_mode` 与 `ngram_aux` 由调用方从裁决文件读入后传进来，本函数不自行选型——
+/// 选型是 `index-spike` 的职责，门禁只负责在被选定的那一种配置上验证契约。
+pub(crate) fn execute_contract(
+    scale: usize,
+    detail_mode: &str,
+    ngram_aux: bool,
+) -> Result<ContractRun> {
+    let root = repo_root()?;
+    let contract = load_contract(&root)?;
+    let fixtures = load_fixtures(&root, &contract)?;
+    let sample = synthesize_corpus(scale, &fixtures);
+
+    let build_dir = root.join(BUILD_DIR).join("contract");
+    std::fs::create_dir_all(&build_dir)
+        .with_context(|| format!("创建构建目录失败 {}", build_dir.display()))?;
+    let db = build_dir.join(format!("contract-{detail_mode}-{scale}.db"));
+    let (conn, build_ms) = build_db(&db, detail_mode, ngram_aux, &sample)?;
+    let sqlite_version =
+        conn.query_row("SELECT sqlite_version()", [], |r| r.get::<_, String>(0))?;
+    let ngram_rows: i64 = if ngram_aux {
+        conn.query_row("SELECT count(*) FROM ngram", [], |r| r.get(0))?
+    } else {
+        0
+    };
+
+    // 与 `measure_config` 同一处理：查询一律在只读连接上执行，因为产物是只读语料库
+    // （todo 23），带写权限的连接在 SQLite 里走的锁路径不同。
+    drop(conn);
+    let conn = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .with_context(|| format!("以只读方式打开失败 {}", db.display()))?;
+    conn.pragma_update(None, "query_only", true)?;
+
+    let variants = variant_map(&fixtures);
+    let mut outcomes = Vec::with_capacity(contract.queries.len());
+    for e in &contract.queries {
+        let normalized = normalize(&e.query, &variants);
+        let exe = plan_sql(e, &normalized, detail_mode, ngram_aux);
+        // 查询报错不当场终止：一条 `MATCH` 在 `detail != full` 下会被 FTS5 拒绝，
+        // 那条错误原文本身就是要报告出去的证据。收集完全部条目再统一判定。
+        let (hits, anchor_found, error) = match run_once(&conn, &exe) {
+            Ok(rows) => (rows.len(), rows.contains(&e.expect_top_id), None),
+            Err(err) => (0, false, Some(err.to_string())),
+        };
+        outcomes.push(ContractOutcome {
+            id: e.id.clone(),
+            class: e.class.clone(),
+            query: e.query.clone(),
+            normalized,
+            expect_plan: e.expect_plan.clone(),
+            executed_plan: exe.plan.to_string(),
+            expect_min_hits: e.expect_min_hits,
+            expect_top_id: e.expect_top_id.clone(),
+            hits,
+            anchor_found,
+            error,
+        });
+    }
+
+    Ok(ContractRun {
+        contract_path: CONTRACT,
+        schema_version: contract.schema_version,
+        class_count: distinct_classes(&contract).len(),
+        poem_count: sample.poems.len(),
+        distinct_chars: sample.distinct_chars,
+        sqlite_version,
+        detail_mode: detail_mode.to_string(),
+        ngram_aux,
+        ngram_rows,
+        build_ms,
+        outcomes,
+    })
 }
