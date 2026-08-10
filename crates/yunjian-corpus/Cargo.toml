@@ -10,9 +10,14 @@ authors.workspace = true
 
 [dependencies]
 blake3.workspace = true
+# 繁简探测在构建期完成：`script` 必须逐记录判定，而 chinese-poetry 同一仓库内
+# 全唐诗是繁体、宋词/诗经/楚辞/元曲是简体，按仓库假定必然错。运行时 crate
+# （yunjian-core）不带任何转换依赖，转换只发生在这里。
+ferrous-opencc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+tracing.workspace = true
 yunjian-core = { path = "../yunjian-core" }
 
 [lints]
