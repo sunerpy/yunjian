@@ -1,0 +1,11 @@
+[package]
+name = "yunjian-recite"
+description = "云笺背诵内核：对齐评分、FSRS 复习调度与确定性评测夹具"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]

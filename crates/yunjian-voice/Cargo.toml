@@ -1,0 +1,11 @@
+[package]
+name = "yunjian-voice"
+description = "云笺语音：按音步合成、静音拼接节奏控制与录音采集"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]

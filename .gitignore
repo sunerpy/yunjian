@@ -1,0 +1,26 @@
+# Rust 构建产物
+/target
+**/*.rs.bk
+
+# 环境与密钥：密钥只走系统钥匙串或环境变量，绝不入库
+.env
+.env.*
+!.env.example
+
+# 语料构建产物：由 xtask 从公共领域源重新生成，不入库
+/corpus/build/
+*.db
+*.db-wal
+*.db-shm
+*.db.gz
+
+# 模型缓存：仅收录 MIT / Apache-2.0 权重，且体积过大不入库
+/models/cache/
+
+# 编辑器与操作系统噪声
+.DS_Store
+Thumbs.db
+
+# 编排工具的本地状态：计划、笔记、会话记录与验收日志，不属于产品代码，
+# 且仓库为公开仓库，不应外泄内部过程记录
+/.omo/

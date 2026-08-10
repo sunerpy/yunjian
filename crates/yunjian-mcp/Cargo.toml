@@ -1,0 +1,11 @@
+[package]
+name = "yunjian-mcp"
+description = "云笺 MCP 服务端：以 stdio 传输暴露检索与背诵能力"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]

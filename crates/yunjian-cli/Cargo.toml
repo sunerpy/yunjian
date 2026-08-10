@@ -1,0 +1,18 @@
+[package]
+name = "yunjian-cli"
+description = "云笺命令行：检索、背诵与语料维护的终端入口"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# 包名为 `yunjian-cli`（crates.io 上的裸名 `yunjian` 已被 2021 年的废弃占位包占用，
+# 且 crates.io 不释放未撤回的名字），但对外分发的可执行文件必须叫 `yunjian`。
+# 这里是产品名在构建体系中唯一的落点。
+[[bin]]
+name = "yunjian"
+path = "src/main.rs"
+
+[dependencies]

@@ -1,0 +1,14 @@
+[package]
+name = "xtask"
+description = "云笺仓库任务运行器：语料构建、模型校验与发布辅助"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }

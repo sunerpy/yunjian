@@ -1,0 +1,11 @@
+[package]
+name = "yunjian-corpus"
+description = "云笺语料管线：入库、清洗、稳定标识与 FTS5 检索索引构建"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]

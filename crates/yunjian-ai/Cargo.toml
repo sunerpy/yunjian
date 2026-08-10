@@ -1,0 +1,11 @@
+[package]
+name = "yunjian-ai"
+description = "云笺 AI 能力：赏析生成、提示词模板与多模型供应商适配"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
