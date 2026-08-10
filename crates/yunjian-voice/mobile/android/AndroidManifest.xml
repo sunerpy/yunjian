@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  云笺 Android manifest 的音频权限片段。由外壳工程（todo 66/69）合并进
+  `src-tauri/gen/android/app/src/main/AndroidManifest.xml`。
+
+  两条权限，不是一条：
+  - RECORD_AUDIO 是 dangerous 级，必须在运行时申请，用户可拒。
+  - MODIFY_AUDIO_SETTINGS 是 normal 级，声明即在安装时授予、**无需**运行时申请；
+    但缺声明时 WebView 侧的 getUserMedia 直接失败（tauri#10846），原生采集在部分
+    机型上也拿不到可用的输入路由，因为音频模式与路由切换归它管。
+
+  `android:required="false"` 是刻意的：没有麦克风的设备（少见但存在，如部分
+  Android TV）仍应能安装并使用打字练习。把它设成 true 等于用「语音是可选功能」
+  换掉「这类设备根本装不上」。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+</manifest>

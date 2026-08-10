@@ -29,6 +29,47 @@ pub enum VoiceError {
 
     #[error("sherpa-onnx 调用失败：{0}")]
     Backend(String),
+
+    #[error("没有可用的麦克风：{detail}")]
+    NoInputDevice {
+        /// 具体是「系统没报告默认设备」还是「指定的名字匹配不到」。
+        detail: String,
+    },
+
+    #[error("音频设备操作失败：{detail}：{source}")]
+    AudioDevice {
+        /// 失败发生在哪一步（枚举、配置、打开流）。
+        detail: String,
+        /// 底层错误。
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// 设备既不产出样本也不报错。`Microphone` 的迭代器在这种情形下永久阻塞，
+    /// 所以必须由外层的 wall-clock 超时判定，而不是等它自己失败。
+    #[error("麦克风在 {waited:?} 内没有产出任何样本，判定为设备停摆")]
+    CaptureStalled {
+        /// 实际等待时长。
+        waited: std::time::Duration,
+    },
+}
+
+impl VoiceError {
+    /// 该错误对应的降级原因。**每一条都必须有**——这是「任何失败路径都退回打字练习」
+    /// 由类型系统保证而非靠约定的地方。
+    #[must_use]
+    pub const fn degrade_reason(&self) -> crate::permission::DegradeReason {
+        use crate::permission::DegradeReason as R;
+        match self {
+            Self::FeatureDisabled => R::FeatureDisabled,
+            Self::NoInputDevice { .. } => R::NoInputDevice,
+            Self::ModelMissing { .. }
+            | Self::AudioRead { .. }
+            | Self::AudioWrite { .. }
+            | Self::Backend(_)
+            | Self::AudioDevice { .. }
+            | Self::CaptureStalled { .. } => R::CaptureFailed,
+        }
+    }
 }
 
 impl VoiceError {

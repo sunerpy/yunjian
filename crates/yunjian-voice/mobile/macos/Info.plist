@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 缺这一键时系统在进程触达输入设备的瞬间直接终止它，不是返回错误，
+	     因此它不是「用户体验」而是可用性前提。 -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>云笺用麦克风听你背诗，逐字比对后给出完整度与流畅度。录音只在本机处理，不上传、不保存。</string>
+</dict>
+</plist>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 沙箱内的麦克风访问。 -->
+	<key>com.apple.security.device.microphone</key>
+	<true/>
+	<!-- Hardened runtime 下的音频输入豁免。缺它时**只有已签名并公证的生产构建**
+	     会在触达输入设备时失败（tauri#8314）；`tauri dev` 与本地未签名构建全绿，
+	     所以这一条只能在真实签名产物上验证，不能靠开发期观察。 -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>
