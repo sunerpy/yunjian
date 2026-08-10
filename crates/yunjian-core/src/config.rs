@@ -752,9 +752,13 @@ allow_download = false
         configure(&mut command);
         let output = command.output().expect("拉起子进程");
 
+        // 必须同时打出 stdout：libtest 把失败用例的 panic 信息收进自己的缓冲区，
+        // 在 `failures:` 段落里从 **stdout** 输出。只打 stderr 会得到一条空诊断，
+        // 于是「子进程失败了」这个事实有了，「为什么失败」却完全看不到。
         assert!(
             output.status.success(),
-            "子进程 {test_name} 断言失败:\n{}",
+            "子进程 {test_name} 断言失败:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
         // 过滤不到任何用例时 libtest 同样返回 0，所以必须确认子进程真的跑了那一条，
@@ -767,7 +771,18 @@ allow_download = false
     }
 
     /// 把子进程各平台的家目录/配置目录都指到隔离目录，让 `dirs` 的解析可预测。
+    ///
+    /// Windows 上光设环境变量不够。`dirs::config_dir()` 走的是
+    /// `SHGetKnownFolderPath(FOLDERID_RoamingAppData)`，它从 HKCU 的 User Shell Folders
+    /// 取到 REG_EXPAND_SZ 值 `%USERPROFILE%\AppData\Roaming` 并用**进程环境**展开，
+    /// 而且调用方没有传 `KF_FLAG_DONT_VERIFY`，**目标目录不存在时它直接返回错误**，
+    /// 于是 `config_dir()` 变成 `None`。所以必须先把这两层目录建出来：
+    /// 建了，隔离才真的落在临时目录里；不建，隔离测试在 Windows 上以
+    /// 「隔离环境应当有配置目录」失败（已在 windows-latest 上实测）。
     fn redirect_home(command: &mut Command, home: &Path) {
+        for sub in ["AppData/Roaming", "AppData/Local"] {
+            fs::create_dir_all(home.join(sub)).expect("预建 Windows 的 AppData 子目录");
+        }
         for key in [
             "HOME",
             "XDG_CONFIG_HOME",

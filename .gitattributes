@@ -1,0 +1,22 @@
+# 行尾规范化。存在的理由是一次真实的 CI 失败，不是风格偏好。
+#
+# Windows runner 的 git 默认 `core.autocrlf=true`，检出时把 LF 换成 CRLF。
+# 于是 `corpus/licenses/*.LICENSE` 的字节在 Windows 上与 Linux 上不同，
+# todo 9 的逐字节 SHA-256 门禁（`xtask verify-sources`）在 windows-latest 上必然失败——
+# 实测 `chinese-poetry.LICENSE` 算出 fff02f3b… 而记录值是 c195319a…。
+#
+# 推论：**任何逐字节比较的门禁都必须先把行尾钉死**，否则它在 Windows 上不是「更严格」，
+# 而是「必然误报」。后续 todo 17（两次构建 sha256 相同）、todo 10（注册表日志字节前缀
+# 不变）、todo 43（golden 文件）都依赖这份文件。
+
+# 全仓库统一 LF：由 git 按内容判定哪些是文本，文本一律以 LF 落到工作树。
+# 落地时全部 47 个跟踪文件在索引与工作树中已经都是 LF，因此这条不产生任何重新规范化。
+* text=auto eol=lf
+
+# 逐字节受保护：上游 LICENSE 原样副本，其 SHA-256 由 xtask verify-sources 校验。
+# `-text` 比 `eol=lf` 更强——它让 git 完全不做行尾转换，于是「对象库里的字节
+# 就是工作树里的字节」，即使某个上游 LICENSE 本身含 CRLF 也不会被悄悄改写。
+corpus/licenses/** -text
+
+# 音频 fixture：git 已按内容判定为二进制，这里显式写出，防止将来某条规则误伤。
+*.wav binary

@@ -1,0 +1,138 @@
+name: ci
+
+# 唯一的正确性门禁。四个作业里只有 `ci-success` 会被分支保护要求，其余三个
+# 通过它汇总——这样以后增删作业不必每次去改分支保护。
+#
+# 全部命令都走 Makefile 的目标名（`make fmt-check` / `make lint` / `make test` /
+# `make build`），**不在本文件里重写命令**。门禁只有一处定义，否则「本机绿」与
+# 「CI 绿」会变成两套标准。唯一的例外是 test-windows：它刻意直接跑 cargo，
+# 见该作业的注释。
+
+on:
+  push:
+  pull_request:
+
+# 并发组必须包含 github.event_name。同一分支的 push 与 pull_request 是两条独立
+# 运行，共用一个组会互相取消，于是 PR 上的检查莫名变成 cancelled、
+# 而 `ci-success` 又必须把 cancelled 判为失败——结果是永远合不进去。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # 固定版本而不是取 latest：格式化器换版本会改输出，一次上游发布就能让所有
+  # 无关 PR 的 fmt-check 集体变红。升级时同步改开发机上的 oxfmt 版本。
+  OXFMT_VERSION: 0.59.0
+  # cargo-audit 用 RustSec 官方发布的预编译产物，不引第三方 action，也不从源码编译。
+  CARGO_AUDIT_VERSION: 0.22.2
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 显式列出 components：仓库根的 rust-toolchain.toml 虽然声明了
+      # rustfmt + clippy，但 action 先装好 stable 之后，rustup 未必会再为
+      # 已存在的工具链补装组件。少了 rustfmt，`make fmt-check` 直接报命令不存在。
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # 同时缓存 cargo registry / git 与 target 目录。
+      - uses: Swatinem/rust-cache@v2
+
+      # 必须显式安装：`make fmt-check` 在缺 oxfmt 时是**硬失败**而不是跳过
+      # （todo 5 的刻意选择——跳过等于门禁静默蒸发）。
+      # 注意来源是 npm 的 oxc-project/oxc，**不是 crates.io**：crates.io 上叫
+      # oxfmt 的是一个毫不相关的序列化库，`cargo install oxfmt` 装的是错东西。
+      - name: 安装 oxfmt
+        run: |
+          npm install -g "oxfmt@${OXFMT_VERSION}"
+          oxfmt --version
+
+      - name: 格式校验
+        run: make fmt-check
+
+      - name: clippy
+        run: make lint
+
+      - name: 测试
+        run: make test
+
+      # `build` 刻意不在 `make ci` 里（耗时且不是正确性门禁），所以在 CI 里单列一步。
+      - name: 发布构建
+        run: make build
+
+  # Windows 上刻意只跑 cargo test，不走 make：门禁的格式化与 lint 与平台无关，
+  # 在这里重复一遍只是花两倍时间。这个作业存在的理由是跨平台行为——
+  # `dirs` 的配置目录发现在 Windows 上读 %APPDATA%/%LOCALAPPDATA%/%USERPROFILE%，
+  # 与 Linux 的 XDG 路径完全不同，只有真的在 Windows 上跑才能证明测试隔离成立。
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: 测试
+        run: cargo test --workspace
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # 装到 RUNNER_TEMP 而不是 checkout 目录：解到工作树里会污染仓库，
+      # 让后续任何「工作树干净」的断言失效。
+      # 下载地址里的 %2F 是必需的——tag 名本身含斜杠（cargo-audit/vX.Y.Z）。
+      - name: 安装 cargo-audit（RustSec 官方预编译产物）
+        run: |
+          DIR="cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}"
+          URL="https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${CARGO_AUDIT_VERSION}/${DIR}.tgz"
+          curl -sSLf -o "${RUNNER_TEMP}/cargo-audit.tgz" "$URL"
+          tar xzf "${RUNNER_TEMP}/cargo-audit.tgz" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/${DIR}" >> "$GITHUB_PATH"
+
+      - name: 校验 cargo-audit 可用
+        run: cargo audit --version
+
+      - name: 依赖漏洞审计
+        run: cargo audit
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [test, test-windows, security]
+    # always() 是必需的：默认情况下任一 needs 失败就会让本作业变成 skipped，
+    # 而 skipped 在分支保护看来既不是成功也不是失败，必需检查会永远处于 pending。
+    if: always()
+    steps:
+      # 用白名单而不是黑名单：断言每个结果都恰好等于 success，
+      # 而不是逐一排除 failure / cancelled / skipped。黑名单在 GitHub 将来
+      # 新增一种结果值时会静默放行，白名单不会。
+      - name: 断言每个依赖作业都成功
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          echo "依赖作业结果：${RESULTS}"
+          # 空串必须当失败处理，否则 for 循环一次都不进、门禁变成空操作。
+          if [ -z "${RESULTS}" ]; then
+            echo "::error::拿不到依赖作业的结果，拒绝放行"
+            exit 1
+          fi
+          failed=0
+          for result in $(echo "${RESULTS}" | tr ',' ' '); do
+            if [ "${result}" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "${failed}" -ne 0 ]; then
+            echo "::error::CI 未全绿（${RESULTS}）——只有全部为 success 才放行"
+            exit 1
+          fi
+          echo "全部依赖作业成功。"
