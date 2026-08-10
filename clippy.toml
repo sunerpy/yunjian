@@ -1,0 +1,29 @@
+# clippy 的额外配置。与根 `Cargo.toml` 的 `[workspace.lints]` 共同构成 stdout 禁令。
+#
+# 为什么光有 `print_stdout` 不够：那条 lint 只认宏。一句
+# `std::io::stdout().write_all(b"...")` 完全绕过它，而它对 MCP 协议流的破坏与
+# `println!` 分毫不差。所以必须同时按**方法**封住直写路径。
+
+# 拿到 stdout 句柄本身就算越界，不必等到真的写入才报错——`write_all` / `flush` /
+# `writeln!(handle, ..)` 的形态太多，逐个封堵封不完，堵住唯一的入口才是收敛的做法。
+# `Stdout` 只能由 `stdout()` 产生，`StdoutLock` 只能由 `Stdout::lock` 产生，
+# 所以这两条覆盖了 std 里所有直写 stdout 的起点。
+disallowed-methods = [
+  { path = "std::io::stdout", reason = "stdout 属于 MCP stdio 协议流；诊断走 tracing（stderr），人类与 --json 输出走 yunjian-cli 的 present 模块" },
+  { path = "std::io::Stdout::lock", reason = "同上；加锁同样是在准备写 stdout" },
+]
+
+# 这里**刻意不含** `std::println` / `std::print`。
+#
+# 实测（rust 1.96.0）：clippy 的 `print_stdout` 对 build script 有内建豁免，而
+# `disallowed_macros` 没有。把 println 再封一遍会让每个 build.rs 里的
+# `println!("cargo:rerun-if-changed=...")` 全部报错——而那是 build script 与 cargo
+# 通信的唯一手段，且其输出由 cargo 捕获，永远到不了进程 stdout，构不成协议污染。
+# 双封的收益（挡住局部 `#[allow(clippy::print_stdout)]`）远小于这个代价，故不做。
+#
+# `std::dbg` 留着：`dbg_macro` 已在工作区 deny，这里按宏名再封一道属于不同的 lint，
+# 于是局部 `#[allow(clippy::dbg_macro)]` 无法把口子重新打开；而 build script 从不用
+# `dbg!`，没有上面那种代价。
+disallowed-macros = [
+  { path = "std::dbg", reason = "调试残留写 stdout，且从不该进入提交；与 dbg_macro 互为双保险" },
+]

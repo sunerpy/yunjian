@@ -20,3 +20,6 @@ sherpa-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 hound.workspace = true
+
+[lints]
+workspace = true
