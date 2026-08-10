@@ -24,3 +24,6 @@ voice = ["yunjian-voice/voice"]
 
 [dependencies]
 yunjian-voice = { path = "../yunjian-voice" }
+
+[lints]
+workspace = true

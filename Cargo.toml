@@ -77,3 +77,23 @@ clap = { version = "4", features = ["derive"] }
 sha2 = "0.11"
 # 仅 `xtask` 使用（`publish = false`，永不进入产物）：按锁定 revision 抓取上游 LICENSE。
 ureq = "3"
+
+# 工作区级 lint 门禁。每个成员以 `[lints] workspace = true` 引用，没有例外。
+#
+# 禁令的作用域是**整个工作区**，不是 `yunjian-mcp` 一个 crate：`yunjian-core` 里的
+# 一句 `println!` 被 MCP 工具处理函数调到，对协议流的破坏与写在 MCP crate 里完全
+# 等价，而「MCP 代码路径」不是 lint 能表达的概念。因此机制是全局 deny + 一处豁免，
+# 而不是靠 code review 记得住。
+[workspace.lints.clippy]
+# stdout 属于 MCP stdio 协议流。一行杂音就让会话解析失败，所以是 deny 而非 warn。
+print_stdout = "deny"
+# 调试残留同样写 stdout，且几乎总是误留下来的。
+dbg_macro = "deny"
+# stderr 是日志与诊断的正当出口（`init_logger` 的控制台层就写这里），所以只警告：
+# 目的是把诊断逼进 `tracing`，而不是禁止一切 stderr 写入。
+print_stderr = "warn"
+
+[workspace.lints.rust]
+# 本项目没有需要 `unsafe` 的场景；真要用就必须显式 `#[allow]` 并写清理由。
+# 不设成 deny 是因为宏展开偶尔会命中它，届时按点豁免比放宽全局门禁更可控。
+unsafe_code = "warn"

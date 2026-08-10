@@ -107,10 +107,12 @@ impl Usage {
     }
 }
 
-/// 本子命令唯一的 stdout 出口。todo 4 会在 workspace 级别 deny `clippy::print_stdout`，
-/// 届时只需在这一个函数上保留 allow。
-/// 用 `allow` 而不是 `expect`：`print_stdout` 目前是 allow-by-default，写成 `expect`
-/// 会因为「预期未实现」反而触发 `unfulfilled_lint_expectations` 警告。
+/// 本子命令唯一的 stdout 出口。
+///
+/// `xtask` 是开发工具（`publish = false`，永不进入分发产物），终端报告就是它的产品，
+/// 所以这里的 stdout 是正当的。但豁免仍然收在**一个函数**上而不是整个 crate：
+/// crate 级豁免会让后续每个新增子命令都能随手打印，收敛不回来。
+///
 #[allow(clippy::print_stdout)]
 fn emit(line: &str) {
     println!("{line}");
