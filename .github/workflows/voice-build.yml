@@ -94,11 +94,15 @@ jobs:
       # 不用 `llvm-config --libdir`：ubuntu-latest 上 libclang-dev 不带无版本号的
       # `llvm-config`，实测报 `command not found`，于是 LIBCLANG_PATH 被写成空串，
       # bindgen 随后报「Unable to find libclang ... (invalid: [])」。直接找 .so 更稳。
-      - name: 安装 libclang（Linux）
+      # libasound2-dev 是必需的，不是可选：`voice` 特性隐含 `capture`，`capture` 拉进
+      # `rodio` -> `alsa-sys`，而它的 build script 用 pkg-config 找 `alsa.pc`，找不到就
+      # panic。缺它时报错是「Package alsa was not found」，与语音无关，很容易误判成
+      # sherpa 的问题。
+      - name: 安装 libclang 与 ALSA 开发文件（Linux）
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libclang-dev
+          sudo apt-get install -y libclang-dev libasound2-dev
           SO=$(find /usr/lib/llvm-* -name 'libclang.so*' -print -quit 2>/dev/null || true)
           if [ -z "$SO" ]; then
             echo "::error::装了 libclang-dev 却找不到 libclang.so"
@@ -198,11 +202,15 @@ jobs:
       # 不用 `llvm-config --libdir`：ubuntu-latest 上 libclang-dev 不带无版本号的
       # `llvm-config`，实测报 `command not found`，于是 LIBCLANG_PATH 被写成空串，
       # bindgen 随后报「Unable to find libclang ... (invalid: [])」。直接找 .so 更稳。
-      - name: 安装 libclang（Linux）
+      # libasound2-dev 是必需的，不是可选：`voice` 特性隐含 `capture`，`capture` 拉进
+      # `rodio` -> `alsa-sys`，而它的 build script 用 pkg-config 找 `alsa.pc`，找不到就
+      # panic。缺它时报错是「Package alsa was not found」，与语音无关，很容易误判成
+      # sherpa 的问题。
+      - name: 安装 libclang 与 ALSA 开发文件（Linux）
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libclang-dev
+          sudo apt-get install -y libclang-dev libasound2-dev
           SO=$(find /usr/lib/llvm-* -name 'libclang.so*' -print -quit 2>/dev/null || true)
           if [ -z "$SO" ]; then
             echo "::error::装了 libclang-dev 却找不到 libclang.so"

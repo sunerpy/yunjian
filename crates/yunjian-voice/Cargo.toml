@@ -11,15 +11,34 @@ build = "build.rs"
 
 [features]
 default = []
-voice = ["dep:sherpa-rs"]
+# 采集。只拉 `rodio`（MIT/Apache-2.0），不碰 sherpa-onnx，因此这一条不触发 GPL-3.0。
+capture = ["dep:rodio"]
+# 原生推理。隐含 `capture`：识别没有输入源就没有意义。
+voice = ["dep:sherpa-rs", "capture"]
 
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true
+rodio = { workspace = true, optional = true }
 sherpa-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
 hound.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
+
+# `required-features` 是必需的，不是整洁：默认构建（`cargo test --workspace`）不开
+# `capture`，而这三个目标都用 `yunjian_voice::capture`。不声明的话默认构建直接编译失败。
+[[test]]
+name = "capture"
+required-features = ["capture"]
+
+[[example]]
+name = "capture_probe"
+required-features = ["capture"]
+
+[[example]]
+name = "denied_permission"
+required-features = ["capture"]

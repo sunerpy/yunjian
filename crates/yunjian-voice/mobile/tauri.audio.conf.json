@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "macOS": {
+      "entitlements": "../../crates/yunjian-voice/mobile/macos/Entitlements.plist",
+      "infoPlist": "../../crates/yunjian-voice/mobile/macos/Info.plist",
+      "minimumSystemVersion": "14.2",
+      "hardenedRuntime": true
+    },
+    "iOS": {
+      "infoPlist": "../../crates/yunjian-voice/mobile/ios/Info.plist",
+      "minimumSystemVersion": "14.0",
+      "frameworks": ["AVFoundation"]
+    },
+    "android": {
+      "minSdkVersion": 26
+    }
+  }
+}

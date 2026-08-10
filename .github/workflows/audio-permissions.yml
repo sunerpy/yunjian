@@ -1,0 +1,338 @@
+name: audio-permissions
+
+# 麦克风采集与各平台权限配置的验证矩阵。
+#
+# 存在的理由与 `voice-build.yml` 相同：本 spike 的开发机是 Linux，macOS/Windows/Android/iOS
+# 四个目标在开发环境里既无宿主机也无设备。逐平台的验证状态与阻塞原因见
+# docs/PLATFORM-REQUIREMENTS.zh.md「验证状态」。
+#
+# 与 `voice-build.yml` 刻意分开：那个工作流验证 sherpa-onnx 原生库的构建与链接（重、需要
+# 下载几十 MB 产物、且分发物带 GPL-3.0），这个只验证采集与权限配置（只依赖 rodio，纯
+# MIT/Apache-2.0）。合成一个会让一次权限配置改动去重跑整套原生构建。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/yunjian-voice/**"
+      - "docs/PLATFORM-REQUIREMENTS.zh.md"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/audio-permissions.yml"
+  pull_request:
+    paths:
+      - "crates/yunjian-voice/**"
+      - "docs/PLATFORM-REQUIREMENTS.zh.md"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/audio-permissions.yml"
+  workflow_dispatch:
+
+# 并发组包含 github.event_name：同一分支的 push 与 pull_request 是两条独立运行，
+# 互相取消会让 PR 检查莫名变成 cancelled。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # 配置层断言在哪台机器上跑都一样，所以只跑一次。它守的是那些**只在签名产物或真机上
+  # 才会失败**的配置：entitlements 缺失、Android 权限缺失、minSdk 过低。
+  config:
+    name: 平台配置断言
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: 平台产物配置断言
+        run: cargo test -p yunjian-voice --test platform_config
+
+      # `make lint` 不带 `--features capture`，因此采集模块、两个 example 与 capture
+      # 测试从来不被主 CI 的 clippy 覆盖。这一步补上那个缺口——不补的话它们能一直带着
+      # 警告存在而门禁全绿。
+      - name: clippy 覆盖 capture 特性
+        run: |
+          sudo apt-get update && sudo apt-get install -y libasound2-dev
+          cargo clippy -p yunjian-voice --features capture --all-targets -- -D warnings
+
+      # 降级链在**不开 voice** 的构建里跑，这是刻意的：`permission::decide` 不看特性
+      # 开关，正因为 `voice` 会拉进几十 MB 原生库和 GPL-3.0 的 espeak-ng——如果降级
+      # 判定只能在那种构建里被测到，CI 上跑得最多的构建反而验证不了它。
+      - name: 断言权限被拒时降级到打字练习
+        run: |
+          cargo run -p yunjian-voice --features capture --example denied_permission
+
+  capture:
+    name: 采集 ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-latest
+          - name: macos-arm64
+            runner: macos-14
+          - name: windows-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: capture-${{ matrix.name }}
+
+      - name: 安装 ALSA 开发文件（Linux）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pulseaudio pulseaudio-utils
+
+      # 虚拟输入设备走 PulseAudio 的 null sink + module-sine：把一个 440 Hz 正弦喂进一个
+      # 空 sink，它的 monitor source 就成了一个**有信号**的采集设备。cpal 经
+      # /usr/share/alsa/alsa.conf.d/50-pulseaudio.conf 定义的 `pcm.pulse` 能枚举到它。
+      #
+      # 刻意**不用** snd-aloop：GitHub 的 azure 内核里没有这个模块
+      # （`modprobe: FATAL: Module snd-aloop not found`，实测），而且它只是管道——
+      # 没人往播放侧写数据时采集侧读到的是纯零，能通过所有格式断言却证明不了任何事。
+      #
+      # 这一步**自己验证信号存在**，不把「设备没接好」的锅甩给测试：`parec` 录两秒，
+      # 峰值为零就在这里失败。否则一次 setup 失误会表现为「采集代码坏了」。
+      - name: 接入虚拟输入设备（Linux）
+        if: runner.os == 'Linux'
+        run: |
+          set -x
+          pulseaudio --check || pulseaudio --start --exit-idle-time=-1
+          sleep 2
+
+          # 复用 runner 上已有的 sink（通常是 module-null-sink 建的 auto_null）；
+          # 没有才新建。不传 sink_properties——带空格的属性值在 pactl 参数解析里会
+          # 让模块初始化失败（实测 `Failure: Module initialization failed`）。
+          SINK=$(pactl list short sinks | awk 'NR==1{print $2}')
+          if [ -z "$SINK" ]; then
+            pactl load-module module-null-sink sink_name=yunjian_test
+            SINK=yunjian_test
+          fi
+          pactl load-module module-sine sink="$SINK" frequency=440
+          pactl set-default-source "$SINK.monitor"
+          pactl list short sinks
+          pactl list short sources
+          echo "YUNJIAN_MONITOR=$SINK.monitor" >> "$GITHUB_ENV"
+
+      - name: 验证虚拟输入真的有信号
+        if: runner.os == 'Linux'
+        run: |
+          timeout 3 parec --device="$YUNJIAN_MONITOR" \
+            --format=s16le --rate=16000 --channels=1 --raw > /tmp/probe.raw || true
+          python3 - <<'PY'
+          import struct, sys
+          data = open("/tmp/probe.raw", "rb").read()
+          count = len(data) // 2
+          samples = struct.unpack(f"<{count}h", data[: count * 2]) if count else ()
+          peak = max((abs(s) for s in samples), default=0)
+          print(f"bytes={len(data)} samples={count} peak={peak}")
+          if peak <= 100:
+              sys.exit("虚拟输入设备没有信号——采集测试会因全静音失败，但那是 setup 的问题")
+          PY
+
+      # macOS runner 没有物理麦克风。BlackHole 是一个虚拟音频回环驱动，装上后播放到它的
+      # 输出侧即可从它的输入侧采回。
+      #
+      # `killall coreaudiod` 是必需的一步，不是加固：安装 pkg 只是把驱动放进
+      # /Library/Audio/Plug-Ins/HAL，**coreaudiod 不重启就不会加载它**——实测装完后
+      # `SwitchAudioSource` 报「Could not find an audio device named "BlackHole 2ch"」。
+      #
+      # **TCC 弹窗在这里不会出现**：命令行进程在无 GUI 会话的 runner 上不触发麦克风
+      # 授权对话框。因此这个作业验证的是「采集通路与格式转换成立」，**不是**
+      # 「TCC 授权流程成立」——后者只能在签名产物 + 真机上验证，属 todo 68。
+      - name: 接入虚拟输入设备（macOS）
+        if: runner.os == 'macOS'
+        run: |
+          set -x
+          brew install blackhole-2ch switchaudio-osx
+          sudo killall coreaudiod || true
+          for _ in $(seq 1 20); do
+            sleep 2
+            if SwitchAudioSource -a -t input | grep -q "BlackHole 2ch"; then break; fi
+          done
+          SwitchAudioSource -a -t input
+          SwitchAudioSource -a -t output
+          if ! SwitchAudioSource -a -t input | grep -q "BlackHole 2ch"; then
+            echo "::error::BlackHole 驱动没被 coreaudiod 加载，采集测试会因全静音失败——那是 setup 的问题"
+            exit 1
+          fi
+          SwitchAudioSource -t output -s "BlackHole 2ch"
+          SwitchAudioSource -t input -s "BlackHole 2ch"
+          python3 - <<'PY'
+          import math, struct, wave
+          rate = 48000
+          with wave.open("/tmp/yunjian-sine.wav", "w") as w:
+              w.setnchannels(2)
+              w.setsampwidth(2)
+              w.setframerate(rate)
+              frames = bytearray()
+              for i in range(rate * 5):
+                  v = int(16384 * math.sin(2 * math.pi * 440 * i / rate))
+                  frames += struct.pack("<hh", v, v)
+              w.writeframes(bytes(frames))
+          PY
+          nohup bash -c 'while true; do afplay /tmp/yunjian-sine.wav; done' > /dev/null 2>&1 &
+          sleep 3
+
+      # Windows runner 同样没有物理麦克风，也没有一个不需要交互式安装的虚拟输入驱动。
+      # 因此这里只断言**枚举与错误路径**成立：没有设备时必须报出可降级的
+      # NoInputDevice/CaptureFailed 而不是 panic 或挂住。这是刻意的部分验证。
+      - name: 断言无设备时降级而非崩溃（Windows）
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cargo test -p yunjian-voice --features capture --test capture \
+            a_stalled_device_is_reported_rather_than_hanging_forever
+          cargo test -p yunjian-voice --features capture permission::
+          cargo run -p yunjian-voice --features capture --example capture_probe 2>&1 | tee probe.log
+          if grep -q "panicked" probe.log; then
+            echo "::error::无麦克风的机器上采集探针 panic 了，降级路径没兜住"
+            exit 1
+          fi
+
+      - name: 采集 1 秒并断言 16 kHz 单声道 RMS 非零
+        if: runner.os != 'Windows'
+        run: cargo test -p yunjian-voice --features capture --test capture -- --nocapture
+
+      - name: 记录实际使用的设备
+        if: runner.os != 'Windows'
+        run: cargo run -p yunjian-voice --features capture --example capture_probe
+
+  # macOS 上验证 entitlements 真的进入了签名产物。
+  #
+  # **用 ad-hoc 签名（`codesign -s -`）而不是 Developer ID**：CI 上没有签名身份，也没有
+  # 公证凭据。ad-hoc 签名足以验证「entitlements 是否被嵌入并可被 codesign 读回」——
+  # 那正是 tauri#8314 里缺失的东西。它**不能**验证公证后的运行期行为，那需要付费账号，
+  # 属发布流程（todo 71/74）。这一层的局限已写进 docs/PLATFORM-REQUIREMENTS.zh.md。
+  codesign:
+    name: macOS entitlements 嵌入验证
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: codesign-macos
+
+      - name: 构建一个可签名的可执行文件
+        run: cargo build -p yunjian-voice --features capture --example capture_probe
+
+      - name: ad-hoc 签名并带上 entitlements
+        run: |
+          BIN=target/debug/examples/capture_probe
+          codesign --force --sign - \
+            --options runtime \
+            --entitlements crates/yunjian-voice/mobile/macos/Entitlements.plist \
+            "$BIN"
+          codesign -d --entitlements - --xml "$BIN" > entitlements.out 2>&1 || \
+            codesign -d --entitlements - "$BIN" > entitlements.out 2>&1
+          cat entitlements.out
+
+      - name: 断言两个麦克风 entitlement 都在产物里
+        run: |
+          MISSING=0
+          for KEY in com.apple.security.device.microphone com.apple.security.device.audio-input; do
+            if ! grep -q "$KEY" entitlements.out; then
+              echo "::error::签名产物缺 entitlement $KEY"
+              MISSING=1
+            else
+              echo "OK: $KEY"
+            fi
+          done
+          exit $MISSING
+
+      # 失败场景的机器验证：不带 --entitlements 重新签名，断言 audio-input **消失**。
+      # 这一步证明上面那条断言真的有牙齿，而不是在匹配一个恒真的字符串。
+      - name: 反向验证——不带 entitlements 签名时断言必须失败
+        run: |
+          BIN=target/debug/examples/capture_probe_bare
+          cp target/debug/examples/capture_probe "$BIN"
+          codesign --force --sign - --options runtime "$BIN"
+          codesign -d --entitlements - "$BIN" > bare.out 2>&1 || true
+          cat bare.out
+          if grep -q com.apple.security.device.audio-input bare.out; then
+            echo "::error::没传 entitlements 却读出了 audio-input，说明断言不可信"
+            exit 1
+          fi
+          echo "OK: 缺 entitlements 时确实读不到 audio-input"
+
+  # 移动端只做构建 + 配置校验。真机上的权限对话框与实际采集留给 todo 68 的物理设备
+  # harness——GitHub runner 既无真机也无可用麦克风。
+  mobile:
+    name: 构建 ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: android-arm64
+            runner: ubuntu-latest
+            target: aarch64-linux-android
+          - name: ios-arm64
+            runner: macos-14
+            target: aarch64-apple-ios
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: capture-${{ matrix.target }}
+
+      - name: 配置 Android NDK
+        if: matrix.target == 'aarch64-linux-android'
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      # 链接器写死 android26 而不是 24：cpal 的 AAudio 绑定要求 API 26，
+      # android24 的 sysroot 里没有 AAudio 符号。这一条是本 todo 记录的产品要求。
+      - name: 导出 NDK 环境
+        if: matrix.target == 'aarch64-linux-android'
+        run: |
+          NDK="${{ steps.ndk.outputs.ndk-path }}"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          {
+            echo "ANDROID_NDK_HOME=$NDK"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TC/bin/aarch64-linux-android26-clang"
+          } >> "$GITHUB_ENV"
+
+      # 只有 capture 特性，不带 voice：这个工作流不碰 sherpa-onnx，因此 iOS 也能真的
+      # `cargo build` 而不是像 voice-build.yml 那样只能 `cargo check`
+      #（那条限制来自 sherpa-rs 声明的 cdylib，与采集无关）。
+      - name: 构建采集路径
+        run: cargo build -p yunjian-voice --features capture --target ${{ matrix.target }}
+
+      - name: 断言链接器按 API 26 解析（Android）
+        if: matrix.target == 'aarch64-linux-android'
+        run: |
+          echo "linker=$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"
+          case "$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER" in
+            *android26-clang) echo "OK: API 26" ;;
+            *) echo "::error::链接器不是 android26，cpal 的 AAudio 绑定会链接到缺符号的 sysroot"; exit 1 ;;
+          esac
+
+  audio-permissions-success:
+    name: audio-permissions 汇总
+    runs-on: ubuntu-latest
+    needs: [config, capture, codesign, mobile]
+    if: always()
+    steps:
+      - name: 任一依赖作业未成功即失败
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] \
+            || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] \
+            || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
+            echo "::error::audio-permissions 矩阵存在未成功的作业"
+            exit 1
+          fi

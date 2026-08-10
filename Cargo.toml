@@ -29,8 +29,19 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 fsrs = "6.6"
 keyring-core = "1.0"
 genai = "0.6"
-rodio = { version = "0.22", features = ["recording"] }
-cpal = "0.18"
+# 麦克风采集。`default-features = false` 是刻意的：默认特性会拖进 symphonia 的整套
+# 解码器（flac/mp3/mp4/vorbis），而采集路径一个都不需要。`recording` 提供
+# `rodio::microphone`，`playback` 提供 `rodio::cpal` 重导出——两者都要，因为设备
+# 枚举与 `cpal::StreamError` 都在那条通路上。
+#
+# **`cpal` 刻意不作为直接依赖。** 方案原本固定 `cpal = "0.18"`，实测它解析到 0.18.1 而
+# `rodio 0.22.2` 内部用 0.17.3，两份 `cpal::Device` 是不同类型，跨边界传参会报出
+# 只有版本注记区别的 `expected cpal::Device, found cpal::Device`。**实测两个版本的
+# 平台底线完全一致**（都声明 `ndk` 的 `api-level-26`，都在 macOS 后端无条件引用
+# 14.2 才有的 `AudioHardwareCreateProcessTap`/`CATapDescription`），因此版本选择不影响
+# 任何一条产品要求，纯按类型兼容性决定：只用 `rodio` 重导出的那一份。详见
+# `docs/PLATFORM-REQUIREMENTS.zh.md`。
+rodio = { version = "0.22", default-features = false, features = ["recording", "playback"] }
 # 离线 ASR/TTS。第三方绑定 `sherpa-rs`（MIT）+ 其 `sherpa-rs-sys`（MIT）按 `dist.json`
 # 下载 k2-fsa/sherpa-onnx 官方预编译产物（Apache-2.0，内含 onnxruntime，MIT）。
 # 精确锁定：`sherpa-rs-sys` 的 `dist.json` 把 sherpa-onnx 版本写死在 crate 版本里，

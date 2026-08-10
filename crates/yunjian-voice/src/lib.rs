@@ -1,15 +1,28 @@
 //! 云笺语音 crate。
 //!
 //! 朗读节奏来自逐音步合成加 Rust 侧静音拼接，因而自带时间戳，无需强制
-//! 对齐。采集走 `rodio`/`cpal`，不经由 WebView。
+//! 对齐。采集走 `rodio`（内部是 `cpal`），不经由 WebView。
 //!
-//! 整个原生推理能力挂在 `voice` cargo 特性后面。不开该特性时本 crate 仍可编译，
-//! 且**不链接 onnxruntime**，词典与默写功能因此不会被原生依赖拖垮。
-//! 构建方式、按平台前置条件与许可清单见 `docs/VOICE-BUILD.zh.md`。
+//! 三个特性开关，边界刻意不同：
+//!
+//! - **无特性**：纯 Rust，无原生依赖。[`permission`] 与 [`platform`] 始终可用，
+//!   因为「语音为什么不可用」这个问题在不带语音的构建里同样要回答。
+//! - **`capture`**：拉入 `rodio`，提供 [`capture`]。许可为 MIT/Apache-2.0。
+//! - **`voice`**：拉入 `sherpa-rs`，提供 [`asr`] 与 [`tts`]，并隐含 `capture`。
+//!   **分发物因静态包含 espeak-ng 而须按 GPL-3.0 提供**，详见 `docs/VOICE-BUILD.zh.md`。
+//!
+//! 采集在 Rust 里做绕开了 WebView，但**没有**绕开操作系统的麦克风授权。各平台的
+//! 授权链与系统最低版本见 [`permission`]、[`platform`] 与
+//! `docs/PLATFORM-REQUIREMENTS.zh.md`。
 
 mod error;
+pub mod permission;
+pub mod platform;
 
 pub use error::VoiceError;
+
+#[cfg(feature = "capture")]
+pub mod capture;
 
 #[cfg(feature = "voice")]
 pub mod asr;
@@ -45,6 +58,22 @@ pub fn backend_version() -> Option<String> {
     {
         None
     }
+}
+
+/// 当前该走语音练习还是打字练习。**这是调用方唯一需要的入口。**
+///
+/// 组合两级判定：先看本二进制有没有编译语音能力（没有的话权限状态无意义），再看权限。
+/// 两级分开是因为 [`permission::decide`] 必须能在不开 `voice` 的构建里被测到——
+/// 见那个函数的文档。
+#[must_use]
+pub fn practice(report: &permission::MicPermission) -> permission::Practice {
+    if is_available() {
+        return permission::decide(report);
+    }
+    permission::degrade(
+        permission::DegradeReason::FeatureDisabled,
+        Some(report.platform),
+    )
 }
 
 /// 采样点均方根。低于阈值即视为静音，是冒烟测试判定「真的产生了声音」的依据：

@@ -25,16 +25,17 @@
 
 `main` 上**已经实现并有测试守着**的部分：
 
-| 模块         | 状态   | 说明                                                                             |
-| ------------ | ------ | -------------------------------------------------------------------------------- |
-| 工作区骨架   | 已实现 | 8 个 crate 的 Cargo workspace，依赖版本集中锁定                                  |
-| 配置与日志   | 已实现 | 运行时发现 `config.toml`；tracing 日志强制走 stderr 与滚动文件                   |
-| stdout 门禁  | 已实现 | clippy 全仓禁止 `println!` 与 `std::io::stdout`，只放行一处 CLI 出口             |
-| 许可门禁     | 已实现 | `xtask verify-sources` 逐资产校验上游许可与 SHA-256                              |
-| 语料记录模型 | 已实现 | 规范化记录与 append-only `stable_id` 注册表                                      |
-| 韵书导入     | 已实现 | 平水韵与词林正韵入库，逐字反向索引构建期推导；中华新韵与词谱扣留                 |
-| 索引选型     | 已实测 | FTS5 `detail` 模式与 n-gram 辅助表由实测定案，见 [语料与索引](docs/CORPUS.zh.md) |
-| 语音构建     | 已验证 | 五平台原生依赖构建与链接路径实测，见 [语音构建](docs/VOICE-BUILD.zh.md)          |
+| 模块         | 状态   | 说明                                                                                                |
+| ------------ | ------ | --------------------------------------------------------------------------------------------------- |
+| 工作区骨架   | 已实现 | 8 个 crate 的 Cargo workspace，依赖版本集中锁定                                                     |
+| 配置与日志   | 已实现 | 运行时发现 `config.toml`；tracing 日志强制走 stderr 与滚动文件                                      |
+| stdout 门禁  | 已实现 | clippy 全仓禁止 `println!` 与 `std::io::stdout`，只放行一处 CLI 出口                                |
+| 许可门禁     | 已实现 | `xtask verify-sources` 逐资产校验上游许可与 SHA-256                                                 |
+| 语料记录模型 | 已实现 | 规范化记录与 append-only `stable_id` 注册表                                                         |
+| 韵书导入     | 已实现 | 平水韵与词林正韵入库，逐字反向索引构建期推导；中华新韵与词谱扣留                                    |
+| 索引选型     | 已实测 | FTS5 `detail` 模式与 n-gram 辅助表由实测定案，见 [语料与索引](docs/CORPUS.zh.md)                    |
+| 语音构建     | 已验证 | 五平台原生依赖构建与链接路径实测，见 [语音构建](docs/VOICE-BUILD.zh.md)                             |
+| 麦克风与底线 | 已验证 | Linux 实测采集 16 kHz 单声道；各平台授权链与系统底线见 [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md) |
 
 **尚未实现**（有完整方案，但一行产品代码都还没有）：诗词检索接口、AI 赏析、背诵训练与
 FSRS 复习、离线朗读与语音识别、MCP 服务器、命令行工具、Tauri 桌面端、移动端。
@@ -127,6 +128,7 @@ cargo run -p xtask -- verify-sources --offline
 - [架构](docs/ARCHITECTURE.zh.md)——分层、`yunjian-core` 为什么不知道 Tauri 存在、移动端逃生通道
 - [语料与索引](docs/CORPUS.zh.md)——构建管线、`stable_id` 身份模型、FTS5 索引选型实测
 - [语音构建](docs/VOICE-BUILD.zh.md)——五平台原生依赖构建、链接方式、许可影响
+- [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md)——五平台系统最低版本、麦克风授权链、低于底线时的降级行为
 
 ## 参与开发
 

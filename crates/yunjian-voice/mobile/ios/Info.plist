@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>云笺用麦克风听你背诗，逐字比对后给出完整度与流畅度。录音只在本机处理，不上传、不保存。</string>
+	<!-- 采集不在后台进行：练习结束即停止会话。因此刻意**不**声明 UIBackgroundModes
+	     的 audio——多声明一个后台模式会在 App Store 审核时被要求说明用途。 -->
+</dict>
+</plist>
