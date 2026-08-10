@@ -15,6 +15,7 @@ use clap::{Parser, Subcommand};
 // 子命令模块在此注册（每个任务追加一行）。
 mod commentary_index;
 mod corpus_contract;
+mod corpus_measure;
 mod corpus_quality;
 mod index_spike;
 mod verify_sources;
@@ -89,6 +90,40 @@ enum Commands {
         #[arg(long)]
         write_baseline: bool,
     },
+
+    /// 在**真实语料**上实测索引体积与查询延迟，写出 `corpus/reports/measurements.{json,md}`
+    /// 与对照声明预算（gzip 工件 <= 250 MB、p95 <= 150 ms）的明确结论。
+    ///
+    /// todo 21 的打包按这份结论选定的缓解措施执行，所以它不能建立在估算上。
+    CorpusMeasure {
+        /// 要实测的规模，可重复：`10k` | `tang-song` | `full`。默认只跑 `10k`。
+        /// 未请求的规模在报告里如实标为 NOT MEASURED。
+        #[arg(long = "scale", value_name = "SCALE")]
+        scales: Vec<String>,
+        /// `chinese-poetry` 按锁定 revision 的检出目录。`--render-only` 时不需要。
+        #[arg(long, required_unless_present = "render_only")]
+        chinese_poetry_dir: Option<std::path::PathBuf>,
+        /// `Werneror/Poetry` 按锁定 revision 的检出目录。`--render-only` 时不需要。
+        #[arg(long, required_unless_present = "render_only")]
+        werneror_dir: Option<std::path::PathBuf>,
+        /// `charlesix59/chinese_word_rhyme` 按锁定 revision 的检出目录。`--render-only` 时不需要。
+        #[arg(long, required_unless_present = "render_only")]
+        rhyme_dir: Option<std::path::PathBuf>,
+        /// 每条查询重复测量的次数，p50/p95 取自这些样本。
+        #[arg(long, default_value_t = 25)]
+        repeats: usize,
+        /// 随包工件预算，MiB。**仅用于验证门禁是真的**（把它设成 1 应当让结论翻假）；
+        /// 正式结论一律用默认的 250。
+        #[arg(long, default_value_t = corpus_measure::DEFAULT_ARTIFACT_BUDGET_MIB)]
+        artifact_budget_mib: u64,
+        /// 保留建好的 `.db` 供人工复核。默认测完即删，避免几十 GB 残留。
+        #[arg(long)]
+        keep_databases: bool,
+        /// 只按现有 `measurements.json` 重渲染 Markdown，不重跑任何测量。
+        /// 用于调整人读报告的排版——全量规模一次构建约 50 分钟。
+        #[arg(long, conflicts_with_all = ["scales", "keep_databases"])]
+        render_only: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -104,6 +139,28 @@ fn main() -> anyhow::Result<()> {
             werneror_dir,
             write_baseline,
         }) => corpus_quality::run(chinese_poetry_dir, werneror_dir, write_baseline),
+        Some(Commands::CorpusMeasure {
+            render_only: true, ..
+        }) => corpus_measure::render_only(),
+        Some(Commands::CorpusMeasure {
+            scales,
+            chinese_poetry_dir,
+            werneror_dir,
+            rhyme_dir,
+            repeats,
+            artifact_budget_mib,
+            keep_databases,
+            render_only: false,
+        }) => corpus_measure::run(
+            scales,
+            // clap 的 `required_unless_present` 已保证非 render-only 时三者都在。
+            chinese_poetry_dir.expect("clap 应已要求 --chinese-poetry-dir"),
+            werneror_dir.expect("clap 应已要求 --werneror-dir"),
+            rhyme_dir.expect("clap 应已要求 --rhyme-dir"),
+            repeats,
+            artifact_budget_mib * 1024 * 1024,
+            keep_databases,
+        ),
         None => Ok(()),
     }
 }

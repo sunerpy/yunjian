@@ -22,10 +22,16 @@ corpus/licenses/
 # ---- 生成物与本地状态 ----
 # 语料构建产物由 xtask 从公共领域源重新生成，不属于人工维护的文本。
 corpus/build/
-# `corpus/reports/*.md` 由 xtask 生成（`index-spike`、`corpus-quality`）。oxfmt 会
-# 按 CJK 宽度重排表格，于是「跑一次 xtask」与「跑一次 make fmt」互相覆盖，
+# `corpus/reports/*.md` 由 xtask 生成（`index-spike`、`corpus-quality`、`corpus-measure`）。
+# oxfmt 会按 CJK 宽度重排表格，于是「跑一次 xtask」与「跑一次 make fmt」互相覆盖，
 # fmt-check 在两者之间永远有一次是红的。与 changelog/ 同理：生成方持有该文件。
-# 对应的 `.json` 仍然受检——`serde_json::to_string_pretty` 的输出本就是规范形态。
 corpus/reports/*.md
+# 生成的 `.json` 同理，理由是实测出来的：oxfmt 会把**够短的**单元素数组折成一行，
+# 而 `serde_json::to_string_pretty` 一律展开，两者互相覆盖。
+# `index-mode.json` 当前是绿的纯属偶然——它的 `explain_query_plan` 字符串够长
+# （该缩进深度下折起来约 97 列），恰好超过 oxfmt 的折行阈值所以保持展开；
+# `measurements.json` 的同名字段短一些就被折了。也就是说「生成的 JSON 本就是规范
+# 形态」这个说法是错的，它只在字符串恰好够长时成立。生成方持有这两个文件。
+corpus/reports/*.json
 target/
 .omo/
