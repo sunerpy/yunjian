@@ -6,27 +6,18 @@ use crate::model::{
 use crate::normalize::{NormalizedRecord, VariantRow};
 use crate::quality::{Disposition, QualityReport};
 use crate::rhyme::RhymeEntry;
+pub use crate::rhyme_foot::PoemRhymeGroupRow;
 use rusqlite::{Connection, OpenFlags, params};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
-use yunjian_core::rhyme::{RhymeBook, RhymeTone};
 use yunjian_core::{Error, Result};
 
 pub const SCHEMA_VERSION: u32 = 1;
 pub const SUPPORTED_SCHEMA: RangeInclusive<u32> = 1..=1;
 pub const SCHEMA_SQL: &str = include_str!("../schema.sql");
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PoemRhymeGroupRow {
-    pub poem_id: String,
-    pub rhyme_book: RhymeBook,
-    pub rhyme_group: String,
-    pub tone: RhymeTone,
-    pub confidence: String,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoemTagRow {
@@ -422,7 +413,7 @@ fn write_database(path: &Path, input: &CorpusDbInput, metadata: &BuildMetadata) 
                 row.rhyme_book.as_key(),
                 row.rhyme_group,
                 row.tone.as_key(),
-                row.confidence,
+                row.confidence.as_str(),
             ],
         )?;
     }
