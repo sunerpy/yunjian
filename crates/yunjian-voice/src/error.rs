@@ -44,6 +44,22 @@ pub enum VoiceError {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    /// 采集中途断了。`Microphone` 的迭代器只在流报错时结束，因此任何长度缺口都是故障，
+    /// 而不是「刚好录短了」。默默接受截断会让一次设备故障变成一个错误的背诵分数。
+    #[error(
+        "麦克风采集被截断：只拿到 {got} 个样本（约 {:.0} ms），请求 {wanted} 个（约 {:.0} ms）",
+        (*got as f64) * 1000.0 / f64::from(*sample_rate),
+        (*wanted as f64) * 1000.0 / f64::from(*sample_rate)
+    )]
+    CaptureTruncated {
+        /// 实际拿到的样本数。
+        got: usize,
+        /// 请求的样本数。
+        wanted: usize,
+        /// 换算时长用的采样率。
+        sample_rate: u32,
+    },
+
     /// 设备既不产出样本也不报错。`Microphone` 的迭代器在这种情形下永久阻塞，
     /// 所以必须由外层的 wall-clock 超时判定，而不是等它自己失败。
     #[error("麦克风在 {waited:?} 内没有产出任何样本，判定为设备停摆")]
@@ -67,7 +83,8 @@ impl VoiceError {
             | Self::AudioWrite { .. }
             | Self::Backend(_)
             | Self::AudioDevice { .. }
-            | Self::CaptureStalled { .. } => R::CaptureFailed,
+            | Self::CaptureStalled { .. }
+            | Self::CaptureTruncated { .. } => R::CaptureFailed,
         }
     }
 }

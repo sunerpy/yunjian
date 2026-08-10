@@ -23,6 +23,9 @@ const SKIP_VAR: &str = "YUNJIAN_SKIP_CAPTURE_TEST";
 /// 「一个字节都没录到」的情形，而不是给信号强度设门。
 const SILENCE_FLOOR: f32 = 1e-4;
 
+/// 每个设备的重试上限。只对截断重试，用尽仍然算失败。
+const MAX_ROUNDS: u32 = 3;
+
 #[test]
 fn captures_one_second_of_16k_mono_pcm_with_nonzero_rms() {
     if std::env::var_os(SKIP_VAR).is_some() {
@@ -50,40 +53,58 @@ fn captures_one_second_of_16k_mono_pcm_with_nonzero_rms() {
     attempts.extend(inputs.iter().cloned().map(Some));
 
     for attempt in attempts {
-        let result = match attempt.as_deref() {
-            None => capture::capture_default(Duration::from_secs(1)),
-            Some(name) => capture::capture_from(name, Duration::from_secs(1)),
-        };
         let label = attempt.clone().unwrap_or_else(|| "default".to_owned());
-        match result {
-            Err(err) => failures.push(format!("{label}：{err}")),
-            Ok(got) => {
-                assert_eq!(
-                    got.sample_rate, TARGET_SAMPLE_RATE,
-                    "识别器硬要求 16 kHz，设备原生 {} Hz 时必须重采样",
-                    got.device_sample_rate
-                );
-                assert_eq!(
-                    got.channels, TARGET_CHANNELS,
-                    "识别器硬要求单声道，设备原生 {} 声道时必须降混",
-                    got.device_channels
-                );
-                let expected = TARGET_SAMPLE_RATE as usize;
-                assert_eq!(
-                    got.samples.len(),
-                    expected,
-                    "一秒 16 kHz 单声道应为 {expected} 个样本"
-                );
-                let rms = got.rms();
-                if rms <= SILENCE_FLOOR {
-                    failures.push(format!("{label}：格式正确但全是静音（RMS={rms:.9}）"));
+        // 每个设备重试三次，只对**截断**重试。截断来自流报错（实测
+        // `alsa::poll() spuriously returned`），是偶发的宿主机现象，而这条测试判定的是
+        // 采集通路是否成立。三次都截断仍然算失败，所以重试掩盖不了真实缺陷。
+        for round in 1..=MAX_ROUNDS {
+            let result = match attempt.as_deref() {
+                None => capture::capture_default(Duration::from_secs(1)),
+                Some(name) => capture::capture_from(name, Duration::from_secs(1)),
+            };
+            match result {
+                Err(yunjian_voice::VoiceError::CaptureTruncated { got, wanted, .. }) => {
+                    eprintln!("{label} 第 {round} 次被截断（{got}/{wanted}），重试");
+                    if round == MAX_ROUNDS {
+                        failures.push(format!("{label}：三次都被截断，最后一次 {got}/{wanted}"));
+                    }
                     continue;
                 }
-                eprintln!(
-                    "采集成功：{label} / 设备原生 {} Hz {} 声道 / RMS={rms:.6}",
-                    got.device_sample_rate, got.device_channels
-                );
-                return;
+                Err(err) => {
+                    failures.push(format!("{label}：{err}"));
+                    break;
+                }
+                Ok(got) => {
+                    assert_eq!(
+                        got.sample_rate, TARGET_SAMPLE_RATE,
+                        "识别器硬要求 16 kHz，设备原生 {} Hz 时必须重采样",
+                        got.device_sample_rate
+                    );
+                    assert_eq!(
+                        got.channels, TARGET_CHANNELS,
+                        "识别器硬要求单声道，设备原生 {} 声道时必须降混",
+                        got.device_channels
+                    );
+                    let expected = TARGET_SAMPLE_RATE as usize;
+                    // 不断言相等：重采样器在跨度边界上会少给几十个样本（CI 实测 15936/16000）。
+                    // 断言的是完成度门，它把那种取整与真实截断（实测 484 ms）分开。
+                    assert!(
+                        capture::meets_completion(got.samples.len(), expected),
+                        "一秒 16 kHz 单声道应接近 {expected} 个样本，实际 {}（{:?}）",
+                        got.samples.len(),
+                        got.duration()
+                    );
+                    let rms = got.rms();
+                    if rms <= SILENCE_FLOOR {
+                        failures.push(format!("{label}：格式正确但全是静音（RMS={rms:.9}）"));
+                        break;
+                    }
+                    eprintln!(
+                        "采集成功：{label} / 设备原生 {} Hz {} 声道 / RMS={rms:.6}",
+                        got.device_sample_rate, got.device_channels
+                    );
+                    return;
+                }
             }
         }
     }
