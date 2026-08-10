@@ -5,5 +5,6 @@
 //!
 //! 入库器只产出候选记录，身份铸造统一由 [`model::rebuild_corpus`] 负责。
 
+pub mod commentary;
 pub mod ingest;
 pub mod model;

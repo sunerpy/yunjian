@@ -20,7 +20,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 toml = { workspace = true }
+# `commentary-index` 复用 `yunjian-corpus::commentary` 的校验与索引渲染，
+# 绝不在 xtask 里另写一套判据——出处规则只能有一个实现。
+tracing = { workspace = true }
 ureq = { workspace = true }
+yunjian-corpus = { path = "../crates/yunjian-corpus" }
 
 [lints]
 workspace = true
