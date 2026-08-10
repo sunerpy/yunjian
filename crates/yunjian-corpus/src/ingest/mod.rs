@@ -4,13 +4,14 @@
 //! 身份铸造与分组一律交给 [`crate::model::rebuild_corpus`]。
 
 pub mod chinese_poetry;
+pub mod werneror;
 
 use crate::model::Script;
 use ferrous_opencc::OpenCC;
 use ferrous_opencc::config::BuiltinConfig;
 use yunjian_core::{Error, Result};
 
-fn corpus_error(message: impl Into<String>) -> Error {
+pub(crate) fn corpus_error(message: impl Into<String>) -> Error {
     Error::Corpus(message.into())
 }
 
@@ -94,6 +95,16 @@ pub enum DefectReason {
     StrainsLineMismatch,
     /// 朝代串无法归一到十五个规范键。
     UnknownDynasty,
+    /// 上游把生僻 utf8mb4 字符替换成了 `?`，原字不可恢复。
+    ///
+    /// 这类记录**一条都不进主表**：韵脚推导读行末字、破读表读逐字读音，一个
+    /// `?` 就让二者给出错误答案而不报错。留档见
+    /// [`werneror::QuarantinedRecord`]。
+    LossyCharacter,
+    /// 该行的朝代列与所属分桶声明的朝代不符，可能是上游重排。
+    BucketLabelMismatch,
+    /// 另一个来源已收录同一作品，按逐来源取舍不重复入库。
+    DuplicateInOtherSource,
 }
 
 /// 一条输入的非入库处置。记录而不静默丢弃。
@@ -161,6 +172,16 @@ impl ScriptDetector {
             to_traditional: OpenCC::from_config(BuiltinConfig::S2t)
                 .map_err(|error| corpus_error(format!("初始化简转繁失败：{error}")))?,
         })
+    }
+
+    /// 只用于**算键**，不用于改写正文。
+    ///
+    /// 跨来源判重需要一个与字形无关的键：`chinese-poetry/全唐诗` 是繁体、
+    /// Werneror 是简体，同一首诗按原字形算 `work_group` 会分属两组，一条都判不
+    /// 出来。正文的繁简归一是构建期另一道工序的事，这里借同一个已加载的转换器
+    /// 算键，而不是再开一个实例。
+    pub fn simplify(&self, body: &str) -> String {
+        self.to_simplified.convert(body)
     }
 
     pub fn detect(&self, body: &str) -> Script {

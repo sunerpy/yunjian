@@ -32,6 +32,7 @@
 | stdout 门禁  | 已实现 | clippy 全仓禁止 `println!` 与 `std::io::stdout`，只放行一处 CLI 出口             |
 | 许可门禁     | 已实现 | `xtask verify-sources` 逐资产校验上游许可与 SHA-256                              |
 | 语料记录模型 | 已实现 | 规范化记录与 append-only `stable_id` 注册表                                      |
+| 韵书导入     | 已实现 | 平水韵与词林正韵入库，逐字反向索引构建期推导；中华新韵与词谱扣留                 |
 | 索引选型     | 已实测 | FTS5 `detail` 模式与 n-gram 辅助表由实测定案，见 [语料与索引](docs/CORPUS.zh.md) |
 | 语音构建     | 已验证 | 五平台原生依赖构建与链接路径实测，见 [语音构建](docs/VOICE-BUILD.zh.md)          |
 

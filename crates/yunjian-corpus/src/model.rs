@@ -144,7 +144,9 @@ impl Dynasty {
             "秦" | "秦代" => Self::Qin,
             "汉" | "漢" | "汉代" | "漢代" | "两汉" | "兩漢" => Self::Han,
             "三国" | "三國" => Self::ThreeKingdoms,
-            "晋" | "晉" | "魏晋" | "魏晉" => Self::Jin,
+            "晋" | "晉" | "魏晋" | "魏晉" | "魏晋末南北朝初" | "魏晉末南北朝初" => {
+                Self::Jin
+            }
             "南北朝" => Self::NorthernSouthern,
             "隋" | "隋代" | "隋末唐初" => Self::Sui,
             "唐" | "唐代" | "唐末宋初" => Self::Tang,
