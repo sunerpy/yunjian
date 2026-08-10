@@ -42,6 +42,10 @@ tracing-subscriber = { version = "0.3", features = [
   "local-time",
 ] }
 tracing-appender = "0.2"
+# 时间戳格式化：`tracing-subscriber` 的 `OffsetTime` 需要 `time` 的 `UtcOffset` 与
+# `Rfc3339`。显式声明特性而不依赖 `tracing-subscriber` 的特性合并，否则上游改动
+# 特性组合就会让时间戳静默变形。
+time = { version = "0.3", features = ["formatting", "local-offset"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 thiserror = "2"
