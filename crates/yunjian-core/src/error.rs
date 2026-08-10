@@ -18,6 +18,7 @@
 //! `deny_unknown_fields`，密钥写进去会直接报错而不是被收下），`Corpus` / `Search` /
 //! `Db` / `Voice` / `Recite` 都在离线数据路径上，没有凭据可携带。
 
+use crate::rhyme::RhymeBook;
 use std::borrow::Cow;
 use std::fmt;
 
@@ -34,6 +35,18 @@ pub enum Error {
     /// 检索请求无法执行或结果不合法。
     #[error("检索错误：{0}")]
     Search(String),
+
+    /// 请求的韵书未随包分发。
+    ///
+    /// **这个变体的存在本身就是需求。** 换成返回空结果集，调用方就无法区分
+    /// 「这两个字在该韵书里不同韵部」与「我们根本没有该韵书」，缺数据会被当成
+    /// 否定判断呈现给用户。所以它是独立的、可 `match` 的变体，而不是
+    /// [`Error::Search`] 里的一句字符串。
+    #[error("韵书 {} 未随包分发：{reason}", book.display_name())]
+    RhymeBookUnavailable {
+        book: RhymeBook,
+        reason: &'static str,
+    },
 
     /// 配置发现、解析或校验失败。
     #[error("配置错误：{0}")]

@@ -10,7 +10,7 @@ use ferrous_opencc::OpenCC;
 use ferrous_opencc::config::BuiltinConfig;
 use yunjian_core::{Error, Result};
 
-fn corpus_error(message: impl Into<String>) -> Error {
+pub(crate) fn corpus_error(message: impl Into<String>) -> Error {
     Error::Corpus(message.into())
 }
 

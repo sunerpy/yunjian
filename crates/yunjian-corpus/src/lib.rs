@@ -7,3 +7,4 @@
 
 pub mod ingest;
 pub mod model;
+pub mod rhyme;
