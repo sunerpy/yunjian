@@ -2008,7 +2008,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2045,18 +2045,18 @@ dependencies = [
 
 [[package]]
 name = "yunjian-ai"
-version = "0.1.0"
+version = "0.0.1"
 
 [[package]]
 name = "yunjian-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "yunjian-voice",
 ]
 
 [[package]]
 name = "yunjian-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -2073,7 +2073,7 @@ dependencies = [
 
 [[package]]
 name = "yunjian-corpus"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "blake3",
  "serde",
@@ -2084,15 +2084,15 @@ dependencies = [
 
 [[package]]
 name = "yunjian-mcp"
-version = "0.1.0"
+version = "0.0.1"
 
 [[package]]
 name = "yunjian-recite"
-version = "0.1.0"
+version = "0.0.1"
 
 [[package]]
 name = "yunjian-voice"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "hound",
  "sherpa-rs",
