@@ -14,8 +14,11 @@ blake3.workspace = true
 # 全唐诗是繁体、宋词/诗经/楚辞/元曲是简体，按仓库假定必然错。运行时 crate
 # （yunjian-core）不带任何转换依赖，转换只发生在这里。
 ferrous-opencc.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
 yunjian-core = { path = "../yunjian-core" }
