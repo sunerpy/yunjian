@@ -9,5 +9,7 @@
 //! 具体模块由后续任务补全。
 
 pub mod config;
+pub mod logger;
 
-pub use config::{Config, get_config, init_config};
+pub use config::{Config, LoggerConfig, get_config, init_config};
+pub use logger::{current_log_level, init_logger, set_log_level};
