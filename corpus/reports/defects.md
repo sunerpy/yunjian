@@ -29,6 +29,7 @@
 | `empty_body` | 1 |
 | `excluded_by_policy` | 6 |
 | `restricted_license` | 0 |
+| `rhyme_unresolved` | 0 |
 
 **finding 总数 23 与记录数无关**，不要相加。
 

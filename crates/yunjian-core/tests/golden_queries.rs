@@ -494,6 +494,114 @@ fn contract_covers_all_18_required_classes() {
     );
 }
 
+/// 短查询陷阱的三条具名回归入口。
+///
+/// 不写成「凡 2 字条目」的通用遍历，而是把这三个查询字面钉死：通用遍历在有人把
+/// `q01` 从契约里删掉之后**仍然会通过**（剩下的条目照样满足规则），而这三条恰好是
+/// 用户最常输入的形态，删掉任何一条都等于放弃那个陷阱的回归覆盖。
+/// 方案点名的就是这三个词（明月、相思、李白）。
+const SHORT_QUERY_TRAP_QUERIES: [&str; 3] = ["明月", "相思", "李白"];
+
+#[test]
+fn the_three_short_query_traps_are_present_and_demand_non_empty_results() {
+    for want in SHORT_QUERY_TRAP_QUERIES {
+        let matching: Vec<&Entry> = contract()
+            .queries
+            .iter()
+            .filter(|e| e.query == want)
+            .collect();
+        assert!(
+            !matching.is_empty(),
+            "契约里没有查询「{want}」的条目。FTS5 trigram 在 3 字以下匹配不到任何行，\
+             而这正是用户最常输入的形态——这三条的非空结果就是那个陷阱的回归测试，不得删除"
+        );
+        for e in matching {
+            // 下界必须 >= 1。`expect_min_hits = 0` 会让这条契约变成一句空话：
+            // 路由被改坏、检索返回零行时它依然通过，陷阱就静默回来了。
+            assert!(
+                e.expect_min_hits >= 1,
+                "{}: 查询「{want}」的 expect_min_hits 是 {}，必须 >= 1，\
+                 否则零命中也算通过，短查询陷阱就没有回归测试了",
+                e.id,
+                e.expect_min_hits
+            );
+            // 并且在随仓 fixture 上真的非空。只断言字段值不够——那只证明契约写得对，
+            // 不证明它可满足。
+            let hit = hits(e);
+            assert!(
+                !hit.is_empty(),
+                "{}: 查询「{want}」在随仓 fixture 上零命中，短查询路径已经坏了",
+                e.id
+            );
+            assert!(
+                hit.len() >= e.expect_min_hits,
+                "{}: 查询「{want}」只命中 {} 首，低于下界 {}",
+                e.id,
+                hit.len(),
+                e.expect_min_hits
+            );
+        }
+    }
+}
+
+/// 契约文件在整个仓库里只能有一份。
+///
+/// 这是「不要在消费方复制一份」那条约束的可执行形态。todo 19、22、24、25、43 与 F1
+/// 六方共同消费这一份契约；一旦某个 crate 为了方便在自己的 `tests/` 下拷一份，
+/// 两份就会各自演化，而**两份都绿**——检索能力的验收基准从此不再是一个基准。
+/// CI 里另有一条等价的 `find` 断言，两处都在，是因为这条必须在 `make ci` 里也生效。
+#[test]
+fn queries_toml_has_exactly_one_copy_in_the_repo() {
+    let root = workspace_root();
+    let mut found = Vec::new();
+    collect_queries_toml(&root, &mut found);
+    assert_eq!(
+        found.len(),
+        1,
+        "仓库里有 {} 份 queries.toml：{:?}。契约只能有一处——\
+         消费方请引用 crates/yunjian-core/tests/queries.toml，不要复制",
+        found.len(),
+        found
+    );
+    assert!(
+        found[0].ends_with("crates/yunjian-core/tests/queries.toml"),
+        "唯一的那份契约不在约定位置：{:?}",
+        found[0]
+    );
+}
+
+fn workspace_root() -> PathBuf {
+    // `crates/yunjian-core` -> 仓库根。用相对跳转而不是搜 `Cargo.lock`：
+    // 布局是工作区约定的一部分，走错了应当当场失败而不是猜。
+    manifest_dir()
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .expect("无法从 crate 目录推出仓库根")
+}
+
+/// 递归收集 `queries.toml`，跳过构建产物与工具本地状态目录。
+///
+/// 跳过 `target/` 是必需的而非优化：那里面可能出现任何被构建过程复制进去的文件，
+/// 把它算进来会让这条守卫的结果取决于「跑之前有没有构建过」。
+fn collect_queries_toml(dir: &Path, out: &mut Vec<String>) {
+    const SKIP: [&str; 4] = ["target", ".git", ".omo", "node_modules"];
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if path.is_dir() {
+            if !SKIP.contains(&name.as_str()) {
+                collect_queries_toml(&path, out);
+            }
+        } else if name == "queries.toml" {
+            out.push(path.to_string_lossy().replace('\\', "/"));
+        }
+    }
+}
+
 #[test]
 fn every_anchor_resolves_to_a_committed_fixture() {
     for e in &contract().queries {

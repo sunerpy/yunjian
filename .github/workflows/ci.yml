@@ -1,7 +1,9 @@
 name: ci
 
-# 唯一的正确性门禁。四个作业里只有 `ci-success` 会被分支保护要求，其余三个
+# 唯一的正确性门禁。五个作业里只有 `ci-success` 会被分支保护要求，其余四个
 # 通过它汇总——这样以后增删作业不必每次去改分支保护。
+# **`ci-success` 这个 name 就是分支保护里那个必需检查的名字，改它等于让分支保护指向一个
+# 不再上报的 context，所有 PR 会立刻卡死。** 增删作业改 needs，不要动 name。
 #
 # 全部命令都走 Makefile 的目标名（`make fmt-check` / `make lint` / `make test` /
 # `make build`），**不在本文件里重写命令**。门禁只有一处定义，否则「本机绿」与
@@ -80,6 +82,15 @@ jobs:
       - name: 测试
         run: cargo test --workspace
 
+  # 语料门禁定义在 `corpus.yml` 里并由此处调用，而不是内联在本文件。
+  # 它必须由 `ci.yml` 调用才能进 `ci-success` 的 needs——`needs` 只在同一个工作流文件内
+  # 有效，一个自带 push 触发的独立工作流无论多绿都喂不进这个门禁。
+  # 调用是**无条件**的：带路径过滤会让无关 PR 上它变成 skipped，而下面的白名单判定把
+  # skipped 当失败，必需检查就永远不通过。理由详见 `corpus.yml` 的文件头。
+  corpus:
+    name: Corpus
+    uses: ./.github/workflows/corpus.yml
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest
@@ -107,7 +118,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [test, test-windows, security]
+    needs: [test, test-windows, corpus, security]
     # always() 是必需的：默认情况下任一 needs 失败就会让本作业变成 skipped，
     # 而 skipped 在分支保护看来既不是成功也不是失败，必需检查会永远处于 pending。
     if: always()

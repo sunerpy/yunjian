@@ -1,0 +1,83 @@
+name: corpus
+
+# 语料门禁：许可、10k 规模的黄金查询契约、数据质量基线、生成物漂移。
+#
+# ## 为什么是可复用工作流（`workflow_call`）而不是自己带 push/pull_request 触发
+#
+# 方案要求两件看起来能并存、实际会互相拆台的事：本作业「在 corpus/** 或
+# crates/yunjian-corpus/** 变动时触发」，且「喂给终态 `ci-success` 门禁」。
+# `needs` 只在同一个工作流文件内有效，所以要进 `ci-success` 就必须由 `ci.yml` 调用；
+# 而一旦带上路径过滤，无关 PR 上本作业会被跳过，`ci-success` 的白名单判定把 skipped
+# 当失败，于是**必需检查永远处于未通过**——todo 1 与 6 已经踩过一次「必需检查指向一个
+# 不再上报的 context，所有 PR 全部卡死」。
+#
+# 因此这里做了一个明确的取舍：**放弃路径过滤，换取必需检查永不跳过**。代价可以量化——
+# 整条门禁在本机实测 3 秒建库 + 1 秒契约 + 数秒质量分析，编译产物由 rust-cache 复用，
+# 过滤能省下的时间远小于它带来的死锁风险。
+#
+# ## 定时运行是方案单独要求的，理由是上游数据可证不稳定
+#
+# 每月一次，且**额外**跑一遍联网的 verify-sources（PR 路径只跑 --offline，用随仓
+# LICENSE 副本核对）。上游仓库的数据缺陷 issue 至今 open，许可文件也可能被改；
+# 只在 PR 上离线核对随仓副本，永远发现不了「上游改了 LICENSE」这类变化。
+# 定时运行因此是 PR 门禁的严格超集，而不是同一件事跑第二遍。
+#
+# ## 刻意不声明 workflow 级 concurrency
+#
+# 被 `workflow_call` 调用时，`github.workflow` 与 `github.event_name` 取的是**调用方**
+# 的值，在这里声明并发组会与 `ci.yml` 的组字符串相同，于是父子运行互相取消。
+# PR 路径的并发控制由调用方 `ci.yml` 负责；定时运行一个月一次，不需要取消。
+
+on:
+  workflow_call:
+  schedule:
+    # 每月 1 日 03:17 UTC。分钟刻意不取 0：整点是 GitHub 托管 runner 的排队高峰，
+    # 定时任务会被推迟数十分钟。
+    - cron: "17 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  corpus:
+    name: Corpus Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # 联网复验只在定时运行里跑，且放在离线门禁**之前**：这一步失败说明上游变了，
+      # 那是本次运行最重要的结论，不该被后面几步的输出埋掉。
+      # 它可能因网络问题变红——定时运行不是 PR 门禁，一次红灯是「去看一眼」的信号，
+      # 这正是方案要求这条定时任务存在的理由。
+      - name: 联网复验上游许可（仅定时运行）
+        if: github.event_name == 'schedule'
+        run: cargo run -p xtask -- verify-sources
+
+      # 全部门禁都走 Makefile 的目标名，不在本文件里重写命令——与 ci.yml 同一条约定：
+      # 门禁只有一处定义，否则「本机绿」与「CI 绿」会变成两套标准。
+      # 这一步里包含：契约单副本守卫、离线许可门禁、10k 规模建库后逐条跑 37 条黄金查询
+      # 契约、质量基线漂移门禁、生成物逐字节漂移门禁、集评索引漂移门禁、
+      # corpus-measure（todo 20 注册后自动启用）、以及契约的 fixture 自检与 FTS5 回归。
+      - name: 语料门禁
+        run: make corpus-gate
+
+      # 门禁跑完工作树必须仍然干净。上一步内部已经逐目录查过 corpus/reports/，
+      # 这一步查的是**整棵工作树**：任何一个子命令往仓库里写了不该写的文件
+      # （构建产物落到 gitignore 之外、报告写进别的目录），都在这里暴露。
+      - name: 工作树必须干净
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::语料门禁跑完后工作树不干净，说明有子命令写入了未被追踪或未提交的文件"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
+          echo "工作树干净。"

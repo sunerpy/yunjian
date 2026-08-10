@@ -14,6 +14,7 @@ use clap::{Parser, Subcommand};
 
 // 子命令模块在此注册（每个任务追加一行）。
 mod commentary_index;
+mod corpus_contract;
 mod corpus_quality;
 mod index_spike;
 mod verify_sources;
@@ -65,6 +66,15 @@ enum Commands {
         offline: bool,
     },
 
+    /// 在新建出来的样本规模语料库上逐条跑黄金查询契约
+    /// （`crates/yunjian-core/tests/queries.toml`），断言每条的物理路径、命中下界与锚点。
+    /// 纯门禁，不写任何报告文件；索引模式从 `corpus/reports/index-mode.json` 读。
+    CorpusContract {
+        /// 样本语料首数。默认 10000，即方案为 CI 指定的规模。
+        #[arg(long, default_value_t = 10_000)]
+        scale: usize,
+    },
+
     /// 产出重出分组与数据缺陷报告：`corpus/reports/defects.{json,md}`（一行一个
     /// finding）与 `dispositions.json`（一行一条输入记录），并按
     /// `corpus/reports/baseline.json` 的逐 code 容差守住回归基线。
@@ -88,6 +98,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::IndexSpike { scale, repeats }) => index_spike::run(scale, repeats),
         Some(Commands::CommentaryIndex { check }) => commentary_index::run(check),
         Some(Commands::VerifySources { offline }) => verify_sources::run(offline),
+        Some(Commands::CorpusContract { scale }) => corpus_contract::run(scale),
         Some(Commands::CorpusQuality {
             chinese_poetry_dir,
             werneror_dir,
