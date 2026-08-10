@@ -7,5 +7,16 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+build = "build.rs"
+
+[features]
+default = []
+voice = ["dep:sherpa-rs"]
 
 [dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+sherpa-rs = { workspace = true, optional = true }
+
+[dev-dependencies]
+hound.workspace = true

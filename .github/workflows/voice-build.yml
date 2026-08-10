@@ -1,0 +1,272 @@
+name: voice-build
+
+# 五平台原生语音构建矩阵。存在的理由是 todo 44 的裁决：Linux 之外的四个目标在开发
+# 环境里无法构建（无 Windows/macOS 宿主机、无 NDK、无 Xcode SDK），只能在有对应宿主机
+# 的地方验证。详见 docs/VOICE-BUILD.zh.md「五平台结论」。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/yunjian-voice/**"
+      - "crates/yunjian-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/voice-build.yml"
+  pull_request:
+    paths:
+      - "crates/yunjian-voice/**"
+      - "crates/yunjian-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/voice-build.yml"
+  workflow_dispatch:
+
+# 并发组包含 github.event_name：同一分支的 push 与 pull_request 是两条独立运行，
+# 互相取消会让 PR 检查莫名变成 cancelled。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  ASR_MODEL_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2
+  TTS_MODEL_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kitten-nano-en-v0_2-fp16.tar.bz2
+
+jobs:
+  no-voice-links-nothing:
+    name: 无语音构建不链接 onnxruntime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release
+      - name: 断言未链接 onnxruntime 且可运行
+        run: |
+          if ldd target/release/yunjian | grep -i onnx; then
+            echo "::error::不开 voice 却链接了 onnxruntime"
+            exit 1
+          fi
+          ./target/release/yunjian
+
+  desktop:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: windows-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macos-arm64
+            runner: macos-14
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # cache-targets: false 是必需的，不是调优。rust-cache 会保留 sherpa-rs-sys 的
+      # build script 指纹却裁掉它复制出来的 .so，于是 build script 不再重跑、
+      # 原生库也不再出现，链接报 `unable to find library -lonnxruntime`。实测如此。
+      # 原生产物另用一层 cache 兜住，重跑 build script 时不必重新下载几十 MB。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: voice-${{ matrix.target }}
+          cache-targets: false
+
+      - name: 缓存 sherpa-onnx 原生产物
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-rs
+            ~/Library/Caches/sherpa-rs
+            ~/AppData/Local/sherpa-rs
+          key: sherpa-native-${{ matrix.target }}-v1.12.9
+
+      # 不用 `llvm-config --libdir`：ubuntu-latest 上 libclang-dev 不带无版本号的
+      # `llvm-config`，实测报 `command not found`，于是 LIBCLANG_PATH 被写成空串，
+      # bindgen 随后报「Unable to find libclang ... (invalid: [])」。直接找 .so 更稳。
+      - name: 安装 libclang（Linux）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+          SO=$(find /usr/lib/llvm-* -name 'libclang.so*' -print -quit 2>/dev/null || true)
+          if [ -z "$SO" ]; then
+            echo "::error::装了 libclang-dev 却找不到 libclang.so"
+            exit 1
+          fi
+          echo "LIBCLANG_PATH=$(dirname "$SO")" >> "$GITHUB_ENV"
+
+      - name: 缓存冒烟模型
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: models/cache
+          key: voice-smoke-models-whisper-tiny-kitten-nano-v0_2
+
+      # 权重不进 git，因此每台 runner 自取。许可已核实为 Apache-2.0，
+      # 见 docs/VOICE-BUILD.zh.md「许可清单」。
+      - name: 下载冒烟模型
+        if: steps.models.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p models/cache
+          cd models/cache
+          curl -sSLf -o asr.tar.bz2 "$ASR_MODEL_URL"
+          curl -sSLf -o tts.tar.bz2 "$TTS_MODEL_URL"
+          tar xf asr.tar.bz2
+          tar xf tts.tar.bz2
+          rm asr.tar.bz2 tts.tar.bz2
+
+      - name: 构建（带 voice）
+        run: cargo build --release --target ${{ matrix.target }} --features yunjian-cli/voice -p yunjian-cli
+
+      - name: 冒烟：一次真实识别 + 一次真实合成
+        run: cargo test -p yunjian-voice --features voice --target ${{ matrix.target }} smoke
+
+      # 这一步单独存在是因为它抓到过真实缺陷：缺 rpath 时二进制以退出码 127
+      # 启动失败，而 cargo test 会注入 LD_LIBRARY_PATH，测试却全绿。
+      - name: 断言发布二进制自身可启动
+        shell: bash
+        run: |
+          BIN=target/${{ matrix.target }}/release/yunjian
+          if [ "${{ runner.os }}" = "Windows" ]; then BIN="$BIN.exe"; fi
+          "$BIN"
+
+      - name: 记录体积增量
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p yunjian-cli
+          {
+            echo "### ${{ matrix.name }} 体积"
+            echo '```'
+            find "target/${{ matrix.target }}/release" -maxdepth 1 \
+              \( -name 'yunjian*' -o -name '*onnx*' -o -name '*sherpa*' \) \
+              -exec ls -l {} + || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # 移动端只做「构建 + 记录每 ABI 库体积」。设备上的识别与合成冒烟走 todo 68 的
+  # 物理设备 harness——GitHub runner 既无真机也无可用麦克风。
+  mobile:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: android-arm64
+            runner: ubuntu-latest
+            target: aarch64-linux-android
+          - name: ios-arm64
+            runner: macos-14
+            target: aarch64-apple-ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # cache-targets: false 是必需的，不是调优。rust-cache 会保留 sherpa-rs-sys 的
+      # build script 指纹却裁掉它复制出来的 .so，于是 build script 不再重跑、
+      # 原生库也不再出现，链接报 `unable to find library -lonnxruntime`。实测如此。
+      # 原生产物另用一层 cache 兜住，重跑 build script 时不必重新下载几十 MB。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: voice-${{ matrix.target }}
+          cache-targets: false
+
+      - name: 缓存 sherpa-onnx 原生产物
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-rs
+            ~/Library/Caches/sherpa-rs
+            ~/AppData/Local/sherpa-rs
+          key: sherpa-native-${{ matrix.target }}-v1.12.9
+
+      # 不用 `llvm-config --libdir`：ubuntu-latest 上 libclang-dev 不带无版本号的
+      # `llvm-config`，实测报 `command not found`，于是 LIBCLANG_PATH 被写成空串，
+      # bindgen 随后报「Unable to find libclang ... (invalid: [])」。直接找 .so 更稳。
+      - name: 安装 libclang（Linux）
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+          SO=$(find /usr/lib/llvm-* -name 'libclang.so*' -print -quit 2>/dev/null || true)
+          if [ -z "$SO" ]; then
+            echo "::error::装了 libclang-dev 却找不到 libclang.so"
+            exit 1
+          fi
+          echo "LIBCLANG_PATH=$(dirname "$SO")" >> "$GITHUB_ENV"
+
+      - name: 配置 Android NDK
+        if: matrix.target == 'aarch64-linux-android'
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      # 链接器写死 android26：cpal 0.18 的 Android 后端要求 API 26，比 Tauri 文档
+      # 写的 24 高。这一条是 todo 46 记录的产品要求。
+      # BINDGEN_EXTRA_CLANG_ARGS 里的 --sysroot 是必需的：sherpa-rs-sys 会把 rust 三元组
+      # 映射成 clang 三元组，但不传 sysroot，于是 clang 回落到宿主机 /usr/include，
+      # 报 `bits/libc-header-start.h file not found`。实测如此。
+      - name: 导出 NDK 环境
+        if: matrix.target == 'aarch64-linux-android'
+        run: |
+          NDK="${{ steps.ndk.outputs.ndk-path }}"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          {
+            echo "ANDROID_NDK_HOME=$NDK"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TC/bin/aarch64-linux-android26-clang"
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$TC/sysroot"
+          } >> "$GITHUB_ENV"
+
+      # iOS 只做 cargo check：`sherpa-rs` 声明了 `crate-type = ["cdylib", "rlib"]`，
+      # cargo 会为依赖构建每一种声明的 lib 类型，而它的 cdylib 在 iOS 上链接失败
+      # （undefined symbols for architecture arm64）。这是上游打包限制，不是本项目的配置问题。
+      # `cargo check` 能证明 bindgen 与编译通路成立，跳过那个不该存在的 dylib 链接步骤。
+      # 彻底解决要 fork 掉 `cdylib` 或推动上游，留给 todo 69；详见 docs/VOICE-BUILD.zh.md。
+      - name: 校验（iOS，仅 check）
+        if: matrix.target == 'aarch64-apple-ios'
+        run: cargo check --release --target ${{ matrix.target }} --features voice -p yunjian-voice
+
+      - name: 构建（带 voice）
+        if: matrix.target != 'aarch64-apple-ios'
+        run: cargo build --release --target ${{ matrix.target }} --features voice -p yunjian-voice
+
+      - name: 记录每 ABI 原生库体积
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.name }} 原生库体积"
+            echo '```'
+            find ~/.cache/sherpa-rs -type f \( -name '*.so' -o -name '*.a' \) -exec ls -l {} + || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  voice-build-success:
+    name: voice-build 汇总
+    runs-on: ubuntu-latest
+    needs: [no-voice-links-nothing, desktop, mobile]
+    if: always()
+    steps:
+      - name: 任一依赖作业未成功即失败
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] \
+            || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ] \
+            || [ "${{ contains(needs.*.result, 'skipped') }}" = "true" ]; then
+            echo "::error::voice-build 矩阵存在未成功的作业"
+            exit 1
+          fi

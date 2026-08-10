@@ -31,6 +31,20 @@ keyring-core = "1.0"
 genai = "0.6"
 rodio = { version = "0.22", features = ["recording"] }
 cpal = "0.18"
+# 离线 ASR/TTS。第三方绑定 `sherpa-rs`（MIT）+ 其 `sherpa-rs-sys`（MIT）按 `dist.json`
+# 下载 k2-fsa/sherpa-onnx 官方预编译产物（Apache-2.0，内含 onnxruntime，MIT）。
+# 精确锁定：`sherpa-rs-sys` 的 `dist.json` 把 sherpa-onnx 版本写死在 crate 版本里，
+# 放宽版本号等于放宽原生产物版本。详见 `docs/VOICE-BUILD.zh.md`。
+# `sys` 不是默认特性，但没它就拿不到 `sherpa_rs_sys` 的重导出，也就无法调用
+# `SherpaOnnxGetVersionStr`——那是唯一不需要模型即可证明原生库已链接的入口。
+sherpa-rs = { version = "=0.6.8", default-features = false, features = [
+  "download-binaries",
+  "tts",
+  "sys",
+] }
+# WAV 读写。`sherpa_rs::read_audio_file` 硬断言 16 kHz，读不了它自己 TTS 出的 24 kHz
+# 音频，因此任何回读路径都必须绕开它。版本与 `sherpa-rs` 内部所用一致，避免重复编译。
+hound = "3.5"
 ferrous-opencc = "0.4"
 pinyin = "0.11"
 inputx-phonetic-edit = "1"
