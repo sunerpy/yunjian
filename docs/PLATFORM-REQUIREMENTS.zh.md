@@ -160,19 +160,25 @@ Swift 插件因此按 `.playAndRecord` + `.measurement` 激活会话：`.playAnd
 ## 验证状态
 
 诚实标注：本 spike 的开发机是 Linux，无 macOS/Android/iOS 宿主机、无物理设备、无签名身份。
+下表分两栏：**本机**是开发机上的实测结论，**CI** 是 `audio-permissions.yml` 在有对应宿主机处
+拿到的真实结论。凡是两栏都没有「通过」的项，一律给出阻塞原因与所需条件。
 
-| 项目                                  | 状态                    | 证据 / 阻塞原因                                                                        |
-| ------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
-| Linux 1 秒采集 16 kHz 单声道 RMS 非零 | **本机通过**            | PulseAudio null sink + `module-sine`，RMS 0.3536（= 0.5/√2，正弦的理论值）             |
-| macOS 采集                            | **转 CI**               | 无 macOS 宿主机；`audio-permissions.yml` 在 `macos-14` 上跑                            |
-| macOS `codesign -d --entitlements -`  | **转 CI（未签名模式）** | 无 Developer ID 签名身份，CI 用 ad-hoc 签名验证 entitlements 是否进入产物              |
-| macOS 公证构建                        | **未执行**              | 需要付费 Apple Developer 账号与公证凭据，属发布流程（todo 71/74）                      |
-| macOS 14.2 底线                       | **已确认（读代码）**    | `loopback.rs` 无条件引用 14.2 API 且未弱链接；未在 14.1 及更早系统实测运行期失败       |
-| Android API 26 底线                   | **已确认（读清单）**    | `ndk` 的 `api-level-26` 特性，0.17.3 与 0.18.1 一致                                    |
-| Android 权限对话框                    | **未执行**              | 需真机或模拟器；CI 只构建，真机验收留给 todo 68                                        |
-| iOS `AVAudioSession` 激活为必需       | **已确认（读代码）**    | `cpal` iOS 后端从不 `setCategory`/`setActive`                                          |
-| iOS 构建                              | **上游阻塞**            | `sherpa-rs` 声明 `cdylib`，iOS 链接失败；仅 `cargo check`，见 `docs/VOICE-BUILD.zh.md` |
-| Windows 采集                          | **转 CI**               | 无 Windows 宿主机；`audio-permissions.yml` 在 `windows-latest` 上跑                    |
+| 项目                                   | 本机                 | CI           | 证据 / 阻塞原因                                                                                                                                                                     |
+| -------------------------------------- | -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux 采集 1 秒 16 kHz 单声道 RMS 非零 | **通过**             | **通过**     | 本机 PulseAudio null sink + `module-sine`，RMS 0.353550；CI 同路径，setup 先用 `parec` 验到 `peak=16384` 再跑测试                                                                   |
+| macOS 采集 1 秒 16 kHz 单声道 RMS 非零 | 未执行               | **通过**     | 无 macOS 宿主机。CI 在 `macos-14` 上装 BlackHole 2ch 并重启 `coreaudiod`，采到 RMS 0.353544；**设备原生 2 声道，实际走了降混路径**，不是恰好格式就对                                |
+| macOS entitlements 进入签名产物        | 未执行               | **通过**     | 无签名身份。CI 用 ad-hoc 签名 + `codesign -d --entitlements -` 读回两个键；并有反向验证：不带 `--entitlements` 签名后 `audio-input` 确实读不到                                      |
+| macOS 公证构建的运行期行为             | 未执行               | **未执行**   | 需付费 Apple Developer 账号与公证凭据。`tauri#8314` 描述的失败只在这一层显现，属发布流程（todo 71/74）                                                                              |
+| macOS TCC 授权弹窗                     | 未执行               | **未执行**   | runner 无 GUI 会话，命令行进程不触发 TCC 对话框。需签名产物 + 真机，属 todo 68                                                                                                      |
+| Windows 采集                           | 未执行               | **部分通过** | runner 无麦克风也无免交互虚拟输入驱动（枚举结果为 0 个设备）。已验证的是降级路径：报 `NoInputDevice` 并给出带设置路径的中文解释，不 panic 不挂住。真实采集需有声卡的 Windows 宿主机 |
+| Android 构建采集路径                   | 未执行               | **通过**     | 缺 NDK。CI 用 r26d，链接器解析为 `aarch64-linux-android26-clang`（有断言钉住不是 24）                                                                                               |
+| Android 运行时权限对话框               | 未执行               | **未执行**   | 需真机或模拟器。CI 只构建；真机验收留给 todo 68                                                                                                                                     |
+| iOS 构建采集路径                       | 未执行               | **通过**     | 缺 Xcode SDK。CI 在 `macos-14` 上 `cargo build` 成功——本工作流不带 `voice`，因此不受 `sherpa-rs` 的 cdylib 限制影响                                                                 |
+| iOS 真机采集与授权                     | 未执行               | **未执行**   | 需 macOS + Xcode + 已配置签名的设备，属 todo 68                                                                                                                                     |
+| macOS 14.2 底线                        | **已确认（读代码）** | —            | `loopback.rs` 无条件引用 14.2 API 且 `objc2-core-audio` 未做弱链接。**未**在 14.1 及更早系统实测运行期失败——无该版本宿主机                                                          |
+| Android API 26 底线                    | **已确认（读清单）** | —            | `ndk` 的 `api-level-26` 特性，cpal 0.17.3 与 0.18.1 逐字相同                                                                                                                        |
+| iOS `AVAudioSession` 激活为必需        | **已确认（读代码）** | —            | cpal 的 iOS 后端 `setActive`/`setCategory` 出现次数为 0                                                                                                                             |
+| 权限被拒时降级到打字练习               | **通过**             | **通过**     | 五平台 × 七种原因全部给出带设置路径的解释；反向验证过（改成不降级则 harness 报 5 处问题、单元测试同步失败）                                                                         |
 
 ## 相关文档
 
