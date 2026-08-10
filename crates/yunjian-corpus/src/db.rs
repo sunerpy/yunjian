@@ -1,4 +1,5 @@
 use crate::commentary::CommentaryRecord;
+use crate::fts::build_search_indexes;
 use crate::model::{
     CanonicalRecord, Genre, LicenseClass, ProvenanceKind, Script, SourceLocatorKind,
 };
@@ -80,6 +81,7 @@ struct SourceEntry {
 struct IndexVerdict {
     schema_version: u32,
     chosen_mode: String,
+    ngram_aux_enabled: bool,
     environment: IndexEnvironment,
 }
 
@@ -92,6 +94,7 @@ struct BuildMetadata {
     built_at: String,
     source_manifest_sha256: String,
     index_detail_mode: String,
+    ngram_aux_enabled: bool,
 }
 
 pub fn build_database(path: impl AsRef<Path>, input: &CorpusDbInput) -> Result<()> {
@@ -245,6 +248,11 @@ fn validate_input(input: &CorpusDbInput) -> Result<BuildMetadata> {
             verdict.chosen_mode
         )));
     }
+    if !verdict.ngram_aux_enabled {
+        return Err(corpus_error(
+            "索引 verdict 禁用了 n-gram 辅助表，但 schema v1 要求启用实测选定的候选索引",
+        ));
+    }
     if verdict.environment.page_size != 4096 {
         return Err(corpus_error(format!(
             "索引 verdict page_size {} 与 schema 固定值 4096 不符",
@@ -259,6 +267,7 @@ fn validate_input(input: &CorpusDbInput) -> Result<BuildMetadata> {
             .map(|byte| format!("{byte:02x}"))
             .collect(),
         index_detail_mode: verdict.chosen_mode,
+        ngram_aux_enabled: verdict.ngram_aux_enabled,
     })
 }
 
@@ -496,6 +505,11 @@ fn write_database(path: &Path, input: &CorpusDbInput, metadata: &BuildMetadata) 
     )?;
     transaction.commit()?;
 
+    build_search_indexes(
+        &mut connection,
+        &metadata.index_detail_mode,
+        metadata.ngram_aux_enabled,
+    )?;
     verify_database_conservation(&connection)?;
     connection.execute_batch("VACUUM")?;
     let integrity =

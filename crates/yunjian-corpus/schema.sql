@@ -75,6 +75,11 @@ CREATE TABLE variant_map (
     dst_char TEXT NOT NULL
 ) WITHOUT ROWID;
 
+CREATE TABLE ngram (
+    gram TEXT NOT NULL,
+    stable_id TEXT NOT NULL REFERENCES poem(stable_id)
+) STRICT;
+
 CREATE TABLE tag (
     name TEXT PRIMARY KEY NOT NULL
 ) WITHOUT ROWID;
@@ -124,3 +129,4 @@ CREATE INDEX poem_last_char_idx ON poem_last_char(ch, poem_id);
 CREATE INDEX poem_rhyme_group_idx ON poem_rhyme_group(rhyme_book, rhyme_group, poem_id);
 CREATE INDEX poem_tag_idx ON poem_tag(tag, poem_id);
 CREATE INDEX rhyme_character_idx ON rhyme(rhyme_book, character);
+CREATE INDEX ngram_gram_idx ON ngram(gram, stable_id);

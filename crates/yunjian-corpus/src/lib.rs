@@ -7,6 +7,7 @@
 
 pub mod commentary;
 pub mod db;
+mod fts;
 pub mod ingest;
 pub mod model;
 pub mod normalize;

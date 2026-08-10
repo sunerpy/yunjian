@@ -195,8 +195,9 @@ fn schema_is_the_checked_in_single_source_of_truth() {
     let mut statement = conn
         .prepare(
             "SELECT sql FROM sqlite_schema \
-             WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
-             ORDER BY type, name",
+              WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' \
+                AND name NOT LIKE 'poem_fts%' \
+              ORDER BY type, name",
         )
         .expect("prepare schema query");
     let actual = statement
@@ -206,6 +207,21 @@ fn schema_is_the_checked_in_single_source_of_truth() {
         .expect("collect schema");
     let expected = schema_statements(SCHEMA_SQL).expect("checked-in schema should parse");
     assert_eq!(actual, expected);
+    fs::remove_file(path).ok();
+}
+
+#[test]
+fn fts_index_is_built_as_part_of_the_corpus_database() {
+    let path = temp_db("fts-integration");
+    let input = fixture();
+    build_database(&path, &input).expect("fixture database should build with FTS");
+    let connection = Connection::open(&path).expect("open built db");
+    crate::fts::verify_search_indexes(&connection, "full", true)
+        .expect("database writer must build the verdict-selected indexes");
+    let ngram_rows: i64 = connection
+        .query_row("SELECT count(*) FROM ngram", [], |row| row.get(0))
+        .expect("count ngrams");
+    assert!(ngram_rows > 0);
     fs::remove_file(path).ok();
 }
 
