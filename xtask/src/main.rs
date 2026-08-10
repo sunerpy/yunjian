@@ -13,6 +13,7 @@
 use clap::{Parser, Subcommand};
 
 // 子命令模块在此注册（每个任务追加一行）。
+mod verify_sources;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -33,12 +34,21 @@ struct Cli {
 /// `cargo clippy -- -D warnings` 会失败。包一层 `Option` 即可保持骨架
 /// 零 warning，且不影响后续追加变体。
 #[derive(Debug, Subcommand)]
-enum Commands {}
+enum Commands {
+    /// 校验 `corpus/sources.toml`：锁定 revision、SPDX 允许列表、LICENSE 摘要、
+    /// 逐资产授权判定，以及 `corpus/DENYLIST.md` 的拒绝清单。
+    VerifySources {
+        /// 只核对随仓保存的 LICENSE，不访问网络。
+        #[arg(long)]
+        offline: bool,
+    },
+}
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         // 新增子命令时在此追加一条分派臂。
+        Some(Commands::VerifySources { offline }) => verify_sources::run(offline),
         None => Ok(()),
     }
 }
