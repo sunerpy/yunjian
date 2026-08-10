@@ -752,9 +752,13 @@ allow_download = false
         configure(&mut command);
         let output = command.output().expect("拉起子进程");
 
+        // 必须同时打出 stdout：libtest 把失败用例的 panic 信息收进自己的缓冲区，
+        // 在 `failures:` 段落里从 **stdout** 输出。只打 stderr 会得到一条空诊断，
+        // 于是「子进程失败了」这个事实有了，「为什么失败」却完全看不到。
         assert!(
             output.status.success(),
-            "子进程 {test_name} 断言失败:\n{}",
+            "子进程 {test_name} 断言失败:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
         // 过滤不到任何用例时 libtest 同样返回 0，所以必须确认子进程真的跑了那一条，
