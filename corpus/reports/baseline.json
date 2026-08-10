@@ -49,6 +49,11 @@
       "reason_code": "restricted_license",
       "expected": 0,
       "tolerance_pct": 0
+    },
+    {
+      "reason_code": "rhyme_unresolved",
+      "expected": 0,
+      "tolerance_pct": 10
     }
   ]
 }

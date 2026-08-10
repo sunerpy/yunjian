@@ -102,11 +102,13 @@ pub enum ReasonCode {
     ExcludedByPolicy,
     /// 许可受限，不进可分发集合。
     RestrictedLicense,
+    /// 韵脚没有唯一韵部，或尾字未见于适用韵书。
+    RhymeUnresolved,
 }
 
 impl ReasonCode {
     /// 全部原因码。基线文件必须逐条覆盖它，缺一条即失败。
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::LossyChar,
         Self::ConversionUnstable,
         Self::DuplicateInGroup,
@@ -116,6 +118,7 @@ impl ReasonCode {
         Self::EmptyBody,
         Self::ExcludedByPolicy,
         Self::RestrictedLicense,
+        Self::RhymeUnresolved,
     ];
 
     /// 工件里的字面值。与 serde 的 `snake_case` 重命名逐字一致。
@@ -130,6 +133,7 @@ impl ReasonCode {
             Self::EmptyBody => "empty_body",
             Self::ExcludedByPolicy => "excluded_by_policy",
             Self::RestrictedLicense => "restricted_license",
+            Self::RhymeUnresolved => "rhyme_unresolved",
         }
     }
 
@@ -271,6 +275,33 @@ impl QualityReport {
             .iter()
             .filter(|finding| finding.stable_id.as_deref() == Some(stable_id))
             .collect()
+    }
+
+    pub fn extend_findings(&mut self, additions: impl IntoIterator<Item = Finding>) -> Result<()> {
+        let additions = additions.into_iter().collect::<Vec<_>>();
+        let known_ids = self
+            .dispositions
+            .iter()
+            .filter_map(|row| row.stable_id.as_deref())
+            .collect::<BTreeSet<_>>();
+        if let Some(stable_id) = additions
+            .iter()
+            .filter_map(|finding| finding.stable_id.as_deref())
+            .find(|stable_id| !known_ids.contains(stable_id))
+        {
+            return Err(corpus_error(format!(
+                "新增 finding 指向未知 stable_id：{stable_id}"
+            )));
+        }
+        for finding in additions {
+            *self
+                .summary
+                .entry(finding.reason_code.as_str().to_owned())
+                .or_default() += 1;
+            self.findings.push(finding);
+        }
+        self.findings.sort();
+        self.check_cross_report_integrity()
     }
 
     /// **守恒检查，只看处置台账。**

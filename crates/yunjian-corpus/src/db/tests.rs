@@ -9,6 +9,7 @@ use crate::quality::{
     Disposition, DispositionCounts, DispositionRow, Finding, QualityReport, ReasonCode,
 };
 use crate::rhyme::RhymeEntry;
+use crate::rhyme_foot::RhymeConfidence;
 use rusqlite::{Connection, params};
 use std::collections::BTreeMap;
 use std::fs;
@@ -157,7 +158,7 @@ retrieved_at = "2026-08-10"
             rhyme_book: RhymeBook::Pingshui,
             rhyme_group: "下平七阳".to_owned(),
             tone: RhymeTone::Level,
-            confidence: "unambiguous".to_owned(),
+            confidence: RhymeConfidence::Unambiguous,
         }],
         variants: vec![VariantRow {
             src_char: '國',
