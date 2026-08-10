@@ -6,4 +6,8 @@
 //! 本 crate 永远不感知 Tauri：不引入任何 `tauri::` 类型，也不假设宿主为
 //! 桌面外壳，以此保留移动端的实现空间。
 //!
-//! 具体模块由后续任务补全，此处仅为可编译骨架。
+//! 具体模块由后续任务补全。
+
+pub mod config;
+
+pub use config::{Config, get_config, init_config};
