@@ -178,6 +178,19 @@ fn run_capture(name: Option<&str>, duration: Duration) -> Result<Capture, VoiceE
         });
     }
 
+    // 短于请求时长即报错，不当成功返回。`Microphone` 的迭代器只在流报错时返回 `None`，
+    // 所以任何缺口都意味着采集中途断了——实测过一次 `alsa::poll() spuriously returned`
+    // 让一秒的请求只拿到 484 ms。**默默接受截断是最坏的结果**：调用方拿到的是一段
+    // 标着「一秒」的半段音频，背诵评分会把它算成没背完，于是一次设备故障变成一个
+    // 错误的分数，而不是一条可见的失败。
+    if samples.len() < wanted_samples {
+        return Err(VoiceError::CaptureTruncated {
+            got: samples.len(),
+            wanted: wanted_samples,
+            sample_rate: TARGET_SAMPLE_RATE,
+        });
+    }
+
     Ok(Capture {
         samples,
         sample_rate: TARGET_SAMPLE_RATE,
@@ -223,6 +236,26 @@ mod tests {
         assert!(
             deadline <= Duration::from_secs(10),
             "不要等到测试超时：{deadline:?}"
+        );
+    }
+
+    #[test]
+    fn a_truncated_capture_is_an_error_not_a_short_success() {
+        let err = super::VoiceError::CaptureTruncated {
+            got: 7_744,
+            wanted: 16_000,
+            sample_rate: TARGET_SAMPLE_RATE,
+        };
+        let text = err.to_string();
+        assert!(text.contains("7744"), "报错要给出实际样本数：{text}");
+        assert!(
+            text.contains("484"),
+            "报错要换算成毫秒，纯样本数看不出录短了多少：{text}"
+        );
+        assert_eq!(
+            err.degrade_reason(),
+            crate::permission::DegradeReason::CaptureFailed,
+            "截断必须降级；默默返回半段音频会让背诵评分算成没背完"
         );
     }
 
