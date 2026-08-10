@@ -142,7 +142,7 @@ impl Dynasty {
         let canonical = match raw.trim() {
             "先秦" => Self::PreQin,
             "秦" | "秦代" => Self::Qin,
-            "汉" | "漢" | "汉代" | "漢代" => Self::Han,
+            "汉" | "漢" | "汉代" | "漢代" | "两汉" | "兩漢" => Self::Han,
             "三国" | "三國" => Self::ThreeKingdoms,
             "晋" | "晉" | "魏晋" | "魏晉" => Self::Jin,
             "南北朝" => Self::NorthernSouthern,
@@ -1475,6 +1475,17 @@ mod tests {
         let (canonical, preserved) = Dynasty::canonicalize("唐末宋初").expect("cross dynasty");
         assert_eq!(canonical, Dynasty::Tang);
         assert_eq!(preserved, "唐末宋初");
+    }
+
+    /// `蒙学/guwenguanzhi.json` 逐篇的朝代前缀实测出现 `兩漢`（34 篇）。它是
+    /// 「两汉」的繁体写法，归一到 `汉` 而原串照留。
+    #[test]
+    fn traditional_two_han_label_canonicalizes_to_han() {
+        for raw in ["两汉", "兩漢"] {
+            let (canonical, preserved) = Dynasty::canonicalize(raw).expect("两汉 应可归一");
+            assert_eq!(canonical, Dynasty::Han);
+            assert_eq!(preserved, raw);
+        }
     }
 
     #[test]
