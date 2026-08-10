@@ -34,6 +34,7 @@ Implemented on `main` **and covered by tests**:
 | stdout ban          | done     | Clippy denies `println!` and `std::io::stdout` workspace-wide, one CLI exit                         |
 | Licence gate        | done     | `xtask verify-sources` checks upstream licences and SHA-256 per asset                               |
 | Corpus record model | done     | Canonical records plus an append-only `stable_id` registry                                          |
+| Rhyme book import   | done     | 平水韵 and 词林正韵 ingested, reverse index derived at build time; 中华新韵 and 词谱 withheld       |
 | Index selection     | measured | FTS5 `detail` mode and n-gram table settled by measurement, see [Corpus](CORPUS.md)                 |
 | Voice build path    | verified | Native dependency build and linking proven on five targets, see [Voice build](../VOICE-BUILD.zh.md) |
 

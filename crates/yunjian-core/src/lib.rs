@@ -11,7 +11,9 @@
 pub mod config;
 pub mod error;
 pub mod logger;
+pub mod rhyme;
 
 pub use config::{Config, LoggerConfig, get_config, init_config};
 pub use error::{AiError, Error, Result, redact_credentials};
 pub use logger::{current_log_level, init_logger, set_log_level};
+pub use rhyme::{RhymeBook, RhymeTone};
