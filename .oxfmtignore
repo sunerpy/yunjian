@@ -22,5 +22,10 @@ corpus/licenses/
 # ---- 生成物与本地状态 ----
 # 语料构建产物由 xtask 从公共领域源重新生成，不属于人工维护的文本。
 corpus/build/
+# `corpus/reports/*.md` 由 xtask 生成（`index-spike`、`corpus-quality`）。oxfmt 会
+# 按 CJK 宽度重排表格，于是「跑一次 xtask」与「跑一次 make fmt」互相覆盖，
+# fmt-check 在两者之间永远有一次是红的。与 changelog/ 同理：生成方持有该文件。
+# 对应的 `.json` 仍然受检——`serde_json::to_string_pretty` 的输出本就是规范形态。
+corpus/reports/*.md
 target/
 .omo/
