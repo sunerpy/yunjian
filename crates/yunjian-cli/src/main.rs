@@ -1,26 +1,12 @@
 //! `yunjian` 可执行文件入口。
 //!
-//! 参数解析、配置与日志初始化、子命令分派由后续任务补全；此处仅保留
-//! 可编译骨架。
+//! 这里只做一件事：把 [`yunjian_cli::run`] 返回的退出码交给进程。逻辑全在库目标里，
+//! 因为信封、退出码与参数定义要能被进程内单测覆盖，而 stdout/stderr 分离只能由
+//! `tests/cli.rs` 用子进程验证。
 //!
-//! 注意：本二进制同时承载 MCP stdio 服务端，因此除唯一一处 CLI 展示
-//! 模块外，任何位置都不得向 stdout 写入内容。
-
-// 全工作区唯一的 stdout 出口。参数解析落地（todo 30）后才会有调用方；在那之前
-// 允许它未被使用，因为豁免点从第一天就固定在此处，比等到写 CLI 时临时开一个更可控。
-#[allow(dead_code)]
-mod present;
-
-/// 语音后端的诊断串。返回值目前无人消费，但这次调用必须留着：它是
-/// `--features voice` 下 onnxruntime 真的被链接进来的证据。去掉它，链接器就会把
-/// 整个原生依赖丢弃，`ldd` 断言与安装包体积测量都会变成空话。
-fn voice_backend() -> String {
-    match yunjian_voice::backend_version() {
-        Some(version) => format!("sherpa-onnx {version}"),
-        None => "disabled".to_owned(),
-    }
-}
+//! `run` 内部**不**调用 `std::process::exit`：那会跳过日志的 `WorkerGuard` 析构，
+//! 把尚未落盘的日志丢掉。退出码因此一路返回到这里。
 
 fn main() {
-    let _ = voice_backend();
+    std::process::exit(yunjian_cli::run());
 }

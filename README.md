@@ -25,23 +25,25 @@
 
 `main` 上**已经实现并有测试守着**的部分：
 
-| 模块         | 状态   | 说明                                                                                                |
-| ------------ | ------ | --------------------------------------------------------------------------------------------------- |
-| 工作区骨架   | 已实现 | 8 个 crate 的 Cargo workspace，依赖版本集中锁定                                                     |
-| 配置与日志   | 已实现 | 运行时发现 `config.toml`；tracing 日志强制走 stderr 与滚动文件                                      |
-| stdout 门禁  | 已实现 | clippy 全仓禁止 `println!` 与 `std::io::stdout`，只放行一处 CLI 出口                                |
-| 许可门禁     | 已实现 | `xtask verify-sources` 逐资产校验上游许可与 SHA-256                                                 |
-| 语料记录模型 | 已实现 | 规范化记录与 append-only `stable_id` 注册表                                                         |
-| 韵书导入     | 已实现 | 平水韵与词林正韵入库，逐字反向索引构建期推导；中华新韵与词谱扣留                                    |
-| 索引选型     | 已实测 | FTS5 `detail` 模式与 n-gram 辅助表由实测定案，见 [语料与索引](docs/CORPUS.zh.md)                    |
-| 语料工件     | 已实现 | 随包唐宋 47 万首（gzip 211 MiB），检索结构首启本机派生；打包带六条中止断言                          |
-| 语音构建     | 已验证 | 五平台原生依赖构建与链接路径实测，见 [语音构建](docs/VOICE-BUILD.zh.md)                             |
-| 麦克风与底线 | 已验证 | Linux 实测采集 16 kHz 单声道；各平台授权链与系统底线见 [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md) |
-| 模型许可     | 已核实 | 逐模型核实，只放行 MIT / Apache-2.0；`xtask verify-models` 强制，见 `models.toml`                   |
-| 文言字准     | 已实测 | 合成音加增强测得，结论是字准只作参考值，见 [CER 报告](docs/reports/asr-cer.md)                      |
+| 模块         | 状态   | 说明                                                                                                       |
+| ------------ | ------ | ---------------------------------------------------------------------------------------------------------- |
+| 工作区骨架   | 已实现 | 8 个 crate 的 Cargo workspace，依赖版本集中锁定                                                            |
+| 配置与日志   | 已实现 | 运行时发现 `config.toml`；tracing 日志强制走 stderr 与滚动文件                                             |
+| stdout 门禁  | 已实现 | clippy 全仓禁止 `println!` 与 `std::io::stdout`，只放行一处 CLI 出口                                       |
+| 许可门禁     | 已实现 | `xtask verify-sources` 逐资产校验上游许可与 SHA-256                                                        |
+| 语料记录模型 | 已实现 | 规范化记录与 append-only `stable_id` 注册表                                                                |
+| 韵书导入     | 已实现 | 平水韵与词林正韵入库，逐字反向索引构建期推导；中华新韵与词谱扣留                                           |
+| 索引选型     | 已实测 | FTS5 `detail` 模式与 n-gram 辅助表由实测定案，见 [语料与索引](docs/CORPUS.zh.md)                           |
+| 语料工件     | 已实现 | 随包唐宋 47 万首（gzip 211 MiB），检索结构首启本机派生；打包带六条中止断言                                 |
+| 语音构建     | 已验证 | 五平台原生依赖构建与链接路径实测，见 [语音构建](docs/VOICE-BUILD.zh.md)                                    |
+| 麦克风与底线 | 已验证 | Linux 实测采集 16 kHz 单声道；各平台授权链与系统底线见 [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md)        |
+| 模型许可     | 已核实 | 逐模型核实，只放行 MIT / Apache-2.0；`xtask verify-models` 强制，见 `models.toml`                          |
+| 文言字准     | 已实测 | 合成音加增强测得，结论是字准只作参考值，见 [CER 报告](docs/reports/asr-cer.md)                             |
+| 核心检索     | 已实现 | 正文、题目、作者、朝代、首句、尾字、标签、韵部检索与作品详情，统一收在 `Yunjian` 门面后                    |
+| 命令行       | 已实现 | `yunjian search/show/author/rhyme/corpus`，`--json` 稳定信封与 0/1/2/3 退出码，见 [命令行](docs/CLI.zh.md) |
 
-**尚未实现**（有完整方案，但一行产品代码都还没有）：诗词检索接口、AI 赏析、背诵训练与
-FSRS 复习、离线朗读与语音识别、MCP 服务器、命令行工具、Tauri 桌面端、移动端。
+**尚未实现**（有完整方案，但一行产品代码都还没有）：AI 赏析、背诵训练与 FSRS 复习、
+离线朗读与语音识别、MCP 服务器（`yunjian mcp` 目前只有占位）、Tauri 桌面端、移动端。
 
 ## 为什么是这个设计
 
@@ -139,6 +141,7 @@ cargo run -p xtask -- verify-sources --offline
 
 - [架构](docs/ARCHITECTURE.zh.md)——分层、`yunjian-core` 为什么不知道 Tauri 存在、移动端逃生通道
 - [语料与索引](docs/CORPUS.zh.md)——构建管线、`stable_id` 身份模型、FTS5 索引选型实测
+- [命令行](docs/CLI.zh.md)——子命令、`--json` 信封 schema、四个退出码、stdout/stderr 分工
 - [语音构建](docs/VOICE-BUILD.zh.md)——五平台原生依赖构建、链接方式、许可影响
 - [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md)——五平台系统最低版本、麦克风授权链、低于底线时的降级行为
 - [CER 报告](docs/reports/asr-cer.md)——文言语音识别字准实测，以及它为什么只能当参考值

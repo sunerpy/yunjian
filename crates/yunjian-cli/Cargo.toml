@@ -16,6 +16,13 @@ build = "build.rs"
 name = "yunjian"
 path = "src/main.rs"
 
+# 库目标存在的理由：可执行文件的行为要能在两个层次上被验证。信封 schema、退出码映射与
+# clap 定义本身适合进程内单测，而 stdout/stderr 分离与退出码只能由子进程验证
+# （`tests/cli.rs`）。没有库目标，前一半就只能靠后一半间接推断。
+[lib]
+name = "yunjian_cli"
+path = "src/lib.rs"
+
 [features]
 default = []
 # 语音能力从这里向下透传。默认关闭：不开时二进制不链接 onnxruntime，
@@ -23,7 +30,21 @@ default = []
 voice = ["yunjian-voice/voice"]
 
 [dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+yunjian-core = { path = "../yunjian-core" }
 yunjian-voice = { path = "../yunjian-voice" }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+# fixture 语料库要在测试里现建：真实语料是 633 MiB、首启派生实测 571.8 s 的工件，
+# 任何门禁都不可能等它。
+rusqlite = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
 
 [lints]
 workspace = true
