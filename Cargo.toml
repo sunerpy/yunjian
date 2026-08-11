@@ -27,7 +27,33 @@ rmcp = "=3.1.2"
 # `bundled` 不是默认特性，且不可移除：系统 SQLite 可能早于 FTS5 trigram 分词器（3.34.0）。
 rusqlite = { version = "0.40", features = ["bundled"] }
 fsrs = "6.6"
+# 凭据存储。**刻意只依赖 `keyring-core` 加逐平台 store，绝不依赖 `keyring` 门面 crate**：
+# keyring 4.x 自己的文档写明应用「should not be linking to this library at all」，它存在
+# 的意义是替旧版本使用者做迁移。门面会把五个平台的 store 一次性拖进依赖树，也就把
+# Linux 上的 D-Bus 栈塞进 Windows 构建里。
 keyring-core = "1.0"
+# Linux 首选：Secret Service（GNOME Keyring / KWallet）。需要 D-Bus 会话**和**一个真实
+# 的 secrets 守护进程，两者在 CI、容器与纯 SSH 会话里都不存在，因此它是「首选」而非
+# 「必然」——`Store::new()` 失败是预期路径，不是异常。
+# `crypto-rust` 不是默认特性且必须显式选一个：不选任何 crypto 后端会编译失败。选 rust
+# 而非 openssl 是为了不引入 C 依赖。
+zbus-secret-service-keyring-store = { version = "1.0", default-features = false, features = [
+  "crypto-rust",
+] }
+# Linux 兜底：内核 keyutils。上游文档称其在无头 Linux 上「strongly recommended」，因为
+# 它属于内核、总是可用；代价是**纯内存、重启即失效**，上游明确要求调用方
+# 「prepare for `Entry::get_password` to fail」。这条正是 `StorageReport.persistence`
+# 必须存在的理由：它和 Secret Service 都是「钥匙串」，但持久性根本不同。
+linux-keyutils-keyring-store = "1.0"
+# macOS 与 iOS 共用一个 crate，但特性不同、且必须显式选：macOS 用 `keychain`
+# （legacy keychain，对所有应用可用、不需要 provisioning profile），iOS 只有
+# `protected` 一个 store 且该特性是强制的（不开会 `compile_error!`）。
+apple-native-keyring-store = { version = "1.0", default-features = false }
+windows-native-keyring-store = "1.1"
+# Android。必须先由宿主应用初始化 `ndk-context` 的 application context 才能建 store。
+# 默认特性即新的命名 store（`by_store`）；`legacy`（`by_service`）刻意不开：上游标记
+# 其为 deprecated，且它删完凭据后仍留下密钥。
+android-native-keyring-store = { version = "1.0", default-features = false }
 genai = "0.6"
 # 麦克风采集。`default-features = false` 是刻意的：默认特性会拖进 symphonia 的整套
 # 解码器（flac/mp3/mp4/vorbis），而采集路径一个都不需要。`recording` 提供
@@ -70,6 +96,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 thiserror = "2"
 anyhow = "1"
+async-trait = "=0.1.89"
 # 配置发现需要平台配置/数据目录（XDG、macOS、Windows 各不相同）。
 dirs = "6"
 # 仅用于测试：把结构体序列化成 JSON 后检查字段名，守住「配置里不得出现密钥字段」。
