@@ -86,6 +86,13 @@ pub enum Error {
     #[error("AI 错误：{0}")]
     Ai(AiError),
 
+    /// 指定 AI 供应商尚未配置密钥。
+    #[error("AI 供应商 {provider} 尚未配置密钥")]
+    AiKeyNotConfigured {
+        /// 缺少密钥的供应商标识。
+        provider: String,
+    },
+
     /// 语音采集、合成或识别失败。
     #[error("语音错误：{0}")]
     Voice(String),
