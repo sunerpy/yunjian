@@ -6,7 +6,7 @@
 
 - 声明预算：随包工件 gzip 后 <= **300 MB**，查询 p95 <= **150 ms**
 - 结论：`within_budget = true`（发布规模已实测：true）
-- 随包形态实测 1 行（tang-song（474162 首）gzip 211 MB、首启派生 571.8 s、审计库另存 240 MB），全部 gzip <= 300 MB 且最差 p95 <= 150 ms，预算内。默认随包 tang-song，全量作为应用内可选下载。另有 3 行含 ngram 与审计表的实测保留在报告里，它们是拆分决策的依据而不是候选发布物。发布上限规模（full）已实测，缩小随包默认集的依据来自真实数字。
+- 随包形态实测 2 行（10k（10000 首）gzip 4 MB、首启派生 9.1 s、审计库另存 332 MB；tang-song（474162 首）gzip 211 MB、首启派生 571.8 s、审计库另存 240 MB），全部 gzip <= 300 MB 且最差 p95 <= 150 ms，预算内。默认随包 tang-song，全量作为应用内可选下载。另有 3 行含 ngram 与审计表的实测保留在报告里，它们是拆分决策的依据而不是候选发布物。发布上限规模（full）已实测，缩小随包默认集的依据来自真实数字。
 
 ## 参考机
 
@@ -26,7 +26,7 @@
 
 | 规模 | 形态 | 状态 | 首数 | 原始正文 MiB | poem 表 MiB | poem_fts MiB | FTS/poem | ngram MiB | ngram 行 | 索引/原文 | VACUUM 前 MiB | VACUUM 后 MiB | gzip MiB | 审计库 MiB | 首启派生 s | 最差 p95 ms | 体积预算 | 延迟预算 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10k | 随包形态（去派生结构、去审计表） | NOT MEASURED | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| 10k | 随包形态（去派生结构、去审计表） | 实测 | 10000 | 2.17 | 10.16 | 6.90 | 0.68x | 72.94 | 1184776 | 36.87x | 14.58 | 13.96 | 4.86 | 332.47 | 9.1 | 1.436 | 通过 | 通过 |
 | tang-song | 随包形态（去派生结构、去审计表） | 实测 | 474162 | 101.78 | 494.72 | 228.66 | 0.46x | 3517.44 | 55730018 | 36.81x | 624.77 | 603.84 | 211.81 | 240.12 | 571.8 | 22.009 | 通过 | 通过 |
 | full | 随包形态（去派生结构、去审计表） | NOT MEASURED | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | 10k | 含 ngram + 审计表 | 实测 | 10000 | 2.16 | 10.41 | 6.89 | 0.66x | 68.42 | 1184326 | 34.79x | 297.07 | 281.03 | 91.23 | — | — | 0.889 | 通过 | 通过 |
@@ -35,12 +35,61 @@
 
 ### 未实测的规模与阻塞原因
 
-- **10k**（唐宋集合按 stable_id 排序的确定性前 1 万首）：本次运行未请求该规模（未传 --scale 10k）。要补测：在同一参考机上追加该规模重跑。
 - **full**（chinese-poetry 全部可分发资产，加 Werneror 全部古典朝代分桶）：本次运行未请求该规模（未传 --scale full）。要补测：在同一参考机上追加该规模重跑。
+
+## 结构化清洗与体裁实测（10k）
+
+质量 finding 以 **798763 条输入记录**为范围；体裁与韵脚以清洗、去重、隔离后的 **10000 首作品**为范围。两种范围不可混作同一分母。
+
+- 占位正文隔离：`119` 条
+- 粘连句拆分：`480423` 条
+- 乐府旧题标记：`1` 首
+
+### 体裁分布
+
+| form | 首数 |
+| --- | ---: |
+| `ci` | 595 |
+| `irregular` | 3012 |
+| `qijue` | 2159 |
+| `qilv` | 2102 |
+| `unknown` | 7 |
+| `wujue` | 420 |
+| `wulv` | 1705 |
+
+### 韵脚边界修正前后
+
+“修正前”在同一份最终 10k 输入上按 `，。！？；`/换行逐段取尾字；“修正后”只按 `。！？`/换行取韵脚。两列由本次命令同时重算，不沿用手填历史值。
+
+| 指标 | 修正前 | 修正后 |
+| --- | ---: | ---: |
+| poems `resolved_by_vote` | 4408 | 3515 |
+| poems `unambiguous` | 3764 | 4209 |
+| poems `unresolved` | 2643 | 2629 |
+| 已分析作品 | 9776 | 9776 |
+| unresolved 作品 | 2643 | 2629 |
+| unresolved 比例 | 27.0356% | 26.8924% |
 
 ## 字节去了哪里（逐表，占比降序）
 
 只看 poem / poem_fts / ngram 三项会误判：`disposition` 台账记的是全部**输入**记录（含被排除的），与随包首数无关，却可能占掉文件的大半——这正是把它移出随包工件的依据。随包形态的行里这两张台账已经不在字节账内。
+
+### 规模 10k（10000 首）
+
+| 表/索引 | MiB | 占文件 |
+| --- | --- | --- |
+| `poem` | 8.80 | 63.0% |
+| `poem_rhyme_group` | 0.86 | 6.2% |
+| `poem_rhyme_group_idx` | 0.67 | 4.8% |
+| `rhyme` | 0.66 | 4.8% |
+| `rhyme_character_idx` | 0.52 | 3.7% |
+| `sqlite_autoindex_poem_2` | 0.50 | 3.6% |
+| `poem_title_idx` | 0.32 | 2.3% |
+| `poem_first_line_idx` | 0.28 | 2.0% |
+| `sqlite_autoindex_poem_1` | 0.23 | 1.7% |
+| `poem_work_group_idx` | 0.20 | 1.4% |
+| `poem_author_idx` | 0.15 | 1.1% |
+| `poem_form_idx` | 0.14 | 1.0% |
 
 ### 规模 tang-song（474162 首）
 
@@ -113,6 +162,19 @@
 ## 八条代表性查询的逐条延迟
 
 等值类探针的绑定值取**库内最高频值**（近似最坏情形，三个规模可比），因此绑定值随规模变化是预期的。已知口径限制：在 `tang-song` 与 `full` 上，被最多首共用的首句恰好是 Werneror 的 utf8mb4 缺字记录（`□` 替换字符，`corpus/sources.toml` 已记载该上游缺陷）。它仍然是真实存在的正文、仍然走 trigram 约束路径、仍然有真实命中，所以这条延迟是有效的；但它量的是「缺字占位串」而不是一句常见诗句。该条 p95 距 150 ms 预算有两个数量级余量，结论不受影响。
+
+### 规模 10k（10000 首）
+
+| 查询 | 类型 | 命中 | p50 ms | p95 ms | EXPLAIN QUERY PLAN |
+| --- | --- | --- | --- | --- | --- |
+| two_char_ngram | 两字查询「明月」经 n-gram 覆盖索引 | 156 | 0.343 | 0.374 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| three_char_match | 三字 FTS5 MATCH（trigram）「明月光」 | 3 | 0.023 | 0.027 | `SCAN f VIRTUAL TABLE INDEX 0:M1 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
+| full_line_like | 整句 LIKE（trigram 约束），绑定库内最高频值「尧夫非是爱吟诗，」 | 7 | 0.074 | 0.093 | `SCAN f VIRTUAL TABLE INDEX 0:L0 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
+| author_lookup | 作者等值（B-tree），绑定库内最高频值「陸游」 | 202 | 0.135 | 0.157 | `SEARCH poem USING INDEX poem_author_idx (author=?)` |
+| first_line_prefix | 首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」 | 27 | 0.030 | 0.033 | `SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)` |
+| rhyme_group_join | 韵部连接，绑定库内最高频值「四支」 | 923 | 0.558 | 0.616 | `SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?) / SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| tag_filter | 标签过滤（规范化多对多表），绑定库内最高频值「送别」 | 942 | 0.251 | 0.264 | `SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)` |
+| cold_open_first_query | 冷启动后首查（每轮重开连接，不预热）「明月」 | 156 | 1.169 | 1.436 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
 
 ### 规模 tang-song（474162 首）
 

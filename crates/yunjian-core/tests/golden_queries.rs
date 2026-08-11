@@ -25,7 +25,7 @@ use rusqlite::{Connection, params};
 use serde::Deserialize;
 use yunjian_core::{
     CorpusConfig, CorpusHandle, QueryPlan, SCHEMA_VERSION, TEXT_SEARCH_HARD_CAP, TextSearchRequest,
-    plan_metadata_query, plan_query,
+    plan_metadata_query, plan_query, split_metrical_lines, split_rhyme_feet,
 };
 
 // ---------------------------------------------------------------- 契约数据结构
@@ -813,30 +813,29 @@ fn fixture_set_is_internally_consistent() {
 
         // 首句与逐句末字都是预计算列（todo 17），必须与正文一致，否则元数据检索
         // 的断言会建立在错的数据上。
-        let lines: Vec<&str> = p
-            .body
-            .split(['，', '。', '！', '？', '；'])
-            .filter(|s| !s.is_empty())
-            .collect();
+        let metrical_lines = split_metrical_lines(&p.body).collect::<Vec<_>>();
+        let rhyme_lines = split_rhyme_feet(&p.body)
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
         assert_eq!(
-            lines.first().copied().unwrap_or_default(),
+            metrical_lines.first().copied().unwrap_or_default(),
             p.first_line,
             "{}: first_line 与正文首句不一致",
             p.stable_id
         );
         assert_eq!(
-            lines.len(),
+            rhyme_lines.len(),
             p.last_chars.len(),
-            "{}: last_chars 条数 {} 与句数 {} 不一致",
+            "{}: last_chars 条数 {} 与韵脚句数 {} 不一致",
             p.stable_id,
             p.last_chars.len(),
-            lines.len()
+            rhyme_lines.len()
         );
-        for (line, last) in lines.iter().zip(&p.last_chars) {
-            assert_eq!(
-                line.chars().last().map(String::from).unwrap_or_default(),
-                *last,
-                "{}: 句「{line}」的末字与 last_chars 记录的 {last} 不一致",
+        for (line, last) in rhyme_lines.iter().zip(&p.last_chars) {
+            assert!(
+                line.ends_with(last),
+                "{}: 韵脚句「{line}」的末字与 last_chars 记录的 {last} 不一致",
                 p.stable_id
             );
         }

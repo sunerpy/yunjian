@@ -1,4 +1,5 @@
 use crate::commentary::CommentaryRecord;
+use crate::form;
 use crate::fts;
 use crate::model::{
     CanonicalRecord, Genre, LicenseClass, ProvenanceKind, Script, SourceLocatorKind,
@@ -512,13 +513,12 @@ fn write_database(
     let mut records = input.records.iter().collect::<Vec<_>>();
     records.sort_by(|left, right| left.stable_id.cmp(&right.stable_id));
     for record in records {
+        let classification = form::classify(record)?;
         let normalized = normalized_by_id
             .get(record.stable_id.as_str())
             .ok_or_else(|| corpus_error(format!("缺少归一记录：{}", record.stable_id)))?;
-        let last_chars = normalized
-            .body_lines
-            .iter()
-            .filter_map(|line| last_character(line))
+        let last_chars = yunjian_core::split_rhyme_feet(&normalized.body)
+            .filter_map(last_character)
             .map(|character| character.to_string())
             .collect::<Vec<_>>();
         let last_chars_json = serde_json::to_string(&last_chars)
@@ -531,14 +531,14 @@ fn write_database(
             .count();
         transaction.execute(
             "INSERT INTO poem(\
-                stable_id, content_hash, source_locator, source_locator_kind, genre, title, \
+                stable_id, content_hash, source_locator, source_locator_kind, genre, form, is_yuefu, title, \
                 title_raw, ci_tune, author, dynasty, dynasty_raw, body, body_original, script, \
                 first_line, last_chars, line_count, char_count, provenance_source, \
                 provenance_revision, provenance_kind, provenance_license, \
                 provenance_license_class, work_group, edition_group\
              ) VALUES (\
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, \
-                ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25\
+                ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27\
              )",
             params![
                 record.stable_id,
@@ -546,6 +546,8 @@ fn write_database(
                 record.source_locator,
                 source_locator_kind(record.source_locator_kind),
                 genre(record.genre),
+                classification.form.as_str(),
+                i64::from(classification.is_yuefu),
                 record.title,
                 record.title_raw,
                 record.ci_tune,

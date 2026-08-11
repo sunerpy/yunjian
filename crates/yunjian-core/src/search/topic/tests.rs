@@ -322,7 +322,7 @@ fn write_fixture(path: &Path, blank_citation_field: Option<&str>) {
                     poem.body,
                     poem.first_line,
                     serde_json::to_string(&poem.last_chars).expect("序列化 last_chars"),
-                    poem.last_chars.len() as i64,
+                    crate::split_metrical_lines(&poem.body).count() as i64,
                     crate::text::content_chars(&poem.body).count() as i64,
                     format!("wg-{}", poem.title),
                     format!("eg-{}-{}", poem.author, poem.title),
@@ -572,7 +572,7 @@ fn poem_detail_returns_the_poem_its_author_and_its_provenance() {
     assert_eq!(detail.poem.title, "静夜思");
     assert_eq!(detail.poem.author, "李白");
     assert_eq!(detail.poem.dynasty.canonical, "唐");
-    assert_eq!(detail.poem.last_chars, vec!["光", "霜", "月", "乡"]);
+    assert_eq!(detail.poem.last_chars, vec!["霜", "乡"]);
     assert_eq!(detail.author.name, "李白");
     assert!(
         detail.author.poem_count >= 2,
@@ -876,27 +876,28 @@ fn the_upstream_undetermined_markers_map_to_unknown_not_to_level() {
 }
 
 #[test]
-fn tone_line_indices_line_up_with_the_derived_last_chars() {
-    // 平仄的句序号与 `poem.last_chars` 的下标必须同源：两套切句规则漂移时不会报错，
-    // 只会让标注挂到别的句子上。
+fn tone_lines_and_rhyme_feet_keep_their_distinct_boundaries() {
+    // 平仄按逗号切格律行，韵脚只按句号等句末标点切；这里刻意证明两套边界不会再次被
+    // “统一”。《静夜思》因此有 4 个平仄行，但只有「霜/乡」两个韵脚候选。
     let fixture = fixture();
     let detail = poem_detail(&fixture.handle, ANCHOR).expect("取详情");
-    assert_eq!(detail.tones.lines.len(), detail.poem.last_chars.len());
-    for (index, (line, last)) in detail
+    assert_eq!(detail.poem.line_count, 4);
+    assert_eq!(detail.poem.last_chars, ["霜", "乡"]);
+    assert_eq!(detail.tones.lines.len(), 4);
+    let metrical_ends = detail
         .tones
         .lines
         .iter()
-        .zip(&detail.poem.last_chars)
-        .enumerate()
-    {
-        assert_eq!(
-            line.cells.last().map(|cell| cell.character.as_str()),
-            Some(last.as_str()),
-            "第 {index} 句的末字与 last_chars 记录的不一致"
-        );
+        .map(|line| line.cells.last().map(|cell| cell.character.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        metrical_ends,
+        [Some("光"), Some("霜"), Some("月"), Some("乡")]
+    );
+    for (index, line) in detail.tones.lines.iter().enumerate() {
         assert_eq!(
             line.line_index as usize, index,
-            "句序号必须连续且从 0 起，与 last_chars 的下标同源"
+            "格律行序号必须连续且从 0 起"
         );
     }
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "fixtures",
-  "input_rows": 66,
+  "input_rows": 67,
   "poem_count": 54,
   "note": "由 `cargo run -p xtask -- corpus-quality --write-baseline` 生成。范围是随仓 fixture 加 tests/fixtures/quality/ 的补充记录，逐 code 容差按 ReasonCode::default_tolerance_pct；restricted_license 与 excluded_by_policy 为 0%。容差按整数下取整，所以小计数在实践中要求精确相等。",
   "codes": [
@@ -38,6 +38,16 @@
     {
       "reason_code": "empty_body",
       "expected": 1,
+      "tolerance_pct": 10
+    },
+    {
+      "reason_code": "placeholder_body",
+      "expected": 1,
+      "tolerance_pct": 10
+    },
+    {
+      "reason_code": "glued_lines",
+      "expected": 47,
       "tolerance_pct": 10
     },
     {

@@ -74,7 +74,7 @@ fn grams_are_deduplicated_per_poem_but_not_across_poems() {
 
 #[test]
 fn last_chars_are_derived_per_line_with_punctuation_stripped() {
-    let mut connection = corpus(&[("a", "床前明月光，\n疑是地上霜。")]);
+    let mut connection = corpus(&[("a", "床前明月光，疑是地上霜。举头望明月，低头思故乡。")]);
     build_derived_indexes(&mut connection).expect("首启构建");
     let mut statement = connection
         .prepare("SELECT line_index, ch FROM poem_last_char WHERE poem_id='a' ORDER BY line_index")
@@ -86,7 +86,23 @@ fn last_chars_are_derived_per_line_with_punctuation_stripped() {
         .expect("query")
         .collect::<rusqlite::Result<Vec<_>>>()
         .expect("collect");
-    assert_eq!(rows, vec![(0, "光".to_owned()), (1, "霜".to_owned())]);
+    assert_eq!(rows, vec![(0, "霜".to_owned()), (1, "乡".to_owned())]);
+    assert!(rows.iter().all(|(_, character)| character != "月"));
+}
+
+#[test]
+fn rhyme_and_metrical_splitters_have_deliberately_different_comma_semantics() {
+    let body = "床前明月光，疑是地上霜。举头望明月，低头思故乡。";
+    let rhyme_feet = split_rhyme_feet(body)
+        .filter_map(last_character)
+        .collect::<Vec<_>>();
+    let metrical_lines = split_metrical_lines(body).collect::<Vec<_>>();
+
+    assert_eq!(rhyme_feet, vec!['霜', '乡']);
+    assert_eq!(
+        metrical_lines,
+        ["床前明月光", "疑是地上霜", "举头望明月", "低头思故乡"]
+    );
 }
 
 #[test]

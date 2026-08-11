@@ -34,7 +34,8 @@ pub use corpus::{
 };
 pub use derive::{
     DeriveProgress, DeriveStep, DerivedBuildStats, build_derived_indexes,
-    build_derived_indexes_with_progress, derived_indexes_present, verify_derived_indexes,
+    build_derived_indexes_with_progress, derived_indexes_present, split_metrical_lines,
+    split_rhyme_feet, verify_derived_indexes,
 };
 pub use error::{AiError, Error, Result, redact_credentials};
 pub use logger::{current_log_level, init_logger, set_log_level};

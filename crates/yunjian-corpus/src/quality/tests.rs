@@ -125,6 +125,8 @@ fn analyze_records(output: &RebuildOutput) -> QualityReport {
     let input = QualityInput {
         shippable: &output.shippable_records,
         restricted: &output.restricted_records,
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: Vec::new(),
         normalization: &[],
     };
@@ -344,6 +346,8 @@ fn conservation_is_asserted_over_dispositions_never_over_findings() {
     let input = QualityInput {
         shippable: &output.shippable_records,
         restricted: &output.restricted_records,
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: blocked_units,
         normalization: &[],
     };
@@ -571,7 +575,7 @@ fn input_row_drift_fails_because_per_code_counts_stop_being_comparable() {
 }
 
 #[test]
-fn the_committed_baseline_covers_all_nine_reason_codes() {
+fn the_committed_baseline_covers_all_reason_codes() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(BASELINE_JSON);
@@ -667,6 +671,8 @@ fn conversion_unstable_joins_to_the_record_by_stable_id() {
     let input = QualityInput {
         shippable: &output.shippable_records,
         restricted: &output.restricted_records,
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: Vec::new(),
         normalization: &normalized.findings,
     };
@@ -700,6 +706,8 @@ fn a_normalization_finding_for_an_unknown_record_fails_loudly() {
     let input = QualityInput {
         shippable: &output.shippable_records,
         restricted: &output.restricted_records,
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: Vec::new(),
         normalization: &stray,
     };
@@ -762,6 +770,8 @@ fn unknown_dynasty_can_only_come_from_the_ingest_stage_and_is_an_exclusion() {
     let quality_input = QualityInput {
         shippable: &[],
         restricted: &[],
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: vec![blocked(
             0,
             Disposition::Excluded,
@@ -799,6 +809,8 @@ fn a_restricted_record_in_the_shippable_slice_is_rejected() {
     let quality_input = QualityInput {
         shippable: &smuggled,
         restricted: &[],
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: Vec::new(),
         normalization: &[],
     };
@@ -823,11 +835,135 @@ fn empty_body_is_reported_and_excluded_by_the_ingest_stage() {
 }
 
 #[test]
+fn placeholder_body_is_quarantined_without_becoming_empty_body_or_shippable() {
+    let placeholder = synthetic(999, "无名氏", "无正文。");
+    let outcome = run_pipeline(
+        &chinese_poetry_fixture_root(),
+        &werneror_fixture_root(),
+        &fixture_buckets(),
+        vec![placeholder],
+        CORPUS_VERSION,
+    )
+    .expect("带占位正文的流水线应成功");
+
+    let placeholders = outcome.report.findings_with(ReasonCode::PlaceholderBody);
+    assert_eq!(placeholders.len(), 1);
+    assert!(
+        placeholders[0].stable_id.is_some(),
+        "占位正文在身份铸造后隔离"
+    );
+    assert_eq!(outcome.report.finding_count(ReasonCode::EmptyBody), 1);
+    assert!(
+        outcome
+            .shippable
+            .iter()
+            .all(|record| record.body_lines.concat().trim() != "无正文。"),
+        "占位正文不许进入主表输入"
+    );
+    outcome.report.check_conservation().expect("新增隔离后守恒");
+}
+
+#[test]
+fn glued_lines_are_split_and_closing_quotes_stay_with_the_previous_line() {
+    let glued = synthetic(1000, "无名氏", "江南有美人，别后长相忆。");
+    let quoted = synthetic(1001, "陶渊明", "問君何能爾？”心遠地自偏。");
+    let outcome = run_pipeline(
+        &chinese_poetry_fixture_root(),
+        &werneror_fixture_root(),
+        &fixture_buckets(),
+        vec![glued, quoted],
+        CORPUS_VERSION,
+    )
+    .expect("带粘连行的流水线应成功");
+
+    let glued_record = outcome
+        .shippable
+        .iter()
+        .find(|record| record.title == "合成 其1000")
+        .expect("粘连 fixture 应进入主表输入");
+    assert_eq!(
+        glued_record.body_lines,
+        vec!["江南有美人，", "别后长相忆。"]
+    );
+    assert_eq!(glued_record.body_lines.len(), 2);
+
+    let quoted_record = outcome
+        .shippable
+        .iter()
+        .find(|record| record.title == "合成 其1001")
+        .expect("引号 fixture 应进入主表输入");
+    assert_eq!(
+        quoted_record.body_lines,
+        vec!["問君何能爾？”", "心遠地自偏。"]
+    );
+    assert!(!quoted_record.body_lines[1].starts_with('”'));
+    let glued_ids = outcome
+        .report
+        .findings_with(ReasonCode::GluedLines)
+        .into_iter()
+        .filter_map(|finding| finding.stable_id.as_deref())
+        .collect::<BTreeSet<_>>();
+    assert!(glued_ids.contains(glued_record.stable_id.as_str()));
+    assert!(glued_ids.contains(quoted_record.stable_id.as_str()));
+    outcome
+        .report
+        .check_conservation()
+        .expect("拆分只增加 finding，不破坏守恒");
+}
+
+#[test]
+fn glued_line_cleaning_preserves_rhyme_vote_evidence() {
+    use crate::rhyme::import;
+    use crate::rhyme_foot::{PoemLastCharInput, RhymeConfidence, derive};
+
+    let glued = synthetic(1002, "无名氏", "江上独相临，月下见归心。云深又入林。");
+    let outcome = run_pipeline(
+        &chinese_poetry_fixture_root(),
+        &werneror_fixture_root(),
+        &fixture_buckets(),
+        vec![glued],
+        CORPUS_VERSION,
+    )
+    .expect("带粘连韵脚的流水线应成功");
+    let record = outcome
+        .shippable
+        .iter()
+        .find(|record| record.title == "合成 其1002")
+        .expect("韵脚 fixture 应进入主表输入");
+    let feet = record
+        .body_lines
+        .iter()
+        .enumerate()
+        .filter_map(|(line_index, line)| {
+            yunjian_core::content_chars(line)
+                .last()
+                .map(|character| PoemLastCharInput {
+                    poem_id: record.stable_id.clone(),
+                    work_group: record.work_group.clone(),
+                    genre: record.genre,
+                    line_index,
+                    character: character.to_string(),
+                })
+        })
+        .collect::<Vec<_>>();
+    let rhymes = import(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rhyme_book"))
+        .expect("导入韵书 fixture");
+    let derived = derive(&feet, &rhymes).expect("粘连行清洗后的韵脚应可推导");
+
+    assert_eq!(record.body_lines.len(), 3);
+    assert_eq!(derived.rows.len(), 1);
+    assert_eq!(derived.rows[0].rhyme_group, "十二侵");
+    assert_eq!(derived.rows[0].confidence, RhymeConfidence::ResolvedByVote);
+}
+
+#[test]
 fn a_blocked_unit_claiming_to_be_shipped_is_rejected() {
     let normalizer = Normalizer::new().expect("初始化归一器");
     let input = QualityInput {
         shippable: &[],
         restricted: &[],
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: vec![blocked(0, Disposition::Shipped, ReasonCode::LossyChar)],
         normalization: &[],
     };
@@ -841,6 +977,8 @@ fn a_duplicated_locator_in_the_ledger_is_rejected() {
     let input = QualityInput {
         shippable: &[],
         restricted: &[],
+        placeholders: &[],
+        glued: BTreeSet::new(),
         blocked: vec![
             blocked(7, Disposition::Excluded, ReasonCode::ExcludedByPolicy),
             blocked(7, Disposition::Quarantined, ReasonCode::LossyChar),

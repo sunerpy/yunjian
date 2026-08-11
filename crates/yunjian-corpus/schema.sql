@@ -11,6 +11,8 @@ CREATE TABLE poem (
     source_locator TEXT NOT NULL UNIQUE,
     source_locator_kind TEXT NOT NULL CHECK (source_locator_kind IN ('native', 'positional')),
     genre TEXT NOT NULL CHECK (genre IN ('shi', 'ci', 'qu', 'fu', 'wen')),
+    form TEXT NOT NULL DEFAULT 'unknown' CHECK (form IN ('wujue', 'qijue', 'wulv', 'qilv', 'yuefu', 'ci', 'irregular', 'unknown')),
+    is_yuefu INTEGER NOT NULL DEFAULT 0 CHECK (is_yuefu IN (0, 1)),
     title TEXT NOT NULL,
     title_raw TEXT NOT NULL,
     ci_tune TEXT,
@@ -108,6 +110,8 @@ CREATE TABLE corpus_meta (
 
 CREATE INDEX poem_author_idx ON poem(author);
 CREATE INDEX poem_dynasty_idx ON poem(dynasty);
+CREATE INDEX poem_form_idx ON poem(form);
+CREATE INDEX poem_is_yuefu_idx ON poem(is_yuefu);
 CREATE INDEX poem_title_idx ON poem(title);
 CREATE INDEX poem_ci_tune_idx ON poem(ci_tune);
 CREATE INDEX poem_first_line_idx ON poem(first_line);

@@ -59,6 +59,8 @@ use crate::ingest::{DefectReason, IngestOutcome};
 use crate::model::{CanonicalRecord, Genre, LicenseClass, compute_work_group};
 use crate::normalize::{NormalizationFinding, Normalizer};
 
+const PLACEHOLDERS_TOML: &str = include_str!("../../../corpus/placeholders.toml");
+
 /// 工件的 schema 版本。字段语义变化时递增，下游读到不认识的版本应硬失败。
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -98,6 +100,10 @@ pub enum ReasonCode {
     UnknownDynasty,
     /// 正文为空。
     EmptyBody,
+    /// 正文是上游用来表示缺失内容的完整占位串。
+    PlaceholderBody,
+    /// 上游将多个结构行粘在同一个数组元素中，已在构建期拆分。
+    GluedLines,
     /// 按入库策略排除（近现代分桶、整文件现代内容、分桶标签不符等）。
     ExcludedByPolicy,
     /// 许可受限，不进可分发集合。
@@ -108,7 +114,7 @@ pub enum ReasonCode {
 
 impl ReasonCode {
     /// 全部原因码。基线文件必须逐条覆盖它，缺一条即失败。
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::LossyChar,
         Self::ConversionUnstable,
         Self::DuplicateInGroup,
@@ -116,6 +122,8 @@ impl ReasonCode {
         Self::SuspectLength,
         Self::UnknownDynasty,
         Self::EmptyBody,
+        Self::PlaceholderBody,
+        Self::GluedLines,
         Self::ExcludedByPolicy,
         Self::RestrictedLicense,
         Self::RhymeUnresolved,
@@ -131,6 +139,8 @@ impl ReasonCode {
             Self::SuspectLength => "suspect_length",
             Self::UnknownDynasty => "unknown_dynasty",
             Self::EmptyBody => "empty_body",
+            Self::PlaceholderBody => "placeholder_body",
+            Self::GluedLines => "glued_lines",
             Self::ExcludedByPolicy => "excluded_by_policy",
             Self::RestrictedLicense => "restricted_license",
             Self::RhymeUnresolved => "rhyme_unresolved",
@@ -218,6 +228,10 @@ pub struct QualityInput<'a> {
     pub shippable: &'a [CanonicalRecord],
     /// 已铸造身份但许可受限的记录，处置为 `quarantined`。
     pub restricted: &'a [CanonicalRecord],
+    /// 已铸造身份但正文命中占位清单的记录，处置为 `quarantined`。
+    pub placeholders: &'a [CanonicalRecord],
+    /// 构建期发生过粘连行拆分的 `stable_id`。
+    pub glued: BTreeSet<String>,
     /// 入库前被挡下的输入单元。
     pub blocked: Vec<BlockedUnit>,
     /// 归一阶段的 finding，按 `stable_id` 关联到已铸造身份的记录。
@@ -567,7 +581,10 @@ struct GroupMember<'a> {
 pub fn analyze(input: &QualityInput<'_>, normalizer: &Normalizer) -> Result<QualityReport> {
     // 先算输入数，再建台账。顺序是有意义的：input_rows 必须是台账的外部参照，
     // 而不是从台账回读出来的同一个数——否则守恒式恒真，什么也证明不了。
-    let input_rows = input.shippable.len() + input.restricted.len() + input.blocked.len();
+    let input_rows = input.shippable.len()
+        + input.restricted.len()
+        + input.placeholders.len()
+        + input.blocked.len();
 
     let mut dispositions: Vec<DispositionRow> = Vec::with_capacity(input_rows);
     let mut findings: Vec<Finding> = Vec::new();
@@ -623,7 +640,33 @@ pub fn analyze(input: &QualityInput<'_>, normalizer: &Normalizer) -> Result<Qual
                     source: record.provenance.source_name.clone(),
                 });
             }
+            if input.glued.contains(&record.stable_id) {
+                findings.push(Finding {
+                    stable_id: Some(record.stable_id.clone()),
+                    work_group: group_of.get(record.stable_id.as_str()).cloned(),
+                    reason_code: ReasonCode::GluedLines,
+                    detail: format!("《{}》的上游正文含粘连结构行，已按句读拆分", record.title),
+                    source: record.provenance.source_name.clone(),
+                });
+            }
         }
+    }
+
+    for record in input.placeholders {
+        let group = detection_group(normalizer, record);
+        dispositions.push(DispositionRow {
+            source_locator: record.source_locator.clone(),
+            stable_id: Some(record.stable_id.clone()),
+            disposition: Disposition::Quarantined,
+        });
+        counts.quarantined += 1;
+        findings.push(Finding {
+            stable_id: Some(record.stable_id.clone()),
+            work_group: Some(group),
+            reason_code: ReasonCode::PlaceholderBody,
+            detail: format!("《{}》正文是上游缺失内容占位串，留档不进主表", record.title),
+            source: record.provenance.source_name.clone(),
+        });
     }
 
     // 被挡下的输入单元：一行台账，一条 finding。
@@ -817,6 +860,98 @@ pub struct PipelineOutcome {
     pub restricted: Vec<CanonicalRecord>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlaceholderList {
+    placeholder: Vec<PlaceholderEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PlaceholderEntry {
+    value: String,
+    source: String,
+    note: String,
+}
+
+fn partition_placeholders(
+    records: Vec<CanonicalRecord>,
+) -> Result<(Vec<CanonicalRecord>, Vec<CanonicalRecord>)> {
+    let list: PlaceholderList = toml::from_str(PLACEHOLDERS_TOML)
+        .map_err(|error| corpus_error(format!("解析 corpus/placeholders.toml 失败：{error}")))?;
+    let mut values = BTreeSet::new();
+    for entry in list.placeholder {
+        if entry.value.trim().is_empty()
+            || entry.source.trim().is_empty()
+            || entry.note.trim().is_empty()
+        {
+            return Err(corpus_error(
+                "占位正文条目必须同时包含非空 value、source 与 note",
+            ));
+        }
+        if !values.insert(entry.value) {
+            return Err(corpus_error("corpus/placeholders.toml 含重复占位正文"));
+        }
+    }
+    let (placeholders, shippable) = records.into_iter().partition(|record| {
+        let joined = record.body_lines.concat();
+        values.contains(joined.trim())
+    });
+    Ok((shippable, placeholders))
+}
+
+fn split_glued_line(line: &str) -> Vec<String> {
+    const CLOSERS: [char; 5] = ['”', '》', '】', '」', '』'];
+    let mut boundaries = Vec::new();
+    let characters = line.char_indices().collect::<Vec<_>>();
+    let mut index = 0;
+    while index < characters.len() {
+        let (_, character) = characters[index];
+        if matches!(character, '，' | '。' | '！' | '？' | '；') {
+            let mut end = index + 1;
+            while end < characters.len() && CLOSERS.contains(&characters[end].1) {
+                end += 1;
+            }
+            let byte_end = characters
+                .get(end)
+                .map_or(line.len(), |(byte_index, _)| *byte_index);
+            boundaries.push(byte_end);
+            index = end;
+        } else {
+            index += 1;
+        }
+    }
+
+    let mut start = 0;
+    let mut segments = Vec::new();
+    for end in boundaries.into_iter().chain(std::iter::once(line.len())) {
+        if end <= start {
+            continue;
+        }
+        let segment = line[start..end].trim();
+        if yunjian_core::content_chars(segment).next().is_some() {
+            segments.push(segment.to_owned());
+        }
+        start = end;
+    }
+    segments
+}
+
+fn clean_glued_lines(inputs: &mut [crate::model::RecordInput]) -> BTreeSet<String> {
+    let mut changed = BTreeSet::new();
+    for input in inputs {
+        let mut cleaned = Vec::new();
+        for line in &input.body_lines {
+            cleaned.extend(split_glued_line(line));
+        }
+        if cleaned != input.body_lines {
+            changed.insert(input.source_locator.as_str().to_owned());
+            input.body_lines = cleaned;
+        }
+    }
+    changed
+}
+
 /// 走完整链路：两个来源入库 → 铸造身份 → 繁简归一 → 质量分析。
 ///
 /// **只读**：不往 `corpus/id_registry.jsonl` 追加任何事件。质量阶段是一次观察，
@@ -839,6 +974,7 @@ pub fn run_pipeline(
     let mut inputs = cp.records.clone();
     inputs.extend(wr.records.clone());
     inputs.extend(extra_records);
+    let glued_locators = clean_glued_lines(&mut inputs);
     let rebuilt = crate::model::rebuild_corpus(
         &crate::model::RegistryState::default(),
         &[],
@@ -847,8 +983,16 @@ pub fn run_pipeline(
         &[],
     )?;
 
+    let (shippable, placeholders) = partition_placeholders(rebuilt.shippable_records)?;
+    let glued = shippable
+        .iter()
+        .chain(rebuilt.restricted_records.iter())
+        .chain(placeholders.iter())
+        .filter(|record| glued_locators.contains(&record.source_locator))
+        .map(|record| record.stable_id.clone())
+        .collect();
     let normalizer = Normalizer::new()?;
-    let mut all = rebuilt.shippable_records.clone();
+    let mut all = shippable.clone();
     all.extend(rebuilt.restricted_records.clone());
     let normalized = normalizer.normalize(&all)?;
 
@@ -857,8 +1001,10 @@ pub fn run_pipeline(
 
     let report = analyze(
         &QualityInput {
-            shippable: &rebuilt.shippable_records,
+            shippable: &shippable,
             restricted: &rebuilt.restricted_records,
+            placeholders: &placeholders,
+            glued,
             blocked,
             normalization: &normalized.findings,
         },
@@ -866,7 +1012,7 @@ pub fn run_pipeline(
     )?;
     Ok(PipelineOutcome {
         report,
-        shippable: rebuilt.shippable_records,
+        shippable,
         restricted: rebuilt.restricted_records,
     })
 }

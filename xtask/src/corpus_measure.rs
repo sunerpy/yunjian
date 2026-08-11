@@ -160,6 +160,29 @@ pub struct MeasuredReport {
     pub verdict: Verdict,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StructuralCleaningMeasurement {
+    pub quality_scope_input_rows: usize,
+    pub structure_scope_poems: usize,
+    pub placeholder_body: usize,
+    pub glued_lines: usize,
+    pub forms: BTreeMap<String, usize>,
+    pub is_yuefu: usize,
+    pub rhyme_before: RhymeConfidenceMeasurement,
+    pub rhyme_after: RhymeConfidenceMeasurement,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RhymeConfidenceMeasurement {
+    pub rows: BTreeMap<String, usize>,
+    pub poems: BTreeMap<String, usize>,
+    pub analyzed_poems: usize,
+    pub unresolved_poems: usize,
+    pub unresolved_ratio: f64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Budget {
@@ -221,7 +244,7 @@ impl ArtifactShape {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScaleRow {
     pub scale: String,
@@ -235,7 +258,7 @@ pub struct ScaleRow {
     pub measurement: Option<Measurement>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Measurement {
     pub poem_count: usize,
@@ -276,9 +299,11 @@ pub struct Measurement {
     pub worst_p95_ms: f64,
     pub within_p95_budget: bool,
     pub within_artifact_budget: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structural_cleaning: Option<StructuralCleaningMeasurement>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TableBytes {
     pub name: String,
@@ -286,7 +311,7 @@ pub struct TableBytes {
     pub share_of_file: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueryMeasurement {
     pub id: String,
@@ -685,7 +710,12 @@ pub fn run(
     // 那些数字是**本次拆分决策的依据**（ngram 占 76%、审计表占 67%），而当前构建器
     // 已经不可能再产出那种形态——重跑一次就把证据擦掉了，此后报告只剩「随包形态很小」
     // 这个结论，没有任何东西说明为什么当初必须拆。
-    let carried = carry_forward_legacy_rows(&root)?;
+    let previous = carry_forward_rows(&root)?;
+    let carried = previous
+        .iter()
+        .filter(|row| row.artifact_shape == ArtifactShape::WithNgramAndAudit)
+        .cloned()
+        .collect::<Vec<_>>();
     if !carried.is_empty() {
         emit(&format!(
             "沿用上一份报告里 {} 行含 ngram 与审计表的实测（拆分决策的依据，构建器已不再产出该形态）",
@@ -696,6 +726,14 @@ pub fn run(
     let mut rows = Vec::new();
     for scale in ALL_SCALES {
         if !requested.contains(&scale) {
+            if let Some(row) = previous.iter().find(|row| {
+                row.scale == scale.key()
+                    && row.artifact_shape == ArtifactShape::Shipped
+                    && row.state == MeasurementState::Measured
+            }) {
+                rows.push(row.clone());
+                continue;
+            }
             rows.push(ScaleRow {
                 scale: scale.key().to_string(),
                 scope: scale.description().to_string(),
@@ -837,20 +875,13 @@ fn index_detail_mode(bytes: &[u8]) -> Result<String> {
 ///
 /// 报告不存在时返回空，这样首次运行不会因此失败；报告存在但坏掉时直接报错，
 /// 因为那份文件是 `make corpus-gate` 的门禁产物，坏了不该被一次重测掩盖过去。
-fn carry_forward_legacy_rows(root: &Path) -> Result<Vec<ScaleRow>> {
+fn carry_forward_rows(root: &Path) -> Result<Vec<ScaleRow>> {
     let path = root.join(REPORT_JSON);
     if !path.exists() {
         return Ok(Vec::new());
     }
     let report = MeasuredReport::load(&path)?;
-    Ok(report
-        .scales
-        .into_iter()
-        .filter(|row| {
-            row.artifact_shape == ArtifactShape::WithNgramAndAudit
-                && row.state == MeasurementState::Measured
-        })
-        .collect())
+    Ok(report.scales)
 }
 
 /// 按随包默认集装配构建输入。`corpus-build` 用它产出待发布的那一对文件。
@@ -984,6 +1015,9 @@ fn measure_scale(
         .sum();
     let poem_count = input.records.len();
     let input_rows = input.quality.input_rows;
+    let structural_cleaning = (scale == Scale::Sample10k)
+        .then(|| build::measure_structural_cleaning(&input, rhymes))
+        .transpose()?;
 
     let db_path = build_dir.join(format!("corpus-{}.db", scale.key()));
     let audit_db_path = yunjian_corpus::db::audit_path(&db_path);
@@ -1069,6 +1103,7 @@ fn measure_scale(
         within_artifact_budget: gzip_bytes <= artifact_budget_bytes,
         worst_p95_ms: round3(worst_p95_ms),
         queries,
+        structural_cleaning,
     })
 }
 
@@ -1503,6 +1538,73 @@ fn render_markdown(report: &MeasuredReport) -> String {
             );
         }
         let _ = writeln!(out);
+    }
+
+    let structural_rows = report.scales.iter().filter_map(|row| {
+        row.measurement
+            .as_ref()
+            .and_then(|measurement| measurement.structural_cleaning.as_ref())
+            .map(|measurement| (row, measurement))
+    });
+    for (row, measurement) in structural_rows {
+        let _ = writeln!(out, "## 结构化清洗与体裁实测（{}）\n", row.scale);
+        let _ = writeln!(
+            out,
+            "质量 finding 以 **{} 条输入记录**为范围；体裁与韵脚以清洗、去重、隔离后\
+             的 **{} 首作品**为范围。两种范围不可混作同一分母。\n",
+            measurement.quality_scope_input_rows, measurement.structure_scope_poems
+        );
+        let _ = writeln!(out, "- 占位正文隔离：`{}` 条", measurement.placeholder_body);
+        let _ = writeln!(out, "- 粘连句拆分：`{}` 条", measurement.glued_lines);
+        let _ = writeln!(out, "- 乐府旧题标记：`{}` 首\n", measurement.is_yuefu);
+
+        let _ = writeln!(out, "### 体裁分布\n");
+        let _ = writeln!(out, "| form | 首数 |");
+        let _ = writeln!(out, "| --- | ---: |");
+        for (form, count) in &measurement.forms {
+            let _ = writeln!(out, "| `{form}` | {count} |");
+        }
+        let _ = writeln!(out);
+
+        let _ = writeln!(out, "### 韵脚边界修正前后\n");
+        let _ = writeln!(
+            out,
+            "“修正前”在同一份最终 10k 输入上按 `，。！？；`/换行逐段取尾字；\
+             “修正后”只按 `。！？`/换行取韵脚。两列由本次命令同时重算，不沿用手填历史值。\n"
+        );
+        let _ = writeln!(out, "| 指标 | 修正前 | 修正后 |");
+        let _ = writeln!(out, "| --- | ---: | ---: |");
+        for confidence in ["resolved_by_vote", "unambiguous", "unresolved"] {
+            let before = measurement
+                .rhyme_before
+                .poems
+                .get(confidence)
+                .copied()
+                .unwrap_or_default();
+            let after = measurement
+                .rhyme_after
+                .poems
+                .get(confidence)
+                .copied()
+                .unwrap_or_default();
+            let _ = writeln!(out, "| poems `{confidence}` | {before} | {after} |");
+        }
+        let _ = writeln!(
+            out,
+            "| 已分析作品 | {} | {} |",
+            measurement.rhyme_before.analyzed_poems, measurement.rhyme_after.analyzed_poems
+        );
+        let _ = writeln!(
+            out,
+            "| unresolved 作品 | {} | {} |",
+            measurement.rhyme_before.unresolved_poems, measurement.rhyme_after.unresolved_poems
+        );
+        let _ = writeln!(
+            out,
+            "| unresolved 比例 | {:.4}% | {:.4}% |\n",
+            measurement.rhyme_before.unresolved_ratio * 100.0,
+            measurement.rhyme_after.unresolved_ratio * 100.0
+        );
     }
 
     let _ = writeln!(out, "## 字节去了哪里（逐表，占比降序）\n");

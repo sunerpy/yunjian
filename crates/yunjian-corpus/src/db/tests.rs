@@ -220,6 +220,38 @@ fn schema_is_the_checked_in_single_source_of_truth() {
 }
 
 #[test]
+fn schema_defaults_structured_fields_for_legacy_inserts() {
+    let connection = Connection::open_in_memory().expect("open in-memory db");
+    connection.execute_batch(SCHEMA_SQL).expect("apply schema");
+    connection
+        .execute("INSERT INTO author(name) VALUES ('李白')", [])
+        .expect("insert author");
+    connection
+        .execute(
+            "INSERT INTO poem(stable_id, content_hash, source_locator, source_locator_kind, \
+             genre, title, title_raw, author, dynasty, dynasty_raw, body, body_original, script, \
+             first_line, last_chars, line_count, char_count, provenance_source, \
+             provenance_revision, provenance_kind, provenance_license, \
+             provenance_license_class, work_group, edition_group) \
+             VALUES ('legacy', 'hash', 'fixture:legacy', 'native', 'shi', '静夜思', '静夜思', \
+             '李白', '唐', '唐', '床前明月光', '床前明月光', 'simplified', '床前明月光', \
+             '[\"光\"]', 1, 5, 'fixture', 'revision', '原文', 'MIT', 'permissive', \
+             'work', 'edition')",
+            [],
+        )
+        .expect("insert legacy poem");
+
+    let classification: (String, i64) = connection
+        .query_row(
+            "SELECT form, is_yuefu FROM poem WHERE stable_id='legacy'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read default classification");
+    assert_eq!(classification, ("unknown".to_owned(), 0));
+}
+
+#[test]
 fn the_first_launch_build_turns_a_shipped_artifact_into_a_searchable_corpus() {
     let path = temp_db("fts-integration");
     let input = fixture();
@@ -264,6 +296,85 @@ fn the_shipped_artifact_carries_no_diagnostic_or_derived_tables() {
             .expect("probe audit table");
         assert_eq!(count, 1, "审计库应有 {table} 表");
     }
+    cleanup(&path);
+}
+
+#[test]
+fn structured_form_and_yuefu_flag_are_stored_and_use_btree_indexes() {
+    let path = temp_db("form-indexes");
+    build(&path);
+    let connection = Connection::open(&path).expect("open built db");
+
+    let classification: (String, i64) = connection
+        .query_row(
+            "SELECT form, is_yuefu FROM poem WHERE title='静夜思'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read structured classification");
+    assert_eq!(classification, ("irregular".to_owned(), 0));
+
+    for (sql, index) in [
+        (
+            "SELECT stable_id FROM poem WHERE form='wujue'",
+            "poem_form_idx",
+        ),
+        (
+            "SELECT stable_id FROM poem WHERE is_yuefu=1",
+            "poem_is_yuefu_idx",
+        ),
+    ] {
+        let plan = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .expect("prepare query plan")
+            .query_map([], |row| row.get::<_, String>(3))
+            .expect("query plan")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect query plan");
+        assert!(
+            plan.iter().any(|detail| detail.contains(index)),
+            "{sql} 应使用 {index}，实际：{plan:?}"
+        );
+    }
+    cleanup(&path);
+}
+
+#[test]
+fn stored_last_chars_use_rhyme_boundaries_while_line_count_uses_structure() {
+    let path = temp_db("rhyme-vs-structure");
+    let mut input = fixture();
+    let record = input
+        .records
+        .iter_mut()
+        .find(|record| record.title == "静夜思")
+        .expect("静夜思 fixture");
+    record.body_original = "床前明月光，疑是地上霜。举头望明月，低头思故乡。".to_owned();
+    record.body_lines = vec![
+        "床前明月光，".to_owned(),
+        "疑是地上霜。".to_owned(),
+        "举头望明月，".to_owned(),
+        "低头思故乡。".to_owned(),
+    ];
+    let normalized = input
+        .normalized_records
+        .iter_mut()
+        .find(|record| record.stable_id == "1111111111111111")
+        .expect("静夜思 normalized fixture");
+    normalized.body = record.body_original.clone();
+    normalized.body_original = record.body_original.clone();
+    normalized.body_lines = record.body_lines.clone();
+
+    build_database(&path, &input).expect("build fixture database");
+    let connection = Connection::open(&path).expect("open built db");
+    let (last_chars, line_count): (String, i64) = connection
+        .query_row(
+            "SELECT last_chars, line_count FROM poem WHERE title='静夜思'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read boundary fields");
+    assert_eq!(last_chars, r#"["霜","乡"]"#);
+    assert_eq!(line_count, 4);
     cleanup(&path);
 }
 

@@ -1,0 +1,14 @@
+[[placeholder]]
+value = "无正文。"
+source = "chinese-poetry 及其转录来源"
+note = "简体缺失正文标记，不是作品内容。"
+
+[[placeholder]]
+value = "無正文。"
+source = "chinese-poetry 及其繁体转录来源"
+note = "繁体缺失正文标记，不是作品内容。"
+
+[[placeholder]]
+value = "空。"
+source = "古籍数字化占位记录"
+note = "仅在整篇正文恰好等于该串时隔离，避免误伤正文中的“空”。"

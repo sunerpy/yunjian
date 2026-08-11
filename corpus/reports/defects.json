@@ -7,7 +7,9 @@
     "duplicate_in_group": 6,
     "empty_body": 1,
     "excluded_by_policy": 6,
+    "glued_lines": 47,
     "lossy_char": 3,
+    "placeholder_body": 1,
     "restricted_license": 0,
     "rhyme_unresolved": 0,
     "suspect_length": 2,
@@ -99,6 +101,55 @@
       "source": "werneror"
     },
     {
+      "stable_id": "05b7361d3da588f0",
+      "work_group": "2da89ac5cf85",
+      "reason_code": "glued_lines",
+      "detail": "《人月圆·宴北人张侍御家有感》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
+      "stable_id": "05ecb688cb901683",
+      "work_group": "24c05196c1cc",
+      "reason_code": "glued_lines",
+      "detail": "《题李俨《黄菊赋》》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
+      "stable_id": "07de31c2f17743d7",
+      "work_group": "604856534eb6",
+      "reason_code": "glued_lines",
+      "detail": "《国风/周南/关雎》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "0fbaf24d1b75a0a2",
+      "work_group": "51280ec8ddbf",
+      "reason_code": "glued_lines",
+      "detail": "《望远行·碧砌花光照眼》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "101eb61cbd46853a",
+      "work_group": "f4c88128b0e2",
+      "reason_code": "glued_lines",
+      "detail": "《蜀先主庙》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "156ba08ffafc742b",
+      "work_group": "2703c8502bcb",
+      "reason_code": "glued_lines",
+      "detail": "《增廣賢文/上集》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "16f2669247478639",
+      "work_group": "bfe40b61fe04",
+      "reason_code": "glued_lines",
+      "detail": "《于太原召侍臣赐宴守岁》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
       "stable_id": "18ac9c381444dc78",
       "work_group": "99c1e5516651",
       "reason_code": "duplicate_in_group",
@@ -132,6 +183,48 @@
       "reason_code": "conflicting_attribution",
       "detail": "《赤壁》同一作品分组内出现 2 个作者：李商隱、杜牧。本阶段不自动裁定归属，只报告。",
       "source": "quality-fixture"
+    },
+    {
+      "stable_id": "1ba071390604dc00",
+      "work_group": "71d8ae0a7348",
+      "reason_code": "glued_lines",
+      "detail": "《赤壁》的上游正文含粘连结构行，已按句读拆分",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "1c5aeb3f980134f3",
+      "work_group": "8a9b6ae606ed",
+      "reason_code": "glued_lines",
+      "detail": "《帝京篇十首 三》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "20484c9311de44a0",
+      "work_group": "00eb09e45b98",
+      "reason_code": "glued_lines",
+      "detail": "《幽梦影 其2 评1》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "25c9a3e556b53f2b",
+      "work_group": "1dd8bb84d762",
+      "reason_code": "glued_lines",
+      "detail": "《橫吹曲辭 洛陽陌》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "25e915632ba23a22",
+      "work_group": "5484175bfa6d",
+      "reason_code": "glued_lines",
+      "detail": "《导引》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "33507adaa6c8e49c",
+      "work_group": "f2545ad08a09",
+      "reason_code": "glued_lines",
+      "detail": "《杂诗二首 其一》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
     },
     {
       "stable_id": "33a6b424e09a868f",
@@ -141,6 +234,160 @@
       "source": "quality-fixture"
     },
     {
+      "stable_id": "33a6b424e09a868f",
+      "work_group": "f24b015e8905",
+      "reason_code": "glued_lines",
+      "detail": "《听颖师弹琴》的上游正文含粘连结构行，已按句读拆分",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "3c227d9b440baf92",
+      "work_group": "57427ccc1ed9",
+      "reason_code": "glued_lines",
+      "detail": "《春晓》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
+      "stable_id": "457a3755a11fc441",
+      "work_group": "74e8af3890aa",
+      "reason_code": "glued_lines",
+      "detail": "《幽梦影 其1》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "4b3fa894b8035be7",
+      "work_group": "ad1b4489c0e5",
+      "reason_code": "glued_lines",
+      "detail": "《橫吹曲辭 長安道》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "4ccb09f067e4f6ab",
+      "work_group": "cc0e44d4e3e9",
+      "reason_code": "glued_lines",
+      "detail": "《帝京篇十首 二》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "534bc11cc8dbf3c9",
+      "work_group": "d1bd2acf9097",
+      "reason_code": "glued_lines",
+      "detail": "《巴谣歌》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
+      "stable_id": "582f0e38c093fb12",
+      "work_group": "431b895ea6c8",
+      "reason_code": "glued_lines",
+      "detail": "《菩萨蛮 其二》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "585c8d213e0d1b1a",
+      "work_group": "1e5c6ebce27f",
+      "reason_code": "glued_lines",
+      "detail": "《句》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "5fe5e39d8854787d",
+      "work_group": "b7a42e8a42b1",
+      "reason_code": "glued_lines",
+      "detail": "《橫吹曲辭 長安道》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "69a2814531a0ab33",
+      "work_group": "e4ddba4d6794",
+      "reason_code": "glued_lines",
+      "detail": "《国风/周南/葛覃》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "6ac728499301d4a3",
+      "work_group": "85a25223e852",
+      "reason_code": "glued_lines",
+      "detail": "《聲律啓蒙/上卷/一 東》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "724a3398fb965147",
+      "work_group": "f2eaa9efd548",
+      "reason_code": "glued_lines",
+      "detail": "《幼學瓊林/卷一/天文》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "74262a5aae2e10e7",
+      "work_group": "a555eb56df60",
+      "reason_code": "glued_lines",
+      "detail": "《新嫁娘》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "87b2d1dcbc9e85fd",
+      "work_group": "9dfb3709271a",
+      "reason_code": "glued_lines",
+      "detail": "《三秦民谣》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
+      "stable_id": "8d76b29aee4c79fa",
+      "work_group": "adde0ad9ff47",
+      "reason_code": "glued_lines",
+      "detail": "《诈妮子调风月・混江龙》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "8d941edd5ace35b0",
+      "work_group": "5b76e0a35e77",
+      "reason_code": "glued_lines",
+      "detail": "《传国玺》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
+      "stable_id": "908e0dedf7aa1786",
+      "work_group": "4883d2ec4070",
+      "reason_code": "glued_lines",
+      "detail": "《宋太祖 小传》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "9b7c7230a83e051d",
+      "work_group": "3b39ba5f68e2",
+      "reason_code": "glued_lines",
+      "detail": "《帝京篇十首 一》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "9cb3a4178df09a0f",
+      "work_group": "c33b701ac97c",
+      "reason_code": "glued_lines",
+      "detail": "《幽梦影 其2 评2》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "ae6832b94cfb6b1e",
+      "work_group": "3ff0da8b24eb",
+      "reason_code": "placeholder_body",
+      "detail": "《占位正文样本》正文是上游缺失内容占位串，留档不进主表",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "b12fe7fcf18447de",
+      "work_group": "7fdc63a657df",
+      "reason_code": "glued_lines",
+      "detail": "《幼學瓊林/卷一/地輿》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "ba8e3791252dfd51",
+      "work_group": "2543de9c9c94",
+      "reason_code": "glued_lines",
+      "detail": "《古文觀止/卷一・周文/周鄭交質》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
       "stable_id": "c0e8db5167fc289d",
       "work_group": "99c1e5516651",
       "reason_code": "duplicate_in_group",
@@ -162,6 +409,55 @@
       "source": "quality-fixture"
     },
     {
+      "stable_id": "c58c710fee2c55d0",
+      "work_group": "c5bfcbc952f4",
+      "reason_code": "glued_lines",
+      "detail": "《诈妮子调风月・仙吕/点绛唇》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "c6176af4956b3e74",
+      "work_group": "55a6dd3e3b4d",
+      "reason_code": "glued_lines",
+      "detail": "《日詩》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "d36d216a9a557013",
+      "work_group": "57c238e7dc4b",
+      "reason_code": "glued_lines",
+      "detail": "《幽梦影 其1 评2》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "d8b098cc275c7aa3",
+      "work_group": "f1c53dbc89b6",
+      "reason_code": "glued_lines",
+      "detail": "《幽梦影 其2》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "d94d81a06f65a3c4",
+      "work_group": "7c39403b0f97",
+      "reason_code": "glued_lines",
+      "detail": "《聲律啓蒙/上卷/二 冬》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "e0c0da6f3710364b",
+      "work_group": "d22d35a45cfd",
+      "reason_code": "glued_lines",
+      "detail": "《应天长·一钩初月临妆镜》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "e16b0aab3d0d7933",
+      "work_group": "525fbc62c9d5",
+      "reason_code": "glued_lines",
+      "detail": "《国人谚》的上游正文含粘连结构行，已按句读拆分",
+      "source": "werneror"
+    },
+    {
       "stable_id": "f115833557832456",
       "work_group": "71d8ae0a7348",
       "reason_code": "duplicate_in_group",
@@ -174,6 +470,48 @@
       "reason_code": "conflicting_attribution",
       "detail": "《赤壁》同一作品分组内出现 2 个作者：李商隱、杜牧。本阶段不自动裁定归属，只报告。",
       "source": "quality-fixture"
+    },
+    {
+      "stable_id": "f115833557832456",
+      "work_group": "71d8ae0a7348",
+      "reason_code": "glued_lines",
+      "detail": "《赤壁》的上游正文含粘连结构行，已按句读拆分",
+      "source": "quality-fixture"
+    },
+    {
+      "stable_id": "f29e4d51557c8c7f",
+      "work_group": "b94e8f9034dd",
+      "reason_code": "glued_lines",
+      "detail": "《古文觀止/卷一・周文/鄭伯克段於鄢》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "f31e32da9ddaa743",
+      "work_group": "0c2715015f7c",
+      "reason_code": "glued_lines",
+      "detail": "《离骚》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "f3fe679d44eb6b44",
+      "work_group": "3ceba19ea231",
+      "reason_code": "glued_lines",
+      "detail": "《菩萨蛮 其一》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "f8f5687a11011eb9",
+      "work_group": "c5e3a127fa74",
+      "reason_code": "glued_lines",
+      "detail": "《六州》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
+    },
+    {
+      "stable_id": "f9fb0358d44d6402",
+      "work_group": "4b9713c054d7",
+      "reason_code": "glued_lines",
+      "detail": "《太宗皇帝 小传》的上游正文含粘连结构行，已按句读拆分",
+      "source": "chinese-poetry"
     }
   ]
 }
