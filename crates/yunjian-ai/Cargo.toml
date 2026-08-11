@@ -9,6 +9,10 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
+blake3 = { workspace = true }
+serde = { workspace = true }
+yunjian-core = { path = "../yunjian-core" }
 
 [lints]
 workspace = true
