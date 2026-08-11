@@ -110,6 +110,7 @@ fn fixture() -> CorpusDbInput {
 
     CorpusDbInput {
         corpus_version: "1.2.3".to_owned(),
+        shipped_scope: ShippedScope::Sample10k,
         source_manifest: br#"
 [[source]]
 name = "older"
@@ -188,6 +189,13 @@ fn build(path: &Path) {
     build_database(path, &fixture()).expect("fixture database should build");
 }
 
+/// 一次构建产出两个文件，清理也必须清两个——留下的审计库会被下一个同名用例
+/// 当成「这一对」而掩盖掉真正的配对错误。
+fn cleanup(path: &Path) {
+    fs::remove_file(audit_path(path)).ok();
+    fs::remove_file(path).ok();
+}
+
 #[test]
 fn schema_is_the_checked_in_single_source_of_truth() {
     let path = temp_db("schema");
@@ -208,22 +216,106 @@ fn schema_is_the_checked_in_single_source_of_truth() {
         .expect("collect schema");
     let expected = schema_statements(SCHEMA_SQL).expect("checked-in schema should parse");
     assert_eq!(actual, expected);
-    fs::remove_file(path).ok();
+    cleanup(&path);
 }
 
 #[test]
-fn fts_index_is_built_as_part_of_the_corpus_database() {
+fn the_first_launch_build_turns_a_shipped_artifact_into_a_searchable_corpus() {
     let path = temp_db("fts-integration");
     let input = fixture();
     build_database(&path, &input).expect("fixture database should build with FTS");
+    let mut connection = Connection::open(&path).expect("open built db");
+
+    // 随包工件不含任何检索结构；三张都由首启在本机派生。
+    assert!(!yunjian_core::derived_indexes_present(&connection).expect("probe derived"));
+    let stats = yunjian_core::build_derived_indexes(&mut connection).expect("first-launch build");
+    assert!(stats.grams > 0);
+    assert!(stats.last_chars > 0);
+    yunjian_core::verify_derived_indexes(&connection).expect("post-first-launch verification");
+    cleanup(&path);
+}
+
+#[test]
+fn the_shipped_artifact_carries_no_diagnostic_or_derived_tables() {
+    let path = temp_db("no-diagnostics");
+    build(&path);
     let connection = Connection::open(&path).expect("open built db");
-    crate::fts::verify_search_indexes(&connection, "full", true)
-        .expect("database writer must build the verdict-selected indexes");
-    let ngram_rows: i64 = connection
-        .query_row("SELECT count(*) FROM ngram", [], |row| row.get(0))
-        .expect("count ngrams");
-    assert!(ngram_rows > 0);
-    fs::remove_file(path).ok();
+    assert_no_diagnostic_tables(&connection).expect("随包库必须无 defect/disposition/ngram");
+    for table in NON_SHIPPED_TABLES {
+        let count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?1",
+                params![table],
+                |row| row.get(0),
+            )
+            .expect("probe table");
+        assert_eq!(count, 0, "随包库不该有 {table} 表");
+    }
+
+    // 反过来，审计库必须真的持有那两张台账。
+    let audit = Connection::open(audit_path(&path)).expect("open audit db");
+    for table in ["defect", "disposition", "audit_meta"] {
+        let count: i64 = audit
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?1",
+                params![table],
+                |row| row.get(0),
+            )
+            .expect("probe audit table");
+        assert_eq!(count, 1, "审计库应有 {table} 表");
+    }
+    cleanup(&path);
+}
+
+#[test]
+fn audit_path_is_derived_from_the_corpus_path_not_supplied_separately() {
+    assert_eq!(
+        audit_path(Path::new("/tmp/corpus.db")),
+        PathBuf::from("/tmp/corpus-audit.db")
+    );
+    assert_eq!(
+        audit_path(Path::new("corpus-tang-song.db")),
+        PathBuf::from("corpus-tang-song-audit.db")
+    );
+}
+
+#[test]
+fn an_audit_database_from_another_build_is_rejected_even_when_the_counts_line_up() {
+    let first = temp_db("pair-a");
+    let second = temp_db("pair-b");
+    build(&first);
+    let mut other = fixture();
+    other.corpus_version = "9.9.9".to_owned();
+    build_database(&second, &other).expect("second build");
+
+    // 两次构建的三个计数逐一相同，只有 corpus_version 不同——身份三元组正是为
+    // 这种「计数凑巧成立」的错配存在的。
+    let error = verify_conservation_across_files(&first, audit_path(&second))
+        .expect_err("错配的一对必须被拒");
+    assert!(
+        error.to_string().contains("同一次构建"),
+        "unexpected: {error}"
+    );
+    cleanup(&first);
+    cleanup(&second);
+}
+
+#[test]
+fn cross_file_conservation_catches_dispositions_deleted_from_the_audit_database() {
+    let path = temp_db("cross-file");
+    build(&path);
+    verify_conservation_across_files(&path, audit_path(&path)).expect("刚构建的一对应当守恒");
+
+    let audit = Connection::open(audit_path(&path)).expect("open audit db");
+    audit
+        .execute("DELETE FROM disposition WHERE disposition='excluded'", [])
+        .expect("删掉一条处置");
+    drop(audit);
+
+    let error = verify_conservation_across_files(&path, audit_path(&path))
+        .expect_err("审计库少一条处置必须被跨文件校验抓到");
+    assert!(error.to_string().contains("守恒"), "unexpected: {error}");
+    cleanup(&path);
 }
 
 #[test]
@@ -246,11 +338,14 @@ fn build_populates_one_complete_meta_row_and_conserves_dispositions() {
         String,
         String,
         String,
+        String,
+        String,
     ) = conn
         .query_row(
             "SELECT schema_version, corpus_version, built_at, source_manifest_sha256, \
                     poem_count, finding_count, input_row_count, index_detail_mode, \
-                    builder_sqlite_version, integrity_check FROM corpus_meta",
+                    derived_indexes, shipped_scope, builder_sqlite_version, integrity_check \
+             FROM corpus_meta",
             [],
             |row| {
                 Ok((
@@ -264,23 +359,29 @@ fn build_populates_one_complete_meta_row_and_conserves_dispositions() {
                     row.get(7)?,
                     row.get(8)?,
                     row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
                 ))
             },
         )
         .expect("read meta");
-    assert_eq!(meta.0, 1);
+    assert_eq!(meta.0, SCHEMA_VERSION);
     assert_eq!(meta.1, "1.2.3");
     assert_eq!(meta.2, "2026-08-10T00:00:00Z");
     assert_eq!(meta.3.len(), 64);
     assert_eq!((meta.4, meta.5, meta.6), (2, 1, 3));
     assert_eq!(meta.7, "full");
-    assert!(!meta.8.is_empty());
-    assert_eq!(meta.9, "ok");
+    assert_eq!(meta.8, "first_launch");
+    assert_eq!(meta.9, "10k");
+    assert!(!meta.10.is_empty());
+    assert_eq!(meta.11, "ok");
 
-    let disposition_count: i64 = conn
+    // 三条处置等式与拆库前逐字相同，只是左端搬进了审计库。
+    let audit = Connection::open(audit_path(&path)).expect("open audit db");
+    let disposition_count: i64 = audit
         .query_row("SELECT count(*) FROM disposition", [], |row| row.get(0))
         .expect("count dispositions");
-    let classified_count: i64 = conn
+    let classified_count: i64 = audit
         .query_row(
             "SELECT sum(CASE WHEN disposition IN ('shipped','quarantined','excluded') \
                              THEN 1 ELSE 0 END) FROM disposition",
@@ -288,17 +389,22 @@ fn build_populates_one_complete_meta_row_and_conserves_dispositions() {
             |row| row.get(0),
         )
         .expect("count classified dispositions");
-    let shipped_count: i64 = conn
+    let shipped_count: i64 = audit
         .query_row(
             "SELECT count(*) FROM disposition WHERE disposition='shipped'",
             [],
             |row| row.get(0),
         )
         .expect("count shipped dispositions");
+    let defect_count: i64 = audit
+        .query_row("SELECT count(*) FROM defect", [], |row| row.get(0))
+        .expect("count defects");
     assert_eq!(disposition_count, meta.6);
     assert_eq!(classified_count, disposition_count);
     assert_eq!(shipped_count, meta.4);
-    fs::remove_file(path).ok();
+    assert_eq!(defect_count, meta.5);
+    verify_conservation_across_files(&path, audit_path(&path)).expect("跨文件守恒");
+    cleanup(&path);
 }
 
 #[test]
@@ -308,8 +414,13 @@ fn identical_inputs_produce_identical_database_bytes() {
     build(&first);
     build(&second);
     assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
-    fs::remove_file(first).ok();
-    fs::remove_file(second).ok();
+    // 审计库同样要逐字节可复现，否则「构建可复现」只覆盖了两个产物中的一个。
+    assert_eq!(
+        fs::read(audit_path(&first)).unwrap(),
+        fs::read(audit_path(&second)).unwrap()
+    );
+    cleanup(&first);
+    cleanup(&second);
 }
 
 #[test]
@@ -332,6 +443,10 @@ fn missing_one_hundred_dispositions_is_a_hard_conservation_failure() {
         "unexpected error: {error}"
     );
     assert!(!path.exists(), "failed build must not leave a database");
+    assert!(
+        !audit_path(&path).exists(),
+        "失败的构建不得留下审计库；留下的话下一次构建会拿它去配一个新语料库"
+    );
 }
 
 #[test]
@@ -339,25 +454,25 @@ fn incompatible_schema_is_a_typed_actionable_error() {
     let path = temp_db("compat");
     build(&path);
     let conn = Connection::open(&path).unwrap();
-    conn.execute("UPDATE corpus_meta SET schema_version=2", [])
+    conn.execute("UPDATE corpus_meta SET schema_version=3", [])
         .unwrap();
     drop(conn);
 
-    let error = open_corpus(&path).expect_err("schema 2 must be rejected");
+    let error = open_corpus(&path).expect_err("schema 3 must be rejected");
     assert!(matches!(
         error,
         OpenCorpusError::IncompatibleSchema {
-            corpus_schema_version: 2,
+            corpus_schema_version: 3,
             app_version: env!("CARGO_PKG_VERSION"),
             ..
         }
     ));
     let message = error.to_string();
-    assert!(message.contains("2"));
+    assert!(message.contains("3"));
     assert!(message.contains(env!("CARGO_PKG_VERSION")));
-    assert!(message.contains("1..=1"));
+    assert!(message.contains("2..=2"));
     assert!(message.contains("yunjian corpus fetch"));
-    fs::remove_file(path).ok();
+    cleanup(&path);
 }
 
 #[test]
@@ -373,5 +488,5 @@ fn opened_corpus_is_query_only_and_blocks_insert() {
         .execute("INSERT INTO tag(name) VALUES (?1)", params!["不应写入"])
         .expect_err("query_only must block INSERT");
     assert!(error.to_string().contains("readonly"));
-    fs::remove_file(path).ok();
+    cleanup(&path);
 }

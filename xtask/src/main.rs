@@ -15,8 +15,10 @@ use clap::{Parser, Subcommand};
 // 子命令模块在此注册（每个任务追加一行）。
 mod cer_spike;
 mod commentary_index;
+mod corpus_build;
 mod corpus_contract;
 mod corpus_measure;
+mod corpus_package;
 mod corpus_quality;
 mod index_spike;
 mod verify_models;
@@ -127,6 +129,41 @@ enum Commands {
         render_only: bool,
     },
 
+    /// 构建**待发布**的那一对文件：`corpus.db`（随包，无诊断表、无候选表）与
+    /// `corpus-audit.db`（审计，不随包）。随包默认集由实测结论选定，不接受 `--scale`。
+    ///
+    /// 刻意不复用 `corpus-measure --keep-databases`：那条路径会在库上跑一次首启构建，
+    /// 留下的文件带着候选表，正是随包工件不该有的形态。
+    CorpusBuild {
+        /// `chinese-poetry` 按锁定 revision 的检出目录。
+        #[arg(long)]
+        chinese_poetry_dir: std::path::PathBuf,
+        /// `Werneror/Poetry` 按锁定 revision 的检出目录。
+        #[arg(long)]
+        werneror_dir: std::path::PathBuf,
+        /// `charlesix59/chinese_word_rhyme` 按锁定 revision 的检出目录。
+        #[arg(long)]
+        rhyme_dir: std::path::PathBuf,
+        /// 输出目录。默认 `corpus/build/release`。
+        #[arg(long)]
+        out_dir: Option<std::path::PathBuf>,
+    },
+
+    /// 把随包语料库打成可发布工件：`yunjian-corpus-<版本>.db.gz`、`.sha256` 旁文件与
+    /// `manifest.json`（含兼容范围与实测结论）。
+    ///
+    /// 写出任何文件之前跑完五条中止断言（完整性、无诊断表、跨文件守恒、结论在预算内、
+    /// 形态与结论一致）；第六条「最终 gzip 是否超预算」只能落盘后判定，超了就把刚写出的
+    /// 文件删掉。工件发布在 `corpus-v*` tag 上，与应用发布 tag 分离。
+    CorpusPackage {
+        /// 随包库路径。审计库路径由它机械推出（`corpus.db` -> `corpus-audit.db`）。
+        #[arg(long, default_value = "corpus/build/release/corpus.db")]
+        corpus_db: std::path::PathBuf,
+        /// 输出目录。默认 `corpus/build/package`。
+        #[arg(long)]
+        out_dir: Option<std::path::PathBuf>,
+    },
+
     /// 校验 `models.toml`：SPDX 允许列表（只认 MIT 与 Apache-2.0）、锁定 revision 的
     /// 许可证据摘要、证据文件里真的写着那个许可、`models/DENYLIST.md` 的拒绝清单，
     /// 以及夹带产物的分发影响声明。最后写出 `models.lock.json` 供 `jq` 断言。
@@ -198,6 +235,15 @@ fn main() -> anyhow::Result<()> {
             artifact_budget_mib * 1024 * 1024,
             keep_databases,
         ),
+        Some(Commands::CorpusBuild {
+            chinese_poetry_dir,
+            werneror_dir,
+            rhyme_dir,
+            out_dir,
+        }) => corpus_build::run(chinese_poetry_dir, werneror_dir, rhyme_dir, out_dir),
+        Some(Commands::CorpusPackage { corpus_db, out_dir }) => {
+            corpus_package::run(corpus_db, out_dir)
+        }
         Some(Commands::VerifyModels { offline }) => verify_models::run(offline),
         Some(Commands::CerSpike {
             refresh_fixtures,

@@ -100,6 +100,7 @@ pub(super) fn assemble(
     let poem_rhyme_groups = derive_rhyme_groups(&records, &normalized.records, rhymes)?;
 
     Ok(CorpusDbInput {
+        shipped_scope: scale.shipped_scope(),
         corpus_version: CORPUS_VERSION_FOR_BUILD.to_owned(),
         source_manifest: manifest_bytes.to_vec(),
         index_verdict: verdict_bytes.to_vec(),

@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "budget": {
-    "artifact_gzip_bytes": 262144000,
+    "artifact_gzip_bytes": 314572800,
     "p95_ms": 150.0,
-    "declared_by": "方案 todo 20 事先声明：随包工件 <= 250 MB（gzip 后），p95 查询延迟 <= 150 ms（参考机）"
+    "declared_by": "体积预算由方案 todo 20 声明的 250 MB 上调为 300 MB（todo 21）。250 是方案自己声明的数字，不是平台约束——Android 的真实约束是「资产不是文件、必须复制出来」，与大小无关。**如实记录：把三张首启派生结构与两张审计台账移出工件后，唐宋工件实测 211 MB，原来的 250 MB 也装得下**——所以这次上调不是为了让当前工件达标，而是留出余量：语料是会长的（新增公有领域来源、集评），一个刚好贴着当前产物的预算会在下一次扩充时立刻变成假警报。300 MB 对 211 MB 给出约 42% 余量。p95 查询延迟预算不变，仍为 150 ms（参考机）。"
   },
   "environment": {
     "reference_machine": "linux/x86_64，32 逻辑核",
@@ -21,6 +21,253 @@
     {
       "scale": "10k",
       "scope": "唐宋集合按 stable_id 排序的确定性前 1 万首",
+      "artifact_shape": "shipped",
+      "state": "not_measured",
+      "blocked_reason": "本次运行未请求该规模（未传 --scale 10k）。要补测：在同一参考机上追加该规模重跑。",
+      "measurement": null
+    },
+    {
+      "scale": "tang-song",
+      "scope": "chinese-poetry 全唐诗 + 全宋诗 + 宋词，加 Werneror 唐宋分桶",
+      "artifact_shape": "shipped",
+      "state": "measured",
+      "blocked_reason": null,
+      "measurement": {
+        "poem_count": 474162,
+        "input_rows": 798763,
+        "raw_text_bytes": 106719670,
+        "poem_table_bytes": 518754304,
+        "poem_fts_bytes": 239767552,
+        "ngram_table_bytes": 3688304640,
+        "ngram_rows": 55730018,
+        "table_bytes": [
+          {
+            "name": "poem",
+            "bytes": 446324736,
+            "share_of_file": 0.7049
+          },
+          {
+            "name": "poem_rhyme_group",
+            "bytes": 42704896,
+            "share_of_file": 0.0674
+          },
+          {
+            "name": "poem_rhyme_group_idx",
+            "bytes": 33353728,
+            "share_of_file": 0.0527
+          },
+          {
+            "name": "poem_first_line_idx",
+            "bytes": 28299264,
+            "share_of_file": 0.0447
+          },
+          {
+            "name": "sqlite_autoindex_poem_2",
+            "bytes": 24903680,
+            "share_of_file": 0.0393
+          },
+          {
+            "name": "poem_title_idx",
+            "bytes": 16314368,
+            "share_of_file": 0.0258
+          },
+          {
+            "name": "sqlite_autoindex_poem_1",
+            "bytes": 11902976,
+            "share_of_file": 0.0188
+          },
+          {
+            "name": "poem_work_group_idx",
+            "bytes": 9977856,
+            "share_of_file": 0.0158
+          },
+          {
+            "name": "poem_author_idx",
+            "bytes": 7847936,
+            "share_of_file": 0.0124
+          },
+          {
+            "name": "poem_dynasty_idx",
+            "bytes": 5693440,
+            "share_of_file": 0.009
+          },
+          {
+            "name": "poem_ci_tune_idx",
+            "bytes": 4296704,
+            "share_of_file": 0.0068
+          },
+          {
+            "name": "rhyme",
+            "bytes": 696320,
+            "share_of_file": 0.0011
+          },
+          {
+            "name": "rhyme_character_idx",
+            "bytes": 544768,
+            "share_of_file": 0.0009
+          },
+          {
+            "name": "author",
+            "bytes": 229376,
+            "share_of_file": 0.0004
+          },
+          {
+            "name": "variant_map",
+            "bytes": 45056,
+            "share_of_file": 0.0001
+          },
+          {
+            "name": "sqlite_schema",
+            "bytes": 12288,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "commentary",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "corpus_meta",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "poem_tag_idx",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          },
+          {
+            "name": "tag",
+            "bytes": 4096,
+            "share_of_file": 0.0
+          }
+        ],
+        "fts_to_poem_ratio": 0.4622,
+        "index_to_raw_ratio": 36.8074,
+        "bytes_before_vacuum": 655122432,
+        "bytes_after_vacuum": 633167872,
+        "gzip_bytes": 222095715,
+        "gzip_ratio": 0.3508,
+        "build_seconds": 192.472,
+        "audit_bytes": 251785216,
+        "first_launch_seconds": 571.816,
+        "queries": [
+          {
+            "id": "two_char_ngram",
+            "kind": "两字查询「明月」经 n-gram 覆盖索引",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 7291,
+            "p50_ms": 17.159,
+            "p95_ms": 22.009,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "three_char_match",
+            "kind": "三字 FTS5 MATCH（trigram）「明月光」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.poem_fts MATCH ?1",
+            "hits": 80,
+            "p50_ms": 0.042,
+            "p95_ms": 0.053,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:M1",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "full_line_like",
+            "kind": "整句 LIKE（trigram 约束），绑定库内最高频值「□□□□□□□，□□□□□□□。」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.body LIKE ?1",
+            "hits": 54,
+            "p50_ms": 0.552,
+            "p95_ms": 0.753,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:L0",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "author_lookup",
+            "kind": "作者等值（B-tree），绑定库内最高频值「陸游」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE author = ?1",
+            "hits": 9272,
+            "p50_ms": 10.667,
+            "p95_ms": 12.872,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_author_idx (author=?)"
+            ]
+          },
+          {
+            "id": "first_line_prefix",
+            "kind": "首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE first_line >= ?1 AND first_line < ?2",
+            "hits": 1452,
+            "p50_ms": 2.028,
+            "p95_ms": 2.36,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+            ]
+          },
+          {
+            "id": "rhyme_group_join",
+            "kind": "韵部连接，绑定库内最高频值「四支」",
+            "sql_shape": "SELECT g.poem_id FROM poem_rhyme_group g JOIN poem p ON p.stable_id = g.poem_id WHERE g.rhyme_book = ?1 AND g.rhyme_group = ?2",
+            "hits": 43237,
+            "p50_ms": 17.653,
+            "p95_ms": 19.146,
+            "explain_query_plan": [
+              "SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?)",
+              "SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "tag_filter",
+            "kind": "标签过滤（规范化多对多表），poem_tag 表为空，本条为零命中基线",
+            "sql_shape": "SELECT poem_id FROM poem_tag WHERE tag = ?1",
+            "hits": 0,
+            "p50_ms": 0.006,
+            "p95_ms": 0.006,
+            "explain_query_plan": [
+              "SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"
+            ]
+          },
+          {
+            "id": "cold_open_first_query",
+            "kind": "冷启动后首查（每轮重开连接，不预热）「明月」",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 7291,
+            "p50_ms": 16.871,
+            "p95_ms": 17.828,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          }
+        ],
+        "worst_p95_ms": 22.009,
+        "within_p95_budget": true,
+        "within_artifact_budget": true
+      }
+    },
+    {
+      "scale": "full",
+      "scope": "chinese-poetry 全部可分发资产，加 Werneror 全部古典朝代分桶",
+      "artifact_shape": "shipped",
+      "state": "not_measured",
+      "blocked_reason": "本次运行未请求该规模（未传 --scale full）。要补测：在同一参考机上追加该规模重跑。",
+      "measurement": null
+    },
+    {
+      "scale": "10k",
+      "scope": "唐宋集合按 stable_id 排序的确定性前 1 万首",
+      "artifact_shape": "with_ngram_and_audit",
       "state": "measured",
       "blocked_reason": null,
       "measurement": {
@@ -195,6 +442,8 @@
         "gzip_bytes": 95661338,
         "gzip_ratio": 0.3246,
         "build_seconds": 73.107,
+        "audit_bytes": 0,
+        "first_launch_seconds": 0.0,
         "queries": [
           {
             "id": "two_char_ngram",
@@ -298,6 +547,7 @@
     {
       "scale": "tang-song",
       "scope": "chinese-poetry 全唐诗 + 全宋诗 + 宋词，加 Werneror 唐宋分桶",
+      "artifact_shape": "with_ngram_and_audit",
       "state": "measured",
       "blocked_reason": null,
       "measurement": {
@@ -472,6 +722,8 @@
         "gzip_bytes": 1854419638,
         "gzip_ratio": 0.3961,
         "build_seconds": 654.894,
+        "audit_bytes": 0,
+        "first_launch_seconds": 0.0,
         "queries": [
           {
             "id": "two_char_ngram",
@@ -575,6 +827,7 @@
     {
       "scale": "full",
       "scope": "chinese-poetry 全部可分发资产，加 Werneror 全部古典朝代分桶",
+      "artifact_shape": "with_ngram_and_audit",
       "state": "measured",
       "blocked_reason": null,
       "measurement": {
@@ -749,6 +1002,8 @@
         "gzip_bytes": 3514729916,
         "gzip_ratio": 0.3933,
         "build_seconds": 2670.285,
+        "audit_bytes": 0,
+        "first_launch_seconds": 0.0,
         "queries": [
           {
             "id": "two_char_ngram",
@@ -851,19 +1106,15 @@
     }
   ],
   "verdict": {
-    "within_budget": false,
+    "within_budget": true,
     "full_scale_measured": true,
     "largest_measured_scale": "full",
-    "summary": "超预算：tang-song（474162 首）gzip 1768 MB 超体积预算，最差 p95 16.383 ms；full（896127 首）gzip 3351 MB 超体积预算，最差 p95 40.365 ms。占字节最多的是 `ngram_gram_idx`（38.5%），不是正文——按朝代缩小集合只能按比例缩小整个文件，削不掉这一项。已采用缓解措施 `no_measured_subset_fits_budget`。",
-    "mitigation": {
-      "id": "no_measured_subset_fits_budget",
-      "statement": "已实测的任何子集都不满足预算，因此「限制默认集」无法解决问题。必须由人决定：进一步缩小默认集（例如仅唐诗），或带论证地提高预算。本子命令不擅自提高预算。",
-      "implemented_by": "todo 21（需先由人裁决默认集范围或预算）"
-    },
+    "summary": "随包形态实测 1 行（tang-song（474162 首）gzip 211 MB、首启派生 571.8 s、审计库另存 240 MB），全部 gzip <= 300 MB 且最差 p95 <= 150 ms，预算内。默认随包 tang-song，全量作为应用内可选下载。另有 3 行含 ngram 与审计表的实测保留在报告里，它们是拆分决策的依据而不是候选发布物。发布上限规模（full）已实测，缩小随包默认集的依据来自真实数字。",
+    "mitigation": null,
     "dominant_table": {
-      "name": "ngram_gram_idx",
-      "bytes": 3441672192,
-      "share_of_file": 0.3851
+      "name": "poem",
+      "bytes": 446324736,
+      "share_of_file": 0.7049
     }
   }
 }

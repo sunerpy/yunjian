@@ -27,6 +27,7 @@ toml = { workspace = true }
 # 绝不在 xtask 里另写一套判据——出处规则只能有一个实现。
 tracing = { workspace = true }
 ureq = { workspace = true }
+yunjian-core = { path = "../crates/yunjian-core" }
 yunjian-corpus = { path = "../crates/yunjian-corpus" }
 # `cer-spike` 的参考文本取自繁体上游，识别结果也常是繁体：两侧都要做 t2s 归一，
 # 否则字形差异会被当成识别错误算进 CER。用的是语料侧同一个实现，判据只能有一个。

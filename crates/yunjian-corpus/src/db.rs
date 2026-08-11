@@ -1,5 +1,5 @@
 use crate::commentary::CommentaryRecord;
-use crate::fts::build_search_indexes;
+use crate::fts;
 use crate::model::{
     CanonicalRecord, Genre, LicenseClass, ProvenanceKind, Script, SourceLocatorKind,
 };
@@ -15,9 +15,66 @@ use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use yunjian_core::{Error, Result};
 
-pub const SCHEMA_VERSION: u32 = 1;
-pub const SUPPORTED_SCHEMA: RangeInclusive<u32> = 1..=1;
+/// schema v2 相对 v1 的变化：`defect` / `disposition` 移进审计库，`ngram` 改为首启
+/// 派生，`corpus_meta` 增加 `ngram_source` 与 `shipped_scope` 两列。
+///
+/// 之所以升版号而不是留在 1：`corpus_meta` 新增了 NOT NULL 列，拿 v1 的文件跑
+/// v2 的查询会在 SQL 层报 `no such column`。升版号把它变成
+/// [`OpenCorpusError::IncompatibleSchema`] 这条带下一步指引的类型化错误。
+/// 尚无已发布工件，因此不需要迁移代码。
+pub const SCHEMA_VERSION: u32 = 2;
+pub const SUPPORTED_SCHEMA: RangeInclusive<u32> = 2..=2;
 pub const SCHEMA_SQL: &str = include_str!("../schema.sql");
+/// 审计库 schema。与 [`SCHEMA_SQL`] 同样是签入的唯一事实来源，本文件内零 DDL 拼接。
+pub const AUDIT_SCHEMA_SQL: &str = include_str!("../schema-audit.sql");
+
+/// 随包工件里**永远不该出现**的表。
+///
+/// 五张都是可再生的：前两张是构建期审计台账（重放上游即可重建），后三张由
+/// `poem.body` 确定性派生（首启在本机构建，见 `yunjian_core::derive`）。
+/// 打包前逐张断言不存在，见 [`assert_no_diagnostic_tables`]。
+pub const NON_SHIPPED_TABLES: [&str; 5] = [
+    "defect",
+    "disposition",
+    "ngram",
+    "poem_fts",
+    "poem_last_char",
+];
+
+/// `corpus_meta.derived_indexes` 的取值。构建器永远写 `first_launch`——三张派生结构
+/// 不随包是已实测定案，不是可配置项，所以它是常量而不是参数。
+const DERIVED_INDEXES: &str = "first_launch";
+
+/// 随包默认集的范围。语料库自己记住它是哪一档，因为打包要断言「这个库就是被实测
+/// 选定的那一档」，而报告只能证明报告自己。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShippedScope {
+    Sample10k,
+    TangSong,
+    Full,
+}
+
+impl ShippedScope {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sample10k => "10k",
+            Self::TangSong => "tang-song",
+            Self::Full => "full",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Result<Self> {
+        match raw {
+            "10k" => Ok(Self::Sample10k),
+            "tang-song" => Ok(Self::TangSong),
+            "full" => Ok(Self::Full),
+            other => Err(corpus_error(format!(
+                "未知随包范围 `{other}`；可选 10k | tang-song | full"
+            ))),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoemTagRow {
@@ -28,6 +85,7 @@ pub struct PoemTagRow {
 #[derive(Debug)]
 pub struct CorpusDbInput {
     pub corpus_version: String,
+    pub shipped_scope: ShippedScope,
     pub source_manifest: Vec<u8>,
     pub index_verdict: Vec<u8>,
     pub records: Vec<CanonicalRecord>,
@@ -100,6 +158,24 @@ pub struct BuildStats {
     pub bytes_before_vacuum: u64,
     /// `VACUUM` 之后的文件字节，即随包产物的真实大小。
     pub bytes_after_vacuum: u64,
+    /// 同一次构建产出的审计库字节。不随包，但要在报告里说明拆出去了多少。
+    pub audit_bytes: u64,
+}
+
+/// 由随包库路径机械推出审计库路径：`corpus.db` -> `corpus-audit.db`。
+///
+/// 刻意不让调用方各传一个路径：能被任意指定的第二路径会让「跨文件校验的是这一对吗」
+/// 无法回答——拿旧审计库配新语料库同样能让守恒等式凑巧成立。
+#[must_use]
+pub fn audit_path(corpus_path: impl AsRef<Path>) -> PathBuf {
+    let path = corpus_path.as_ref();
+    let stem = path
+        .file_stem()
+        .map_or_else(|| "corpus".into(), |stem| stem.to_string_lossy());
+    let extension = path
+        .extension()
+        .map_or_else(|| "db".into(), |extension| extension.to_string_lossy());
+    path.with_file_name(format!("{stem}-audit.{extension}"))
 }
 
 pub fn build_database(path: impl AsRef<Path>, input: &CorpusDbInput) -> Result<()> {
@@ -107,33 +183,202 @@ pub fn build_database(path: impl AsRef<Path>, input: &CorpusDbInput) -> Result<(
 }
 
 /// 与 [`build_database`] 完全相同的构建路径，额外回传 [`BuildStats`]。
+///
+/// 一次调用产出**两个文件**：`path` 是随包语料库，[`audit_path`] 推出的那个是审计库。
+/// 顺序是「写随包库 -> 写审计库 -> 跨文件守恒校验 -> 两个临时文件一起就位」：校验
+/// 放在就位**之前**，所以未通过守恒的一对永远不会被发布出去。
 pub fn build_database_with_stats(
     path: impl AsRef<Path>,
     input: &CorpusDbInput,
 ) -> Result<BuildStats> {
     let path = path.as_ref();
+    let audit = audit_path(path);
     let metadata = validate_input(input)?;
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
         std::fs::create_dir_all(parent)?;
     }
-    let temporary = temporary_path(path);
-    if temporary.exists() {
-        std::fs::remove_file(&temporary)?;
+    let corpus_temporary = temporary_path(path);
+    let audit_temporary = temporary_path(&audit);
+    for temporary in [&corpus_temporary, &audit_temporary] {
+        if temporary.exists() {
+            std::fs::remove_file(temporary)?;
+        }
     }
-    let stats = match write_database(&temporary, input, &metadata) {
+
+    let discard = || {
+        let _ = std::fs::remove_file(&corpus_temporary);
+        let _ = std::fs::remove_file(&audit_temporary);
+    };
+    let mut stats = match write_database(&corpus_temporary, input, &metadata) {
         Ok(stats) => stats,
         Err(error) => {
-            let _ = std::fs::remove_file(&temporary);
+            discard();
             return Err(error);
         }
     };
-    if path.exists() {
-        std::fs::remove_file(path)?;
+    stats.audit_bytes = match write_audit_database(&audit_temporary, input, &metadata) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            discard();
+            return Err(error);
+        }
+    };
+    if let Err(error) = verify_conservation_across_files(&corpus_temporary, &audit_temporary) {
+        discard();
+        return Err(error);
     }
-    std::fs::rename(&temporary, path)?;
+
+    for (temporary, destination) in [(&corpus_temporary, path), (&audit_temporary, &audit)] {
+        if destination.exists() {
+            std::fs::remove_file(destination)?;
+        }
+        std::fs::rename(temporary, destination)?;
+    }
     Ok(stats)
+}
+
+/// 断言随包工件不含任何构建期诊断表或首启派生表。
+///
+/// 打包前的中止断言之一。看的是 `sqlite_schema` 而不是元数据列：元数据可以写错，
+/// 表在不在是唯一无法自我声明的事实。
+pub fn assert_no_diagnostic_tables(connection: &Connection) -> Result<()> {
+    let mut present = Vec::new();
+    for table in NON_SHIPPED_TABLES {
+        let count: i64 = connection.query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name=?1",
+            params![table],
+            |row| row.get(0),
+        )?;
+        if count != 0 {
+            present.push(table);
+        }
+    }
+    if present.is_empty() {
+        return Ok(());
+    }
+    Err(corpus_error(format!(
+        "随包工件含不该随包的表 {}；`defect`/`disposition` 属审计库，`ngram` 首启本机构建",
+        present.join("、")
+    )))
+}
+
+/// 跨两个文件校验处置守恒。
+///
+/// 三条等式与拆库前**逐字相同**，只是左端在审计库、右端在随包库的 `corpus_meta`：
+///
+/// | 等式 | 左端 | 右端 |
+/// |---|---|---|
+/// | `count(disposition)` == `input_row_count` | 审计库 | 语料库 |
+/// | `count(disposition WHERE 'shipped')` == `poem_count` | 审计库 | 语料库 |
+/// | `count(defect)` == `finding_count` | 审计库 | 语料库 |
+///
+/// 外加一条拆库**新引入**风险的对策：两个文件必须自称属于同一次构建（`schema_version`
+/// / `corpus_version` / `source_manifest_sha256` 三元组相等）。否则拿一份旧审计库配
+/// 一份新语料库，上面三条也可能凑巧成立。
+pub fn verify_conservation_across_files(
+    corpus_path: impl AsRef<Path>,
+    audit_path: impl AsRef<Path>,
+) -> Result<()> {
+    let corpus = Connection::open_with_flags(
+        corpus_path.as_ref(),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+    )?;
+    let audit = Connection::open_with_flags(
+        audit_path.as_ref(),
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+    )?;
+
+    let (schema_version, corpus_version, manifest, poem_count, finding_count, input_row_count): (
+        u32,
+        String,
+        String,
+        i64,
+        i64,
+        i64,
+    ) = corpus.query_row(
+        "SELECT schema_version, corpus_version, source_manifest_sha256, \
+                poem_count, finding_count, input_row_count FROM corpus_meta",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        },
+    )?;
+    let (
+        audit_schema_version,
+        audit_corpus_version,
+        audit_manifest,
+        audit_poem_count,
+        audit_finding_count,
+        audit_input_row_count,
+    ): (u32, String, String, i64, i64, i64) = audit.query_row(
+        "SELECT schema_version, corpus_version, source_manifest_sha256, \
+                poem_count, finding_count, input_row_count FROM audit_meta",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        },
+    )?;
+
+    if (schema_version, &corpus_version, &manifest)
+        != (audit_schema_version, &audit_corpus_version, &audit_manifest)
+    {
+        return Err(corpus_error(format!(
+            "审计库与语料库不属于同一次构建：语料库 v{schema_version}/{corpus_version}/\
+             {manifest} vs 审计库 v{audit_schema_version}/{audit_corpus_version}/{audit_manifest}"
+        )));
+    }
+    if (audit_poem_count, audit_finding_count, audit_input_row_count)
+        != (poem_count, finding_count, input_row_count)
+    {
+        return Err(corpus_error(format!(
+            "审计库记录的计数与语料库不符：审计库 poem={audit_poem_count} \
+             finding={audit_finding_count} input={audit_input_row_count} vs \
+             语料库 poem={poem_count} finding={finding_count} input={input_row_count}"
+        )));
+    }
+
+    let disposition_count = audit.query_row("SELECT count(*) FROM disposition", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    let shipped_count = audit.query_row(
+        "SELECT count(*) FROM disposition WHERE disposition='shipped'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let defect_count = audit.query_row("SELECT count(*) FROM defect", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    let poem_rows =
+        corpus.query_row("SELECT count(*) FROM poem", [], |row| row.get::<_, i64>(0))?;
+
+    if disposition_count != input_row_count
+        || shipped_count != poem_count
+        || defect_count != finding_count
+        || poem_rows != poem_count
+    {
+        return Err(corpus_error(format!(
+            "跨文件处置守恒失败：disposition={disposition_count}, input={input_row_count}, \
+             shipped={shipped_count}, poem_meta={poem_count}, poem_rows={poem_rows}, \
+             defect={defect_count}, finding={finding_count}"
+        )));
+    }
+    Ok(())
 }
 
 pub fn open_corpus(path: impl AsRef<Path>) -> std::result::Result<Connection, OpenCorpusError> {
@@ -370,17 +615,6 @@ fn write_database(
                 record.edition_group,
             ],
         )?;
-        for (line_index, character) in normalized
-            .body_lines
-            .iter()
-            .enumerate()
-            .filter_map(|(index, line)| last_character(line).map(|character| (index, character)))
-        {
-            transaction.execute(
-                "INSERT INTO poem_last_char(poem_id, line_index, ch) VALUES (?1, ?2, ?3)",
-                params![record.stable_id, line_index as i64, character.to_string()],
-            )?;
-        }
     }
 
     let mut commentaries = input.commentaries.iter().collect::<Vec<_>>();
@@ -473,6 +707,60 @@ fn write_database(
         )?;
     }
 
+    transaction.execute(
+        "INSERT INTO corpus_meta(\
+            singleton, schema_version, corpus_version, built_at, source_manifest_sha256, \
+            poem_count, finding_count, input_row_count, index_detail_mode, \
+            derived_indexes, shipped_scope, builder_sqlite_version, integrity_check\
+         ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'ok')",
+        params![
+            SCHEMA_VERSION,
+            input.corpus_version,
+            metadata.built_at,
+            metadata.source_manifest_sha256,
+            input.quality.poem_count as i64,
+            input.quality.findings.len() as i64,
+            input.quality.input_rows as i64,
+            metadata.index_detail_mode,
+            DERIVED_INDEXES,
+            input.shipped_scope.as_str(),
+            builder_sqlite_version,
+        ],
+    )?;
+    transaction.commit()?;
+
+    // 刻意不在这里建任何检索结构：`ngram` / `poem_fts` / `poem_last_char` 全部由
+    // 首启在本机派生（`yunjian_core::derive`）。裁决选定的形态已经写进
+    // `corpus_meta.index_detail_mode`，首启照它建。
+    fts::reject_disabled_ngram_aux(metadata.ngram_aux_enabled)?;
+    verify_shipped_shape(&connection, input)?;
+    let bytes_before_vacuum = file_bytes(path)?;
+    connection.execute_batch("VACUUM")?;
+    let bytes_after_vacuum = file_bytes(path)?;
+    let integrity =
+        connection.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))?;
+    if integrity != "ok" {
+        return Err(corpus_error(format!(
+            "SQLite integrity_check 失败：{integrity}"
+        )));
+    }
+    verify_query_only(&connection)?;
+    Ok(BuildStats {
+        bytes_before_vacuum,
+        bytes_after_vacuum,
+        audit_bytes: 0,
+    })
+}
+
+fn write_audit_database(
+    path: &Path,
+    input: &CorpusDbInput,
+    metadata: &BuildMetadata,
+) -> Result<u64> {
+    let mut connection = Connection::open(path)?;
+    connection.execute_batch(AUDIT_SCHEMA_SQL)?;
+    let transaction = connection.transaction()?;
+
     let mut findings = input.quality.findings.iter().collect::<Vec<_>>();
     findings.sort();
     for (index, finding) in findings.into_iter().enumerate() {
@@ -505,70 +793,57 @@ fn write_database(
     }
 
     transaction.execute(
-        "INSERT INTO corpus_meta(\
-            singleton, schema_version, corpus_version, built_at, source_manifest_sha256, \
-            poem_count, finding_count, input_row_count, index_detail_mode, \
-            builder_sqlite_version, integrity_check\
-         ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'ok')",
+        "INSERT INTO audit_meta(\
+            singleton, schema_version, corpus_version, source_manifest_sha256, \
+            poem_count, finding_count, input_row_count\
+         ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             SCHEMA_VERSION,
             input.corpus_version,
-            metadata.built_at,
             metadata.source_manifest_sha256,
             input.quality.poem_count as i64,
             input.quality.findings.len() as i64,
             input.quality.input_rows as i64,
-            metadata.index_detail_mode,
-            builder_sqlite_version,
         ],
     )?;
     transaction.commit()?;
 
-    build_search_indexes(
-        &mut connection,
-        &metadata.index_detail_mode,
-        metadata.ngram_aux_enabled,
-    )?;
-    verify_database_conservation(&connection)?;
-    let bytes_before_vacuum = file_bytes(path)?;
     connection.execute_batch("VACUUM")?;
-    let bytes_after_vacuum = file_bytes(path)?;
     let integrity =
         connection.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))?;
     if integrity != "ok" {
         return Err(corpus_error(format!(
-            "SQLite integrity_check 失败：{integrity}"
+            "审计库 SQLite integrity_check 失败：{integrity}"
         )));
     }
-    verify_query_only(&connection)?;
-    Ok(BuildStats {
-        bytes_before_vacuum,
-        bytes_after_vacuum,
-    })
+    file_bytes(path)
 }
 
 fn file_bytes(path: &Path) -> Result<u64> {
     Ok(std::fs::metadata(path)?.len())
 }
 
-fn verify_database_conservation(connection: &Connection) -> Result<()> {
-    let (poem_count, input_row_count): (i64, i64) = connection.query_row(
-        "SELECT poem_count, input_row_count FROM corpus_meta",
+/// 随包库自己能校验的那一半：行数与元数据一致，且不含任何不该随包的表。
+///
+/// 另一半（处置台账的三条等式）两端分处两个文件，只能等审计库也写完，
+/// 见 [`verify_conservation_across_files`]。
+fn verify_shipped_shape(connection: &Connection, input: &CorpusDbInput) -> Result<()> {
+    assert_no_diagnostic_tables(connection)?;
+    let (poem_count, scope, source): (i64, String, String) = connection.query_row(
+        "SELECT poem_count, shipped_scope, derived_indexes FROM corpus_meta",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
-    let disposition_count =
-        connection.query_row("SELECT count(*) FROM disposition", [], |row| {
-            row.get::<_, i64>(0)
-        })?;
-    let shipped_count = connection.query_row(
-        "SELECT count(*) FROM disposition WHERE disposition='shipped'",
-        [],
-        |row| row.get::<_, i64>(0),
-    )?;
-    if disposition_count != input_row_count || shipped_count != poem_count {
+    let poem_rows =
+        connection.query_row("SELECT count(*) FROM poem", [], |row| row.get::<_, i64>(0))?;
+    if poem_rows != poem_count {
         return Err(corpus_error(format!(
-            "数据库处置守恒失败：disposition={disposition_count}, input={input_row_count}, shipped={shipped_count}, poem={poem_count}"
+            "随包库守恒失败：poem 行数 {poem_rows} 与 corpus_meta.poem_count {poem_count} 不符"
+        )));
+    }
+    if scope != input.shipped_scope.as_str() || source != DERIVED_INDEXES {
+        return Err(corpus_error(format!(
+            "随包库元数据与构建请求不符：scope={scope} derived_indexes={source}"
         )));
     }
     Ok(())

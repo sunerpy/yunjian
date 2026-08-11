@@ -1,0 +1,147 @@
+name: corpus-release
+
+# 语料工件发布：`corpus-v*` tag → GitHub Release。
+#
+# ## 为什么与应用发布 tag 分离
+#
+# 语料修订与代码修订的节奏差一个数量级：上游数据缺陷随时可能修，而应用版本不该
+# 因为一次数据修订被迫发一版；反过来，发一版应用也不该强迫重新分发 200 MB 的语料。
+# 因此工件挂在独立的 `corpus-v*` tag 上，应用侧靠 `schema_version` 谈兼容
+# （`manifest.json` 里同时写 `schema_version` 与 `min_app_version`）。
+#
+# `release-please.yml` 管的是 `v*` 应用 tag，本工作流只认 `corpus-v*`，两者不重叠。
+#
+# ## 为什么在 CI 里重建而不是上传本机产物
+#
+# 工件必须可复现：构建器逐行有序写入、`VACUUM` 后逐字节确定，所以 CI 重建出来的
+# 文件应当与本机一致。在 CI 重建同时也证明了「任何人拿着锁定 revision 都能重造
+# 这个工件」，而上传本机产物只能证明某台机器上曾经有过这么一个文件。
+#
+# ## 审计库是 CI 工件，不进 Release
+#
+# `corpus-audit.db` 是构建期台账（`defect` + `disposition`），供排查用；
+# 它作为 workflow artifact 保留 90 天，**不**作为 Release 资产——用户工件里
+# 不该有任何诊断数据。
+
+on:
+  push:
+    tags:
+      - "corpus-v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "已存在的 corpus-v* tag，用于重挂失败的发布"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # 三个上游按 corpus/sources.toml 锁定的 revision。改这里等于改语料内容，
+  # 必须与 sources.toml 同步——`verify-sources` 会核对摘要，对不上即失败。
+  CHINESE_POETRY_REV: b8594f81a89752241442f2ce267d6f66f96704ee
+  WERNEROR_REV: 4cfe49c06858e00d15f84d192fe5294295f79689
+  RHYME_REV: ff0e9c13fb037c43e0eaa5dc929c0fe4fa2ffb18
+
+concurrency:
+  group: corpus-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish corpus artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # 许可门禁在建库之前：不合许可的源根本不该被读进来，这个顺序与
+      # `make corpus-gate` 一致。
+      - name: 许可门禁
+        run: cargo run -p xtask --release -- verify-sources --offline
+
+      - name: 检出锁定 revision 的上游语料
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/corpus-src"
+          clone_at() {
+            local url="$1" rev="$2" dir="$3"
+            git init -q "$dir"
+            git -C "$dir" remote add origin "$url"
+            git -C "$dir" fetch -q --depth 1 origin "$rev"
+            git -C "$dir" checkout -q FETCH_HEAD
+            test "$(git -C "$dir" rev-parse HEAD)" = "$rev"
+          }
+          clone_at https://github.com/chinese-poetry/chinese-poetry "$CHINESE_POETRY_REV" \
+            "$RUNNER_TEMP/corpus-src/chinese-poetry"
+          clone_at https://github.com/Werneror/Poetry "$WERNEROR_REV" \
+            "$RUNNER_TEMP/corpus-src/Poetry"
+          clone_at https://github.com/charlesix59/chinese_word_rhyme "$RHYME_REV" \
+            "$RUNNER_TEMP/corpus-src/rhyme"
+
+      - name: 构建待发布的随包库与审计库
+        run: |
+          cargo run -p xtask --release -- corpus-build \
+            --chinese-poetry-dir "$RUNNER_TEMP/corpus-src/chinese-poetry" \
+            --werneror-dir "$RUNNER_TEMP/corpus-src/Poetry" \
+            --rhyme-dir "$RUNNER_TEMP/corpus-src/rhyme"
+
+      # 打包自带六条中止断言（完整性、无诊断表、跨文件守恒、结论在预算内、
+      # 形态与结论一致、最终 gzip 不超预算），任一不成立即失败，不需要在这里重复。
+      - name: 打包并校验工件
+        run: cargo run -p xtask --release -- corpus-package
+
+      - name: 独立复核校验与 manifest
+        working-directory: corpus/build/package
+        run: |
+          set -euo pipefail
+          sha256sum -c ./*.db.gz.sha256
+          jq -e '.schema_version and .corpus_version and .min_app_version and .sha256' \
+            manifest.json > /dev/null
+          jq -e '.measurement.within_budget == true' manifest.json > /dev/null
+          # 工件大小必须与 manifest 记录一致：两者由不同代码路径产生，
+          # 对不上说明 manifest 描述的不是这个文件。
+          test "$(stat -c%s ./*.db.gz)" = "$(jq -r '.size_bytes' manifest.json)"
+
+      - name: 上传审计库（CI 工件，不进 Release）
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-audit-db
+          path: corpus/build/release/corpus-audit.db
+          retention-days: 90
+          compression-level: 9
+
+      - name: 发布 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd corpus/build/package
+          # `--clobber` 让重挂（workflow_dispatch）可以覆盖上一次上传失败留下的资产，
+          # 而不必为了修一次发布去升语料版本号。
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" ./*.db.gz ./*.db.gz.sha256 manifest.json --clobber
+          else
+            gh release create "$TAG" ./*.db.gz ./*.db.gz.sha256 manifest.json \
+              --title "语料工件 $TAG" \
+              --notes "$(printf '%s\n' \
+                "由 \`xtask corpus-package\` 产出，六条中止断言全部通过。" \
+                "" \
+                "- 随包默认集：$(jq -r '.shipped_scope' manifest.json)，$(jq -r '.record_count' manifest.json) 首" \
+                "- schema 版本：$(jq -r '.schema_version' manifest.json)（应用最低版本 $(jq -r '.min_app_version' manifest.json)）" \
+                "- 工件：$(jq -r '.size_bytes' manifest.json) 字节（gzip），解压后 $(jq -r '.uncompressed_bytes' manifest.json) 字节" \
+                "- SHA-256：\`$(jq -r '.sha256' manifest.json)\`" \
+                "" \
+                "\`ngram\` / \`poem_fts\` / \`poem_last_char\` 三张检索结构**不随包**，" \
+                "由应用首启在本机派生（实测 $(jq -r '.measurement.first_launch_seconds' manifest.json) 秒）。" \
+                "构建期审计台账拆入 \`corpus-audit.db\`，作为 CI 工件而非用户工件。")"
+          fi

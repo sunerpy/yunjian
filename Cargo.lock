@@ -2965,6 +2965,7 @@ dependencies = [
  "toml",
  "tracing",
  "ureq 3.4.0",
+ "yunjian-core",
  "yunjian-corpus",
  "yunjian-voice",
 ]
