@@ -11,8 +11,37 @@ authors.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 blake3 = { workspace = true }
+dirs.workspace = true
+keyring-core.workspace = true
+secrecy.workspace = true
 serde = { workspace = true }
+toml.workspace = true
+tracing.workspace = true
 yunjian-core = { path = "../yunjian-core" }
+zeroize.workspace = true
+
+# 逐平台 store 按目标三元组分别声明，而不是全部塞进 `[dependencies]` 再用 `cfg` 挑：
+# 后者会让 Windows 构建下载并编译 Linux 的 D-Bus 栈，也会让 `cargo tree` 谎报依赖面。
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store.workspace = true
+linux-keyutils-keyring-store.workspace = true
+
+# macOS 用 legacy keychain：对所有应用可用，不要求 provisioning profile。
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { workspace = true, features = ["keychain"] }
+
+# iOS 只有 protected data store，且该特性是上游强制的。
+[target.'cfg(target_os = "ios")'.dependencies]
+apple-native-keyring-store = { workspace = true, features = ["protected"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-native-keyring-store.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true
