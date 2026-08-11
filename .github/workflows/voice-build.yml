@@ -48,7 +48,10 @@ jobs:
             echo "::error::不开 voice 却链接了 onnxruntime"
             exit 1
           fi
-          ./target/release/yunjian
+          # `--version` 而不是裸调用：todo 30 之后裸调用缺子命令，clap 打帮助并按约定退出 2
+          # （用法错误），`bash -e` 会把它当成失败。`--version` 同样要求进程真的起来、
+          # 动态库真的解析成功，这正是本步要证明的性质。
+          ./target/release/yunjian --version
 
   desktop:
     name: ${{ matrix.name }}
@@ -144,7 +147,9 @@ jobs:
         run: |
           BIN=target/${{ matrix.target }}/release/yunjian
           if [ "${{ runner.os }}" = "Windows" ]; then BIN="$BIN.exe"; fi
-          "$BIN"
+          # `--version` 而不是裸调用，理由同上：裸调用缺子命令按约定退出 2，
+          # 而本步要证明的是「进程起得来、原生库解析得开」，`--version` 同样覆盖。
+          "$BIN" --version
 
       - name: 记录体积增量
         shell: bash
