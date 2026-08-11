@@ -32,7 +32,8 @@ GATE := fmt-check lint test
 CORPUS_GATE_SCALE := 10000
 
 .DEFAULT_GOAL := help
-.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test build check ci corpus-gate hooks
+.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test build check ci corpus-gate \
+	corpus-artifact hooks
 
 help: ## 列出全部可用目标
 	@echo "云笺 · make 目标"
@@ -131,10 +132,39 @@ corpus-gate: ## 语料门禁：许可、10k 规模黄金查询契约、质量基
 	@# 超预算不指名缓解措施都会失败）。这正是 todo 21 打包时要读的那份文件，所以
 	@# 这一步守的是「结论文件没有腐坏」，而不是「数字是新的」。
 	@$(CARGO) run -p xtask -- corpus-measure --render-only
-	@echo "==> 黄金查询契约：fixture 自检 + FTS5 索引回归"
+	@echo "==> 黄金查询契约：fixture 自检 + 首启派生后的 37 条契约"
+	@# 第二条是本 todo 引入的：随包工件不含 ngram / poem_fts / poem_last_char，
+	@# 三者由首启在本机派生。这个测试先建出随包形态、再跑首启，然后逐条跑满契约——
+	@# 它是「不随包不等于功能缩减」这句话的可执行形态，因此必须在门禁里。
 	@$(CARGO) test -p yunjian-core --test golden_queries
-	@$(CARGO) test -p yunjian-corpus fts::
+	@$(CARGO) test -p yunjian-corpus --test first_launch_contracts
+	@echo "==> 打包与派生的中止断言"
+	@$(CARGO) test -p xtask corpus_package
+	@$(CARGO) test -p yunjian-core --lib derive::
 	@echo "语料门禁通过。"
+
+# 发布语料工件的本机入口。刻意**不**属于 `ci`：它要三个上游检出（合计约 830 MB）、
+# 一次约 11 分钟的建库和一次约 10 分钟的首启派生，而且它的产物不进版本库。
+# CI 上同一组命令由 `.github/workflows/corpus-release.yml` 在 `corpus-v*` tag 上跑。
+corpus-artifact: ## 构建并打包语料工件（需三个上游检出，约 25 分钟）
+	@test -n "$(CHINESE_POETRY_DIR)" -a -n "$(WERNEROR_DIR)" -a -n "$(RHYME_DIR)" || { \
+		echo "用法：make corpus-artifact CHINESE_POETRY_DIR=… WERNEROR_DIR=… RHYME_DIR=…" >&2; \
+		echo "三个目录必须是按 corpus/sources.toml 锁定 revision 的检出。" >&2; \
+		exit 1; \
+	}
+	@echo "==> xtask corpus-build（随包库 + 审计库，跨文件守恒在构建内校验）"
+	@$(CARGO) run -p xtask --release -- corpus-build \
+		--chinese-poetry-dir "$(CHINESE_POETRY_DIR)" \
+		--werneror-dir "$(WERNEROR_DIR)" \
+		--rhyme-dir "$(RHYME_DIR)"
+	@echo "==> xtask corpus-package（六条中止断言 + 解压回读）"
+	@$(CARGO) run -p xtask --release -- corpus-package
+	@echo "==> 独立复核 sha256 与 manifest"
+	@cd corpus/build/package && sha256sum -c ./*.db.gz.sha256
+	@cd corpus/build/package && jq -e \
+		'.schema_version and .corpus_version and .min_app_version and .sha256' \
+		manifest.json > /dev/null
+	@echo "语料工件就绪：corpus/build/package/"
 
 hooks: ## 安装 git hooks：pre-commit 做格式化，pre-push 跑门禁
 	@command -v $(PRE_COMMIT) >/dev/null 2>&1 || { \

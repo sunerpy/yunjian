@@ -1,4 +1,19 @@
-use super::*;
+//! 首启构建之后，37 条黄金查询契约必须逐条与随包时相同。
+//!
+//! # 这个文件为什么在 `tests/` 而不是 `src/`
+//!
+//! 它证明的是**跨 crate 的**性质：随包工件由 `yunjian-corpus` 产出，三张检索结构由
+//! `yunjian-core` 在首启派生，而契约要在「两步都做完」之后才成立。放在集成测试里，
+//! 它只能通过两个 crate 的公开 API，与应用真正走的路径一致。
+//!
+//! # 它守的是什么
+//!
+//! 「不随包 `ngram` / `poem_fts` / `poem_last_char`」这个决定的全部风险在于它可能是
+//! 一次功能缩减。本文件把「不是缩减」变成可执行断言：先建出随包形态（此时候选表
+//! 根本不存在），再跑首启构建，然后逐条跑满 37 条契约并核对物理路径。
+//! `without_the_first_launch_build_...` 是它的可证伪对照——把结构拿掉，两字查询
+//! 连准备都过不去。
+
 use rusqlite::{Connection, params, params_from_iter};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -6,9 +21,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const VERDICT_JSON: &[u8] = include_bytes!("../../../../corpus/reports/index-mode.json");
-const QUERIES_TOML: &str = include_str!("../../../yunjian-core/tests/queries.toml");
-const POEMS_TOML: &str = include_str!("../../../yunjian-core/tests/fixtures/poems.toml");
+const VERDICT_JSON: &[u8] = include_bytes!("../../../corpus/reports/index-mode.json");
+const QUERIES_TOML: &str = include_str!("../../yunjian-core/tests/queries.toml");
+const POEMS_TOML: &str = include_str!("../../yunjian-core/tests/fixtures/poems.toml");
 
 static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
 
@@ -110,12 +125,6 @@ fn golden_connection() -> (Connection, Fixtures) {
                  body TEXT NOT NULL,
                  first_line TEXT NOT NULL
              );
-             CREATE TABLE poem_last_char (
-                 poem_id TEXT NOT NULL,
-                 line_index INTEGER NOT NULL,
-                 ch TEXT NOT NULL,
-                 PRIMARY KEY (poem_id, line_index)
-             ) WITHOUT ROWID;
              CREATE TABLE poem_rhyme_group (
                  poem_id TEXT NOT NULL,
                  rhyme_book TEXT NOT NULL,
@@ -132,23 +141,27 @@ fn golden_connection() -> (Connection, Fixtures) {
                  src_char TEXT PRIMARY KEY NOT NULL,
                  dst_char TEXT NOT NULL
              ) WITHOUT ROWID;
-             CREATE TABLE ngram (
-                 gram TEXT NOT NULL,
-                 stable_id TEXT NOT NULL
-             ) STRICT;
+             CREATE TABLE corpus_meta (
+                 singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
+                 index_detail_mode TEXT NOT NULL
+             );
              CREATE INDEX poem_author_idx ON poem(author);
              CREATE INDEX poem_title_idx ON poem(title);
              CREATE INDEX poem_ci_tune_idx ON poem(ci_tune);
              CREATE INDEX poem_first_line_idx ON poem(first_line);
-             CREATE INDEX poem_last_char_idx ON poem_last_char(ch, poem_id);
              CREATE INDEX poem_rhyme_group_idx
                  ON poem_rhyme_group(rhyme_book, rhyme_group, poem_id);
-             CREATE INDEX poem_tag_idx ON poem_tag(tag, poem_id);
-             CREATE INDEX ngram_gram_idx ON ngram(gram, stable_id);",
+             CREATE INDEX poem_tag_idx ON poem_tag(tag, poem_id);",
         )
         .expect("create golden schema");
 
     let fixtures = fixtures();
+    connection
+        .execute(
+            "INSERT INTO corpus_meta(singleton, index_detail_mode) VALUES (1, ?1)",
+            params![verdict().chosen_mode],
+        )
+        .expect("把裁决选定的形态写进 corpus_meta，首启从这里读");
     let transaction = connection.transaction().expect("begin fixture transaction");
     for variant in &fixtures.variants {
         transaction
@@ -174,15 +187,6 @@ fn golden_connection() -> (Connection, Fixtures) {
                 ],
             )
             .expect("insert poem");
-        for (line_index, character) in poem.last_chars.iter().enumerate() {
-            transaction
-                .execute(
-                    "INSERT INTO poem_last_char(poem_id, line_index, ch)
-                     VALUES (?1, ?2, ?3)",
-                    params![poem.stable_id, line_index as i64, character],
-                )
-                .expect("insert last character");
-        }
         if !poem.rhyme_group.is_empty() {
             let rhyme_book = match poem.rhyme_book.as_str() {
                 "平水韵" => "pingshui",
@@ -209,14 +213,31 @@ fn golden_connection() -> (Connection, Fixtures) {
     }
     transaction.commit().expect("commit fixture transaction");
 
-    let verdict = verdict();
-    build_search_indexes(
-        &mut connection,
-        &verdict.chosen_mode,
-        verdict.ngram_aux_enabled,
-    )
-    .expect("build fixture search indexes");
+    // 随包工件到此为止：`poem` 与元数据齐备，三张检索结构一张都没有。
+    // 下一步就是**首启**，在用户机器上跑——它从 `corpus_meta.index_detail_mode`
+    // 读裁决选定的形态，与运行时走的是同一条路径。
+    assert!(
+        !yunjian_core::derived_indexes_present(&connection).expect("探测派生结构"),
+        "随包形态不该含任何检索结构"
+    );
+    yunjian_core::build_derived_indexes(&mut connection).expect("首启构建派生结构");
+    yunjian_core::verify_derived_indexes(&connection).expect("首启构建后派生结构必须可用");
     (connection, fixtures)
+}
+
+/// 只建随包形态、**不**跑首启构建的连接。用来证明派生结构是承重的。
+fn shipped_only_connection() -> Connection {
+    let (connection, _) = golden_connection();
+    connection
+        .execute_batch(
+            "DROP TABLE poem_fts;
+             DROP INDEX ngram_gram_idx;
+             DROP TABLE ngram;
+             DROP INDEX poem_last_char_idx;
+             DROP TABLE poem_last_char;",
+        )
+        .expect("退回随包形态");
+    connection
 }
 
 fn variants(connection: &Connection) -> BTreeMap<char, char> {
@@ -397,8 +418,8 @@ fn fts_schema_matches_the_binding_verdict_and_has_no_shadow_content_table() {
     assert!(verdict.results.is_array());
     assert!(verdict.scale_projection.is_array());
 
-    verify_search_indexes(&connection, &verdict.chosen_mode, verdict.ngram_aux_enabled)
-        .expect("built indexes must match the verdict");
+    yunjian_core::verify_derived_indexes(&connection)
+        .expect("首启派生出来的结构必须与 corpus_meta 记录的裁决形态一致");
 
     let ddl: String = connection
         .query_row(
@@ -439,6 +460,29 @@ fn fts_schema_matches_the_binding_verdict_and_has_no_shadow_content_table() {
             [],
         )
         .expect("FTS integrity-check must succeed");
+}
+
+#[test]
+fn the_first_launch_derivation_reproduces_the_fixture_declared_last_chars() {
+    // `poem.last_chars` JSON 随包，`poem_last_char` 首启派生——两者是同一份数据的两种
+    // 形态。若派生规则与当初写 JSON 的规则不一致，尾字检索与展示会错位，而这种偏差
+    // 不会报错，只会让某些查询少召回几条。逐首逐句核对。
+    let (connection, fixtures) = golden_connection();
+    for poem in &fixtures.poems {
+        let mut statement = connection
+            .prepare("SELECT ch FROM poem_last_char WHERE poem_id=?1 ORDER BY line_index")
+            .expect("prepare");
+        let derived = statement
+            .query_map(params![poem.stable_id], |row| row.get::<_, String>(0))
+            .expect("query")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect");
+        assert_eq!(
+            derived, poem.last_chars,
+            "{} 的首启派生尾字与 fixture 声明的不一致",
+            poem.stable_id
+        );
+    }
 }
 
 #[test]
@@ -510,14 +554,59 @@ fn fts_all_thirty_seven_golden_contracts_return_the_expected_top_hit() {
 }
 
 #[test]
+fn without_the_first_launch_build_the_two_character_contracts_cannot_run_at_all() {
+    // 这一条是上一条的可证伪对照：若把候选表从随包工件里拿掉却什么都不坏，那说明
+    // 「首启构建」是装饰而不是必要步骤。走 Ngram 计划的条目全是两字查询，而 FTS5
+    // trigram 在三字以下推不出任何约束，所以它们只能靠候选表。
+    let connection = shipped_only_connection();
+    let contract = contract();
+    let ngram_entries = contract
+        .queries
+        .iter()
+        .filter(|entry| entry.expect_plan == "Ngram")
+        .collect::<Vec<_>>();
+    assert!(
+        !ngram_entries.is_empty(),
+        "契约里必须有走候选表的条目，否则这条对照没有意义"
+    );
+    for entry in ngram_entries {
+        assert_eq!(
+            entry.query.chars().count(),
+            2,
+            "{} 走候选表却不是两字查询，前提变了",
+            entry.id
+        );
+        let error = connection
+            .prepare(
+                "SELECT p.stable_id FROM ngram AS n
+                 JOIN poem AS p ON p.stable_id = n.stable_id
+                 WHERE n.gram = ?1 AND p.body LIKE ?2",
+            )
+            .expect_err("没有候选表时这条查询根本无法准备");
+        assert!(
+            error.to_string().contains("ngram"),
+            "unexpected error: {error}"
+        );
+    }
+}
+
+#[test]
 fn fts_verdict_drift_is_rejected_instead_of_being_silently_ignored() {
+    // 裁决的牙齿在拆包后仍然在，只是位置变了：构建期把 `chosen_mode` 刻进
+    // `corpus_meta.index_detail_mode`，首启照它建。篡改那一列即形态漂移，必须被拒。
     let (connection, _) = golden_connection();
     let verdict = verdict();
     let mismatched = match verdict.chosen_mode.as_str() {
-        "full" => "none",
+        "full" => "column",
         _ => "full",
     };
-    let error = verify_search_indexes(&connection, mismatched, verdict.ngram_aux_enabled)
+    connection
+        .execute(
+            "UPDATE corpus_meta SET index_detail_mode=?1",
+            params![mismatched],
+        )
+        .expect("篡改记录的形态");
+    let error = yunjian_core::verify_derived_indexes(&connection)
         .expect_err("a verdict that disagrees with the built index must fail");
     let message = error.to_string();
     assert!(message.contains(mismatched), "unexpected error: {message}");
@@ -561,11 +650,11 @@ fn create_footprint_database(path: &Path, external_content: bool) -> Footprint {
                  stable_id TEXT PRIMARY KEY NOT NULL,
                  body TEXT NOT NULL
              );
-             CREATE TABLE ngram (
-                 gram TEXT NOT NULL,
-                 stable_id TEXT NOT NULL
-             ) STRICT;
-             CREATE INDEX ngram_gram_idx ON ngram(gram, stable_id);",
+             CREATE TABLE corpus_meta (
+                 singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
+                 index_detail_mode TEXT NOT NULL
+             );
+             INSERT INTO corpus_meta(singleton, index_detail_mode) VALUES (1, 'full');",
         )
         .expect("create footprint schema");
     {
@@ -586,9 +675,17 @@ fn create_footprint_database(path: &Path, external_content: bool) -> Footprint {
     }
 
     if external_content {
-        build_search_indexes(&mut connection, "full", true)
+        yunjian_core::build_derived_indexes(&mut connection)
             .expect("build external-content footprint");
+        connection
+            .execute_batch("VACUUM")
+            .expect("compact external-content footprint");
     } else {
+        // 对照组自己建候选表：它要量的是「不用 external-content 时 FTS 有多大」，
+        // 与派生结构从哪来无关。
+        connection
+            .execute_batch(yunjian_core::derive::DERIVED_SCHEMA_SQL)
+            .expect("create footprint derived schema");
         populate_test_ngrams(&mut connection);
         connection
             .execute_batch(

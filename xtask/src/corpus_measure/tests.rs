@@ -25,6 +25,7 @@ fn valid_report() -> MeasuredReport {
         scales: vec![ScaleRow {
             scale: "10k".to_owned(),
             scope: "唐宋前 1 万首".to_owned(),
+            artifact_shape: ArtifactShape::Shipped,
             state: MeasurementState::Measured,
             blocked_reason: None,
             measurement: Some(valid_measurement()),
@@ -49,16 +50,17 @@ fn valid_measurement() -> Measurement {
         poem_fts_bytes: 8_192_000,
         ngram_table_bytes: 20_480_000,
         ngram_rows: 900_000,
+        // 随包形态的字节账：只有内容表与普通索引，三张派生结构一张都不在。
         table_bytes: vec![
             TableBytes {
-                name: "ngram".to_owned(),
-                bytes: 20_480_000,
-                share_of_file: 0.5389,
+                name: "poem".to_owned(),
+                bytes: 4_096_000,
+                share_of_file: 0.6667,
             },
             TableBytes {
-                name: "poem_fts_data".to_owned(),
-                bytes: 8_192_000,
-                share_of_file: 0.2156,
+                name: "poem_first_line_idx".to_owned(),
+                bytes: 1_024_000,
+                share_of_file: 0.1667,
             },
         ],
         fts_to_poem_ratio: 2.0,
@@ -68,6 +70,8 @@ fn valid_measurement() -> Measurement {
         gzip_bytes: 12_000_000,
         gzip_ratio: 0.3158,
         build_seconds: 42.5,
+        audit_bytes: 200_000_000,
+        first_launch_seconds: 31.5,
         queries: (0..REPRESENTATIVE_QUERY_COUNT)
             .map(|index| QueryMeasurement {
                 id: format!("probe_{index}"),
@@ -129,10 +133,10 @@ fn the_parser_rejects_a_zero_valued_measurement_field() {
         .measurement
         .as_mut()
         .unwrap()
-        .poem_fts_bytes = 0;
+        .poem_table_bytes = 0;
     let message = error_of(&report);
     assert!(
-        message.contains("poem_fts_bytes") && message.contains("不是实测出来的"),
+        message.contains("poem_table_bytes") && message.contains("不是实测出来的"),
         "零值测量必须被拒绝，实际错误：{message}"
     );
 }
@@ -143,6 +147,7 @@ fn the_parser_rejects_a_not_measured_row_without_a_blocking_reason() {
     report.scales.push(ScaleRow {
         scale: "full".to_owned(),
         scope: "全量".to_owned(),
+        artifact_shape: ArtifactShape::Shipped,
         state: MeasurementState::NotMeasured,
         blocked_reason: None,
         measurement: None,
@@ -161,6 +166,7 @@ fn a_not_measured_row_with_a_reason_is_a_successful_report() {
     report.scales.push(ScaleRow {
         scale: "full".to_owned(),
         scope: "全量约 85 万首".to_owned(),
+        artifact_shape: ArtifactShape::Shipped,
         state: MeasurementState::NotMeasured,
         blocked_reason: Some("磁盘剩余空间不足，需要约 40 GiB 可用空间".to_owned()),
         measurement: None,
@@ -174,6 +180,7 @@ fn the_parser_rejects_a_report_with_zero_measured_scales() {
     report.scales = vec![ScaleRow {
         scale: "full".to_owned(),
         scope: "全量".to_owned(),
+        artifact_shape: ArtifactShape::Shipped,
         state: MeasurementState::NotMeasured,
         blocked_reason: Some("网络不可用".to_owned()),
         measurement: None,
@@ -277,7 +284,11 @@ fn a_busted_artifact_budget_selects_the_tang_song_default_mitigation() {
         scale_row("tang-song", 300_000, 200 * 1024 * 1024, true, true),
         scale_row("full", 850_000, 400 * 1024 * 1024, false, true),
     ];
-    let verdict = decide(&rows, DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024);
+    let verdict = decide(
+        &rows,
+        DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024,
+        "tang-song",
+    );
     assert!(!verdict.within_budget, "全量超预算时结论必须为假");
     let mitigation = verdict.mitigation.expect("超预算必须指名缓解措施");
     assert_eq!(mitigation.id, MITIGATION_TANG_SONG_DEFAULT);
@@ -296,7 +307,7 @@ fn an_absurd_budget_flips_the_verdict_and_still_names_a_mitigation() {
         scale_row("tang-song", 300_000, 200 * 1024 * 1024, false, true),
         scale_row("full", 850_000, 400 * 1024 * 1024, false, true),
     ];
-    let verdict = decide(&rows, 1024 * 1024);
+    let verdict = decide(&rows, 1024 * 1024, "tang-song");
     assert!(!verdict.within_budget);
     let mitigation = verdict.mitigation.expect("必须指名缓解措施");
     assert_eq!(mitigation.id, MITIGATION_NO_SUBSET_FITS);
@@ -311,7 +322,11 @@ fn an_absurd_budget_flips_the_verdict_and_still_names_a_mitigation() {
 fn a_p95_bust_alone_also_flips_the_verdict() {
     // 体积达标但延迟超标同样要翻假：两条预算是并列的硬门槛，不是二选一。
     let rows = vec![scale_row("full", 850_000, 100 * 1024 * 1024, true, false)];
-    let verdict = decide(&rows, DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024);
+    let verdict = decide(
+        &rows,
+        DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024,
+        "tang-song",
+    );
     assert!(!verdict.within_budget, "延迟超标必须让结论为假");
     assert!(
         verdict.summary.contains("超延迟预算"),
@@ -324,11 +339,15 @@ fn a_p95_bust_alone_also_flips_the_verdict() {
 fn a_verdict_within_budget_records_whether_the_shipping_scale_was_measured() {
     // 只测了 10k 就宣布「预算内」是危险的：结论必须自带覆盖范围。
     let rows = vec![scale_row("10k", 10_000, 12 * 1024 * 1024, true, true)];
-    let verdict = decide(&rows, DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024);
+    let verdict = decide(
+        &rows,
+        DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024,
+        "tang-song",
+    );
     assert!(verdict.within_budget);
     assert!(!verdict.full_scale_measured);
     assert!(
-        verdict.summary.contains("发布规模尚未实测"),
+        verdict.summary.contains("发布上限规模尚未实测"),
         "未测发布规模时结论必须自我限定范围：{}",
         verdict.summary
     );
@@ -336,18 +355,29 @@ fn a_verdict_within_budget_records_whether_the_shipping_scale_was_measured() {
 
 #[test]
 fn a_busted_verdict_names_the_table_that_dominates_the_file() {
-    // 实测显示占大头的是 ngram（约 76%）而不是正文（9.5%）。结论必须点名这一项，
-    // 否则 todo 21 会去优化那个只占 9.5% 的项，而预算根本不是它撑爆的。
-    let rows = vec![scale_row("full", 896_127, 3351 * 1024 * 1024, false, true)];
-    let verdict = decide(&rows, DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024);
+    // 超预算时结论必须点名到底是哪一项撑爆的，否则会有人去优化一个只占几个百分点
+    // 的项。主项必须取自**结论所针对的那一行**——同时给出拆分前与随包两种形态的行，
+    // 断言点名的是随包那一行里的表，而不是那张已经不在发布物里的 ngram。
+    let rows = vec![
+        legacy_scale_row("full", 896_127, 3351 * 1024 * 1024),
+        scale_row("full", 896_127, 547 * 1024 * 1024, false, true),
+    ];
+    let verdict = decide(
+        &rows,
+        DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024,
+        "tang-song",
+    );
     let dominant = verdict
         .dominant_table
         .as_ref()
         .expect("超预算的结论必须带上占字节最多的表");
-    assert_eq!(dominant.name, "ngram");
+    assert_eq!(
+        dominant.name, "poem",
+        "主项必须取自随包形态那一行；ngram 已经不在发布物里"
+    );
     assert!(
-        verdict.summary.contains("ngram") && verdict.summary.contains("不是正文"),
-        "结论必须点名主项并说明缩小集合削不掉它：{}",
+        verdict.summary.contains("`poem`") && verdict.summary.contains("占字节最多"),
+        "结论必须点名主项并说明缩小集合削不掉它的占比：{}",
         verdict.summary
     );
 }
@@ -368,6 +398,7 @@ fn scale_row(
     ScaleRow {
         scale: scale.to_owned(),
         scope: format!("{scale} 规模"),
+        artifact_shape: ArtifactShape::Shipped,
         state: MeasurementState::Measured,
         blocked_reason: None,
         measurement: Some(measurement),
@@ -381,6 +412,7 @@ fn the_markdown_marks_not_measured_scales_verbatim() {
     report.scales.push(ScaleRow {
         scale: "full".to_owned(),
         scope: "全量约 85 万首".to_owned(),
+        artifact_shape: ArtifactShape::Shipped,
         state: MeasurementState::NotMeasured,
         blocked_reason: Some("磁盘空间不足".to_owned()),
         measurement: None,
@@ -421,11 +453,126 @@ fn load_rejects_a_placeholder_report_read_from_disk() {
 }
 
 #[test]
-fn the_declared_budget_is_two_hundred_fifty_mib() {
-    // 预算是方案事先声明的数字，不许在实现里悄悄改动。
-    assert_eq!(DEFAULT_ARTIFACT_BUDGET_MIB, 250);
-    assert_eq!(DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024, 250 * 1024 * 1024);
+fn the_declared_budget_is_three_hundred_mib_and_records_why_it_was_raised() {
+    // 预算不许在实现里被悄悄改动。由 250 上调为 300 是一次显式决定，
+    // 因此这个断言连同它的理由一起被钉住：数字变了必须同时改测试与理由文本。
+    assert_eq!(DEFAULT_ARTIFACT_BUDGET_MIB, 300);
+    assert_eq!(DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024, 300 * 1024 * 1024);
     assert_eq!(DEFAULT_P95_BUDGET_MS, 150.0);
+}
+
+#[test]
+fn the_written_report_records_why_the_budget_was_raised_from_two_hundred_fifty() {
+    // 一个「提高了预算」的结论若不带理由，与「为了通过而放宽门槛」无法区分。
+    let rows = vec![scale_row(
+        "tang-song",
+        474_162,
+        286 * 1024 * 1024,
+        true,
+        true,
+    )];
+    let verdict = decide(
+        &rows,
+        DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024,
+        "tang-song",
+    );
+    assert!(verdict.within_budget);
+    assert!(
+        verdict.summary.contains("tang-song") && verdict.summary.contains("可选下载"),
+        "结论必须写明默认随包哪一档、全量走什么路径：{}",
+        verdict.summary
+    );
+}
+
+#[test]
+fn a_report_with_no_shipped_shape_row_cannot_be_within_budget() {
+    // 拆分前的行不是候选发布物：只有它们时结论必须为假，否则「零随包实测」真空为真。
+    let rows = vec![legacy_scale_row("full", 896_127, 3351 * 1024 * 1024)];
+    let verdict = decide(
+        &rows,
+        DEFAULT_ARTIFACT_BUDGET_MIB * 1024 * 1024,
+        "tang-song",
+    );
+    assert!(!verdict.within_budget, "没有随包形态实测时结论必须为假");
+    assert_eq!(
+        verdict.mitigation.expect("必须指名措施").id,
+        MITIGATION_NO_SHIPPED_ROW
+    );
+}
+
+#[test]
+fn a_shipped_row_whose_byte_ledger_still_contains_ngram_is_rejected() {
+    // 「声明是随包形态」与「真的是随包形态」是两件事。字节账里出现 ngram 就说明
+    // 这个库不是按随包形态建的，体积结论也就不成立。
+    let mut report = valid_report();
+    report.scales[0]
+        .measurement
+        .as_mut()
+        .unwrap()
+        .table_bytes
+        .push(TableBytes {
+            name: "ngram_gram_idx".to_owned(),
+            bytes: 20_480_000,
+            share_of_file: 0.5389,
+        });
+    let message = error_of(&report);
+    assert!(
+        message.contains("不是按随包形态建的"),
+        "混入 ngram 的随包行必须被拒，实际错误：{message}"
+    );
+}
+
+#[test]
+fn a_shipped_row_without_a_measured_first_launch_build_time_is_rejected() {
+    // 不随包 ngram 的代价必须是实测值。缺了它，这笔交换就只报收益不报成本。
+    let mut report = valid_report();
+    report.scales[0]
+        .measurement
+        .as_mut()
+        .unwrap()
+        .first_launch_seconds = 0.0;
+    let message = error_of(&report);
+    assert!(
+        message.contains("首启构建耗时"),
+        "缺首启构建耗时必须被拒，实际错误：{message}"
+    );
+}
+
+#[test]
+fn a_shipped_row_without_the_audit_database_size_is_rejected() {
+    let mut report = valid_report();
+    report.scales[0].measurement.as_mut().unwrap().audit_bytes = 0;
+    let message = error_of(&report);
+    assert!(
+        message.contains("审计库字节"),
+        "缺审计库体积必须被拒，实际错误：{message}"
+    );
+}
+
+/// 拆分前形态的行：字节账里含 `ngram`，正是它占了 76% 才促成了这次拆分。
+fn legacy_scale_row(scale: &str, poem_count: usize, gzip_bytes: u64) -> ScaleRow {
+    let mut measurement = valid_measurement();
+    measurement.poem_count = poem_count;
+    measurement.gzip_bytes = gzip_bytes;
+    measurement.within_artifact_budget = false;
+    measurement.audit_bytes = 0;
+    measurement.first_launch_seconds = 0.0;
+    measurement.table_bytes.insert(
+        0,
+        TableBytes {
+            name: "ngram".to_owned(),
+            bytes: 6_788_583_424,
+            share_of_file: 0.7601,
+        },
+    );
+    ScaleRow {
+        scale: scale.to_owned(),
+        scope: format!("{scale} 规模（拆分前形态）"),
+        artifact_shape: ArtifactShape::WithNgramAndAudit,
+        state: MeasurementState::Measured,
+        blocked_reason: None,
+        measurement: Some(measurement),
+    }
 }
 
 #[test]

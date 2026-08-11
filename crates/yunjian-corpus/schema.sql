@@ -33,13 +33,6 @@ CREATE TABLE poem (
     edition_group TEXT NOT NULL
 );
 
-CREATE TABLE poem_last_char (
-    poem_id TEXT NOT NULL REFERENCES poem(stable_id),
-    line_index INTEGER NOT NULL CHECK (line_index >= 0),
-    ch TEXT NOT NULL,
-    PRIMARY KEY (poem_id, line_index)
-) WITHOUT ROWID;
-
 CREATE TABLE commentary (
     id TEXT PRIMARY KEY NOT NULL,
     poem_id TEXT NOT NULL REFERENCES poem(stable_id),
@@ -75,10 +68,11 @@ CREATE TABLE variant_map (
     dst_char TEXT NOT NULL
 ) WITHOUT ROWID;
 
-CREATE TABLE ngram (
-    gram TEXT NOT NULL,
-    stable_id TEXT NOT NULL REFERENCES poem(stable_id)
-) STRICT;
+-- 三张检索结构刻意不在这里：`ngram`、`poem_fts` 与 `poem_last_char` 都是 `poem.body`
+-- 的确定性派生物，实测合计占随包文件的绝大部分（全量规模 ngram 约 76%，唐宋规模
+-- poem_fts 23.2% + poem_last_char 13.3%）。三者不随包、首启在本机构建，DDL 由运行时
+-- crate 持有（`crates/yunjian-core/schema-derived.sql`），因为它们属于运行时而非工件。
+-- `last_chars` JSON 列仍在 `poem` 上，句尾字因此不依赖派生结构就能回读。
 
 CREATE TABLE tag (
     name TEXT PRIMARY KEY NOT NULL
@@ -90,20 +84,11 @@ CREATE TABLE poem_tag (
     PRIMARY KEY (poem_id, tag)
 ) WITHOUT ROWID;
 
-CREATE TABLE defect (
-    id INTEGER PRIMARY KEY NOT NULL,
-    stable_id TEXT,
-    work_group TEXT,
-    reason_code TEXT NOT NULL,
-    detail TEXT NOT NULL,
-    source TEXT NOT NULL
-);
-
-CREATE TABLE disposition (
-    source_locator TEXT PRIMARY KEY NOT NULL,
-    stable_id TEXT,
-    disposition TEXT NOT NULL CHECK (disposition IN ('shipped', 'quarantined', 'excluded'))
-) WITHOUT ROWID;
+-- `defect` 与 `disposition` 刻意不在这里：它们是纯构建期审计台账，实测合计占
+-- 随包文件的 67%，而用户一行都不需要。它们移进 `schema-audit.sql` 描述的
+-- `corpus-audit.db`，作为 CI 工件与开发者可选下载，不进用户工件。
+-- 守恒断言没有因此变弱，只是两端分处两个文件，见
+-- `db::verify_conservation_across_files`。
 
 CREATE TABLE corpus_meta (
     singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
@@ -115,6 +100,8 @@ CREATE TABLE corpus_meta (
     finding_count INTEGER NOT NULL CHECK (finding_count >= 0),
     input_row_count INTEGER NOT NULL CHECK (input_row_count >= 0),
     index_detail_mode TEXT NOT NULL CHECK (index_detail_mode IN ('none', 'column', 'full')),
+    derived_indexes TEXT NOT NULL CHECK (derived_indexes IN ('shipped', 'first_launch')),
+    shipped_scope TEXT NOT NULL CHECK (shipped_scope IN ('10k', 'tang-song', 'full')),
     builder_sqlite_version TEXT NOT NULL,
     integrity_check TEXT NOT NULL CHECK (integrity_check = 'ok')
 );
@@ -125,8 +112,6 @@ CREATE INDEX poem_title_idx ON poem(title);
 CREATE INDEX poem_ci_tune_idx ON poem(ci_tune);
 CREATE INDEX poem_first_line_idx ON poem(first_line);
 CREATE INDEX poem_work_group_idx ON poem(work_group);
-CREATE INDEX poem_last_char_idx ON poem_last_char(ch, poem_id);
 CREATE INDEX poem_rhyme_group_idx ON poem_rhyme_group(rhyme_book, rhyme_group, poem_id);
 CREATE INDEX poem_tag_idx ON poem_tag(tag, poem_id);
 CREATE INDEX rhyme_character_idx ON rhyme(rhyme_book, character);
-CREATE INDEX ngram_gram_idx ON ngram(gram, stable_id);

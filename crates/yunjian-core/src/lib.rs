@@ -9,11 +9,17 @@
 //! 具体模块由后续任务补全。
 
 pub mod config;
+pub mod derive;
 pub mod error;
 pub mod logger;
 pub mod rhyme;
+pub mod text;
 
 pub use config::{Config, LoggerConfig, get_config, init_config};
+pub use derive::{
+    DerivedBuildStats, build_derived_indexes, derived_indexes_present, verify_derived_indexes,
+};
 pub use error::{AiError, Error, Result, redact_credentials};
 pub use logger::{current_log_level, init_logger, set_log_level};
 pub use rhyme::{RhymeBook, RhymeTone};
+pub use text::{content_chars, is_punctuation};
