@@ -44,6 +44,7 @@
 use crate::rhyme::{RhymeBook, RhymeConfidence, RhymeTone};
 use crate::{CorpusHandle, Error, Result};
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Deserialize, Serialize};
 
 /// 按韵书与韵部取作品的 SQL。
 ///
@@ -76,7 +77,7 @@ const TONE_SECTION_PREFIXES: [&str; 5] = ["上平", "下平", "上声", "去声"
 ///
 /// 写成枚举而不是 `Option<RhymeTone>`：`None` 在筛选语境里既能读成「不限」也能读成
 /// 「未知声调」，而两者在格律上不是一回事。[`Self::Any`] 只表达前者。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToneFilter {
     /// 不按声调筛选。
     Any,
@@ -97,19 +98,26 @@ impl ToneFilter {
 ///
 /// 声调是键的一部分而不是附注：词林正韵的「第一部」同时有平声与仄声，平仄不同则不相押，
 /// 所以只比韵部会把不押韵的字对报成押韵。
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RhymeGroupRef {
+    /// 韵部名。
     pub rhyme_group: String,
+    /// 韵书中的声调。
     pub tone: RhymeTone,
 }
 
 /// 韵部检索命中的一首作品。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RhymeGroupHit {
+    /// 作品稳定标识。
     pub poem_id: String,
+    /// 作品题目。
     pub title: String,
+    /// 作者名。
     pub author: String,
+    /// 命中的韵部名。
     pub rhyme_group: String,
+    /// 命中的声调。
     pub tone: RhymeTone,
     /// 该归属的可信度，透出给 UI 区分「投票解出的」与「本就无歧义的」。
     pub confidence: RhymeConfidence,
@@ -119,8 +127,9 @@ pub struct RhymeGroupHit {
 ///
 /// 两个列表刻意分开：[`Self::hits`] 是肯定判断，[`Self::unresolved`] 是保留下来的候选。
 /// 把后者丢掉会让「不确定」变成「不存在」，把它并入前者会让猜测变成判断。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RhymeGroupMatches {
+    /// 查询所依据的韵书。
     pub book: RhymeBook,
     /// 实际用于匹配的韵部名（已剥掉用户输入里的声部前缀）。
     pub rhyme_group: String,
@@ -131,9 +140,11 @@ pub struct RhymeGroupMatches {
 }
 
 /// 一个字在某本韵书里的全部归属。`groups` 为空表示该书未收此字。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharacterRhymes {
+    /// 被查询的字。
     pub character: char,
+    /// 该字在指定韵书里的全部归属。
     pub groups: Vec<RhymeGroupRef>,
 }
 
@@ -141,7 +152,7 @@ pub struct CharacterRhymes {
 ///
 /// 三个变体而不是一个 `bool`：`false` 会把「书里没这个字」和「同书不同韵部」压成同一个
 /// 答案，而前者根本不构成判断。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RhymeVerdict {
     /// 全部字共享至少一个（韵部, 声调）。
     Rhyme,
@@ -152,8 +163,9 @@ pub enum RhymeVerdict {
 }
 
 /// [`do_these_rhyme`] 的完整回答，附带得出结论的依据。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RhymeAnswer {
+    /// 判断所依据的韵书。
     pub book: RhymeBook,
     /// 逐字归属，保留调用方传入的顺序。
     pub characters: Vec<CharacterRhymes>,

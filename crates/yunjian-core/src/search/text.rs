@@ -3,16 +3,22 @@ use rusqlite::{Connection, params_from_iter};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
+/// 单页正文检索允许返回的最大命中数。
 pub const TEXT_SEARCH_HARD_CAP: usize = 100;
 
+/// 正文或残句检索请求。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextSearchRequest {
+    /// 用户输入的正文或残句。
     pub query: String,
+    /// 请求的单页数量；执行时受 [`TEXT_SEARCH_HARD_CAP`] 限制。
     pub limit: usize,
+    /// 上一页返回的续页游标。
     pub cursor: Option<String>,
 }
 
 impl TextSearchRequest {
+    /// 使用默认单页数量创建请求。
     #[must_use]
     pub fn new(query: impl Into<String>) -> Self {
         Self {
@@ -26,31 +32,48 @@ impl TextSearchRequest {
 /// 高亮范围，使用 Unicode 字符下标而不是 UTF-8 字节下标。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HighlightRange {
+    /// 高亮起始字符下标，包含该位置。
     pub start: usize,
+    /// 高亮结束字符下标，不包含该位置。
     pub end: usize,
 }
 
+/// 一段文本及其字符级高亮范围。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HighlightedSnippet {
+    /// 用于展示的命中句。
     pub text: String,
+    /// 按字符下标表示的高亮范围。
     pub highlights: Vec<HighlightRange>,
 }
 
+/// 一条正文检索命中。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextSearchHit {
+    /// 作品稳定标识。
     pub poem_id: String,
+    /// 作品题目。
     pub title: String,
+    /// 作者名。
     pub author: String,
+    /// 朝代规范键。
     pub dynasty: String,
+    /// 最佳命中句在作品中的零基序号。
     pub matched_line_index: usize,
+    /// 最佳命中句及高亮范围。
     pub snippet: HighlightedSnippet,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 一页正文检索结果。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchPage {
+    /// 本页命中。
     pub hits: Vec<TextSearchHit>,
+    /// 当前查询的总命中估计数。
     pub total_estimate: usize,
+    /// 续页游标；`None` 表示已到末页。
     pub next_cursor: Option<String>,
+    /// 实际执行的物理查询计划。
     pub plan_used: QueryPlan,
 }
 
@@ -89,6 +112,7 @@ struct LineMatch {
 }
 
 impl CorpusHandle {
+    /// 按长度敏感的查询计划检索正文并稳定排序。
     pub fn search_text(&self, request: TextSearchRequest) -> Result<SearchPage> {
         if request.limit == 0 {
             return Err(Error::Search("正文检索 limit 必须大于 0".to_owned()));

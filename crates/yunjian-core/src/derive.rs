@@ -73,8 +73,11 @@ impl DeriveStep {
 /// `total == 0` 表示该步的总量未知，UI 应当显示不确定进度而不是 0%。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeriveProgress {
+    /// 当前派生阶段。
     pub step: DeriveStep,
+    /// 当前阶段已处理的作品数。
     pub done: u64,
+    /// 当前阶段的作品总数；未知时为零。
     pub total: u64,
 }
 
@@ -98,12 +101,19 @@ const PROGRESS_STRIDE: u64 = 1024;
 /// 逐步分开记录，因为首启进度要按步显示，而「哪一步慢」在只有总时长时无法回答。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DerivedBuildStats {
+    /// 扫描的作品数。
     pub poems: u64,
+    /// 写入的 1/2 字候选记录数。
     pub grams: u64,
+    /// 写入的逐句末字记录数。
     pub last_chars: u64,
+    /// 构建候选索引的耗时。
     pub ngram_elapsed: Duration,
+    /// 构建尾字索引的耗时。
     pub last_char_elapsed: Duration,
+    /// 构建全文索引的耗时。
     pub fts_elapsed: Duration,
+    /// 全部派生步骤的总耗时。
     pub elapsed: Duration,
 }
 
@@ -140,7 +150,7 @@ pub fn build_derived_indexes(connection: &mut Connection) -> Result<DerivedBuild
 
 /// 同 [`build_derived_indexes`]，但逐步汇报进度。
 ///
-/// 回调按 [`PROGRESS_STRIDE`] 首节流，且每步结束补一次精确值。
+/// 回调按固定批次节流，且每步结束补一次精确值。
 /// `Fts` 一步只有首尾两次事件：`INSERT INTO poem_fts(poem_fts) VALUES('rebuild')` 在
 /// SQLite 内部完成，中途拿不到任何可汇报的量——**刻意不伪造一个匀速动画**，那会把
 /// 「还剩多久」这件事从「不知道」变成「错」。

@@ -2,6 +2,7 @@
 
 use crate::{CorpusHandle, DerivedState, Result, is_punctuation};
 use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
 
 const TRIGRAM_CHARS: usize = 3;
 const WHOLE_LINE_MIN_CHARS: usize = 5;
@@ -14,20 +15,39 @@ JOIN poem AS p ON p.stable_id = n.stable_id \
 WHERE n.gram = ?1 AND p.body LIKE ?2";
 
 /// 归一化之后选出的物理查询计划。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QueryPlan {
     /// 归一化后没有正文字符，不执行 SQL。
     Empty,
     /// 1-2 字先查辅助 n-gram 候选表，再回表核验。
-    NgramCandidates { gram: String, like_pattern: String },
+    NgramCandidates {
+        /// 用于候选表等值查找的 1/2 字 gram。
+        gram: String,
+        /// 回表核验正文的 `LIKE` 模式。
+        like_pattern: String,
+    },
     /// 走 FTS5 trigram `MATCH`；表达式不得带前缀通配符 `*`。
-    Match { expression: String },
+    Match {
+        /// 传给 FTS5 `MATCH` 的短语表达式。
+        expression: String,
+    },
     /// 走 FTS5 trigram 约束的 `LIKE`；索引路径不得发出 `ESCAPE`。
-    Like { pattern: String },
+    Like {
+        /// 由 FTS5 trigram 约束的 `LIKE` 模式。
+        pattern: String,
+    },
     /// 索引无法形成约束，调用方必须展示警告。
-    FullScan { pattern: String, warning: String },
+    FullScan {
+        /// 无法形成索引约束的 `LIKE` 模式。
+        pattern: String,
+        /// 必须展示给调用方的退化原因。
+        warning: String,
+    },
     /// 由元数据检索模块走普通 B-tree。
-    Meta { normalized: String },
+    Meta {
+        /// 供 B-tree 元数据查询使用的归一化文本。
+        normalized: String,
+    },
 }
 
 impl QueryPlan {
