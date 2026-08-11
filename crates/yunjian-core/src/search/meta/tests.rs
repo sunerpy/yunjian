@@ -365,12 +365,8 @@ fn insert_poem(
     source_locator: &str,
     provenance_source: &str,
 ) {
-    let lines: Vec<&str> = body
-        .split(['\n', '，', '。', '！', '？', '；'])
-        .filter(|line| !line.is_empty())
-        .collect();
-    let last_chars: Vec<String> = lines
-        .iter()
+    let metrical_lines = crate::split_metrical_lines(body).collect::<Vec<_>>();
+    let last_chars: Vec<String> = crate::split_rhyme_feet(body)
         .filter_map(|line| line.chars().last().map(String::from))
         .collect();
     let genre = if ci_tune.is_some() { "ci" } else { "shi" };
@@ -392,7 +388,7 @@ fn insert_poem(
                 body,
                 first_line,
                 serde_json::to_string(&last_chars).expect("序列化 last_chars"),
-                lines.len() as i64,
+                metrical_lines.len() as i64,
                 body.chars().filter(|c| !crate::is_punctuation(*c)).count() as i64,
                 source_locator,
                 provenance_source,
@@ -772,28 +768,28 @@ fn last_char_search_reads_the_derived_table_and_counts_poems_not_lines() {
     let fixture = fixture();
     let handle = &fixture.handle;
 
-    let page = find_by_last_char(handle, "光", None).expect("查尾字");
+    let page = find_by_last_char(handle, "乡", None).expect("查韵脚尾字");
     assert_eq!(ids(&page), vec!["fixture:tang-libai-jingyesi"]);
     assert_eq!(
         hit(&page, "fixture:tang-libai-jingyesi").matched_line_index,
-        Some(0),
-        "「光」是《静夜思》的第 0 句末字"
+        Some(1),
+        "「乡」是《静夜思》的第 1 个韵脚尾字"
     );
 
-    // 《枫桥夜泊》正文有「霜」但不在句末：这一条区分「句末字」与「正文含此字」。
-    let shuang = find_by_last_char(handle, "霜", None).expect("查句末霜");
+    // 《枫桥夜泊》正文有「霜」但不在韵脚位置：这一条区分「韵脚尾字」与「正文含此字」。
+    let shuang = find_by_last_char(handle, "霜", None).expect("查韵脚霜");
     assert_eq!(ids(&shuang), vec!["fixture:tang-libai-jingyesi"]);
     assert!(
         !ids(&shuang).contains(&"fixture:tang-zhangji-fengqiaoyebo"),
-        "「霜」在《枫桥夜泊》里不在句末，不得命中"
+        "「霜」在《枫桥夜泊》里不在韵脚位置，不得命中"
     );
 
-    // 《采薇》第 1、3 句末字都是「止」，结果单位是「诗」，故只返回一条且取最小句序号。
+    // 《采薇》两个韵脚尾字都是「止」，结果单位是「诗」，故只返回一条且取最小韵脚序号。
     let repeated = find_by_last_char(handle, "止", None).expect("查重复出现的句末字");
     assert_eq!(ids(&repeated), vec!["fixture:xianqin-shijing-caiwei"]);
     assert_eq!(
         hit(&repeated, "fixture:xianqin-shijing-caiwei").matched_line_index,
-        Some(1)
+        Some(0)
     );
 
     assert!(

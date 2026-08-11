@@ -6,7 +6,7 @@
 //! [`rhyme_foot::derive`](yunjian_corpus::rhyme_foot::derive)。测出来的体积必须是
 //! **产物**的体积，所以建库路径也必须是产物的建库路径。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -14,13 +14,15 @@ use yunjian_corpus::db::CorpusDbInput;
 use yunjian_corpus::ingest::werneror::{Bucket, CLASSICAL_BUCKETS};
 use yunjian_corpus::model::{CanonicalRecord, Dynasty};
 use yunjian_corpus::normalize::Normalizer;
-use yunjian_corpus::quality::{Disposition, run_pipeline};
+use yunjian_corpus::quality::{Disposition, ReasonCode, run_pipeline};
 use yunjian_corpus::rhyme::RhymeImport;
 use yunjian_corpus::rhyme_foot::{self, PoemLastCharInput};
 use yunjian_corpus::tag::{TagVocabulary, assign_tags};
 use yunjian_corpus::{commentary, db::PoemTagRow};
 
-use super::{CORPUS_VERSION_FOR_BUILD, Scale};
+use super::{
+    CORPUS_VERSION_FOR_BUILD, RhymeConfidenceMeasurement, Scale, StructuralCleaningMeasurement,
+};
 
 /// 集评种子集在仓库里的位置。与 `xtask commentary-index` 读的是同一个目录。
 const COMMENTARY_DIR: &str = "corpus/commentary";
@@ -217,7 +219,7 @@ fn derive_rhyme_groups(
 ) -> Result<Vec<yunjian_corpus::db::PoemRhymeGroupRow>> {
     let mut inputs = Vec::new();
     for (record, norm) in records.iter().zip(normalized.iter()) {
-        for (line_index, line) in norm.body_lines.iter().enumerate() {
+        for (line_index, line) in yunjian_core::split_rhyme_feet(&norm.body).enumerate() {
             let Some(character) = last_character(line) else {
                 continue;
             };
@@ -231,6 +233,87 @@ fn derive_rhyme_groups(
         }
     }
     Ok(rhyme_foot::derive(&inputs, rhymes)?.rows)
+}
+
+pub(super) fn measure_structural_cleaning(
+    input: &CorpusDbInput,
+    rhymes: &RhymeImport,
+) -> Result<StructuralCleaningMeasurement> {
+    let mut forms = BTreeMap::new();
+    let mut is_yuefu = 0;
+    for record in &input.records {
+        let classification = yunjian_corpus::form::classify(record)?;
+        *forms
+            .entry(classification.form.as_str().to_owned())
+            .or_insert(0) += 1;
+        is_yuefu += usize::from(classification.is_yuefu);
+    }
+
+    Ok(StructuralCleaningMeasurement {
+        quality_scope_input_rows: input.quality.input_rows,
+        structure_scope_poems: input.records.len(),
+        placeholder_body: input.quality.finding_count(ReasonCode::PlaceholderBody),
+        glued_lines: input.quality.finding_count(ReasonCode::GluedLines),
+        forms,
+        is_yuefu,
+        rhyme_before: measure_rhyme_confidence(input, rhymes, true)?,
+        rhyme_after: measure_rhyme_confidence(input, rhymes, false)?,
+    })
+}
+
+fn measure_rhyme_confidence(
+    input: &CorpusDbInput,
+    rhymes: &RhymeImport,
+    legacy_separators: bool,
+) -> Result<RhymeConfidenceMeasurement> {
+    let normalized = input
+        .normalized_records
+        .iter()
+        .map(|record| (record.stable_id.as_str(), record))
+        .collect::<BTreeMap<_, _>>();
+    let mut feet = Vec::new();
+    for record in &input.records {
+        let norm = normalized
+            .get(record.stable_id.as_str())
+            .with_context(|| format!("缺少归一记录：{}", record.stable_id))?;
+        let fragments = if legacy_separators {
+            norm.body
+                .split(['\n', '，', '。', '！', '？', '；'])
+                .collect::<Vec<_>>()
+        } else {
+            yunjian_core::split_rhyme_feet(&norm.body).collect::<Vec<_>>()
+        };
+        for (line_index, line) in fragments.into_iter().enumerate() {
+            let Some(character) = last_character(line) else {
+                continue;
+            };
+            feet.push(PoemLastCharInput {
+                poem_id: record.stable_id.clone(),
+                work_group: record.work_group.clone(),
+                genre: record.genre,
+                line_index,
+                character: character.to_string(),
+            });
+        }
+    }
+    let output = rhyme_foot::derive(&feet, rhymes)?;
+    let stats = output.stats();
+    let unresolved_ratio = stats.unresolved_ratio();
+    Ok(RhymeConfidenceMeasurement {
+        rows: stats
+            .rows_by_confidence
+            .into_iter()
+            .map(|(confidence, count)| (confidence.as_str().to_owned(), count))
+            .collect(),
+        poems: stats
+            .poems_by_confidence
+            .into_iter()
+            .map(|(confidence, count)| (confidence.as_str().to_owned(), count))
+            .collect(),
+        analyzed_poems: stats.analyzed_poems,
+        unresolved_poems: stats.unresolved_poems,
+        unresolved_ratio,
+    })
 }
 
 fn last_character(line: &str) -> Option<char> {

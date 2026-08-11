@@ -445,22 +445,31 @@ fn derive_grams(body: &str) -> BTreeSet<String> {
     grams
 }
 
-/// 句读切分符。
+/// 按真正的韵脚边界切分正文。
 ///
-/// 五个句读符来自韵脚推导的规则（方案 todo 18：「split each poem's body into lines on
-/// `，。！？；`」），换行符是因为 `poem.body` 由构建期切好的句子 join 而成
-/// （`db.rs` 写入时 `body_lines.join("\n")`）。
+/// 这里**不能切逗号或分号**：律诗一行里的逗号通常只是对句中点，逗号前的字不是韵脚；
+/// 把它纳入会像《静夜思》的「月」一样污染韵部投票。首句入韵需要独立判据，不能靠切
+/// 逗号顺带猜出，本规则暂不处理。
+pub fn split_rhyme_feet(body: &str) -> impl Iterator<Item = &str> {
+    body.split(['\n', '。', '！', '？'])
+}
+
+/// 按格律诗的行边界切分正文。
 ///
-/// **两者都要**：真实语料的正文既有换行也有句读，而 fixture 正文只有句读。只按换行切
-/// 会让每首诗只剩最后一个尾字，只按句读切会在没有句读的行上失效。
-const SENTENCE_SEPARATORS: [char; 6] = ['\n', '，', '。', '！', '？', '；'];
+/// 这里**必须切逗号和分号**：上游常把一联的上下句放在同一个数组元素中，体裁判定若
+/// 只看句号会把四句绝句误计成两句。这个切分器只用于结构判定，不得用于韵脚推导。
+pub fn split_metrical_lines(body: &str) -> impl Iterator<Item = &str> {
+    body.split(['\n', '，', '。', '！', '？', '；'])
+        .map(str::trim)
+        .filter(|line| content_chars(line).next().is_some())
+}
 
 /// 逐句取句尾字。
 ///
 /// `line_index` 是**有内容的句子**的序号（连续，不留空洞），与 `poem.last_chars` JSON
 /// 的下标一致——那一列是同一份数据的可回读副本，两者对不上会让尾字检索与展示错位。
 fn derive_last_chars(body: &str) -> Vec<(usize, char)> {
-    body.split(|character| SENTENCE_SEPARATORS.contains(&character))
+    split_rhyme_feet(body)
         .filter_map(last_character)
         .enumerate()
         .collect()

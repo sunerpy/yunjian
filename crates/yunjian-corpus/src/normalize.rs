@@ -398,10 +398,17 @@ impl Normalizer {
                 .iter()
                 .map(|line| self.canonicalize(line))
                 .collect();
-            let body = body_lines.join("\n");
-            if record.body_original != record.body_lines.join("\n") {
+            let body = self.canonicalize(&record.body_original);
+            let original_content =
+                yunjian_core::content_chars(&record.body_original).collect::<String>();
+            let structured_content = record
+                .body_lines
+                .iter()
+                .flat_map(|line| yunjian_core::content_chars(line))
+                .collect::<String>();
+            if original_content != structured_content {
                 return Err(corpus_error(format!(
-                    "body_original 与 body_lines 不一致：{}",
+                    "body_original 与 body_lines 的正文字符不一致：{}",
                     record.stable_id
                 )));
             }

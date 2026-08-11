@@ -769,15 +769,8 @@ fn annotate_tones(connection: &Connection, body: &str, book: RhymeBook) -> Resul
     })
 }
 
-/// 按句读切句。
-///
-/// 分隔符与 `yunjian_core::derive` 派生逐句末字用的是**同一组六个**
-/// （`\n`、`，`、`。`、`！`、`？`、`；`）。两处不一致会让平仄的句序号与尾字检索的句序号
-/// 错位，而那种错位不报错，只是标注挂到了别的句子上。
 fn split_lines(body: &str) -> Vec<String> {
-    body.split(['\n', '，', '。', '！', '？', '；'])
-        .map(str::trim)
-        .filter(|line| crate::text::content_chars(line).next().is_some())
+    crate::split_metrical_lines(body)
         .map(str::to_owned)
         .collect()
 }

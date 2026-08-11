@@ -86,6 +86,7 @@ fn valid_measurement() -> Measurement {
         worst_p95_ms: 0.09,
         within_p95_budget: true,
         within_artifact_budget: true,
+        structural_cleaning: None,
     }
 }
 
@@ -421,6 +422,57 @@ fn the_markdown_marks_not_measured_scales_verbatim() {
     assert!(markdown.contains("NOT MEASURED"));
     assert!(markdown.contains("磁盘空间不足"));
     assert!(markdown.contains("### 未实测的规模与阻塞原因"));
+}
+
+#[test]
+fn the_markdown_keeps_structural_cleaning_and_rhyme_before_after_evidence() {
+    let mut report = valid_report();
+    report.scales[0]
+        .measurement
+        .as_mut()
+        .expect("10k 测量")
+        .structural_cleaning = Some(StructuralCleaningMeasurement {
+        quality_scope_input_rows: 12_000,
+        structure_scope_poems: 10_000,
+        placeholder_body: 3,
+        glued_lines: 47,
+        forms: BTreeMap::from([("irregular".to_owned(), 4_000), ("wujue".to_owned(), 6_000)]),
+        is_yuefu: 123,
+        rhyme_before: RhymeConfidenceMeasurement {
+            rows: BTreeMap::from([("unresolved".to_owned(), 7_195)]),
+            poems: BTreeMap::from([
+                ("resolved_by_vote".to_owned(), 3_513),
+                ("unambiguous".to_owned(), 4_213),
+                ("unresolved".to_owned(), 2_628),
+            ]),
+            analyzed_poems: 9_776,
+            unresolved_poems: 2_628,
+            unresolved_ratio: 0.2688,
+        },
+        rhyme_after: RhymeConfidenceMeasurement {
+            rows: BTreeMap::from([("unresolved".to_owned(), 4_000)]),
+            poems: BTreeMap::from([
+                ("resolved_by_vote".to_owned(), 4_408),
+                ("unambiguous".to_owned(), 3_764),
+                ("unresolved".to_owned(), 1_604),
+            ]),
+            analyzed_poems: 9_776,
+            unresolved_poems: 1_604,
+            unresolved_ratio: 0.164075,
+        },
+    });
+
+    let markdown = render_markdown(&report);
+    for evidence in [
+        "结构化清洗与体裁实测（10k）",
+        "占位正文隔离：`3` 条",
+        "粘连句拆分：`47` 条",
+        "`wujue` | 6000",
+        "韵脚边界修正前后",
+        "| unresolved 作品 | 2628 | 1604 |",
+    ] {
+        assert!(markdown.contains(evidence), "报告缺证据：{evidence}");
+    }
 }
 
 #[test]

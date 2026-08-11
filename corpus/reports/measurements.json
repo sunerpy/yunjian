@@ -22,9 +22,292 @@
       "scale": "10k",
       "scope": "唐宋集合按 stable_id 排序的确定性前 1 万首",
       "artifact_shape": "shipped",
-      "state": "not_measured",
-      "blocked_reason": "本次运行未请求该规模（未传 --scale 10k）。要补测：在同一参考机上追加该规模重跑。",
-      "measurement": null
+      "state": "measured",
+      "blocked_reason": null,
+      "measurement": {
+        "poem_count": 10000,
+        "input_rows": 798763,
+        "raw_text_bytes": 2270454,
+        "poem_table_bytes": 10657792,
+        "poem_fts_bytes": 7233536,
+        "ngram_table_bytes": 76484608,
+        "ngram_rows": 1184776,
+        "table_bytes": [
+          {
+            "name": "poem",
+            "bytes": 9228288,
+            "share_of_file": 0.6302
+          },
+          {
+            "name": "poem_rhyme_group",
+            "bytes": 901120,
+            "share_of_file": 0.0615
+          },
+          {
+            "name": "poem_rhyme_group_idx",
+            "bytes": 704512,
+            "share_of_file": 0.0481
+          },
+          {
+            "name": "rhyme",
+            "bytes": 696320,
+            "share_of_file": 0.0476
+          },
+          {
+            "name": "rhyme_character_idx",
+            "bytes": 544768,
+            "share_of_file": 0.0372
+          },
+          {
+            "name": "sqlite_autoindex_poem_2",
+            "bytes": 524288,
+            "share_of_file": 0.0358
+          },
+          {
+            "name": "poem_title_idx",
+            "bytes": 339968,
+            "share_of_file": 0.0232
+          },
+          {
+            "name": "poem_first_line_idx",
+            "bytes": 294912,
+            "share_of_file": 0.0201
+          },
+          {
+            "name": "sqlite_autoindex_poem_1",
+            "bytes": 245760,
+            "share_of_file": 0.0168
+          },
+          {
+            "name": "poem_work_group_idx",
+            "bytes": 204800,
+            "share_of_file": 0.014
+          },
+          {
+            "name": "poem_author_idx",
+            "bytes": 159744,
+            "share_of_file": 0.0109
+          },
+          {
+            "name": "poem_form_idx",
+            "bytes": 143360,
+            "share_of_file": 0.0098
+          },
+          {
+            "name": "poem_tag",
+            "bytes": 126976,
+            "share_of_file": 0.0087
+          },
+          {
+            "name": "poem_tag_idx",
+            "bytes": 126976,
+            "share_of_file": 0.0087
+          },
+          {
+            "name": "poem_dynasty_idx",
+            "bytes": 114688,
+            "share_of_file": 0.0078
+          },
+          {
+            "name": "poem_ci_tune_idx",
+            "bytes": 86016,
+            "share_of_file": 0.0059
+          },
+          {
+            "name": "poem_is_yuefu_idx",
+            "bytes": 86016,
+            "share_of_file": 0.0059
+          },
+          {
+            "name": "author",
+            "bytes": 36864,
+            "share_of_file": 0.0025
+          },
+          {
+            "name": "variant_map",
+            "bytes": 36864,
+            "share_of_file": 0.0025
+          },
+          {
+            "name": "commentary",
+            "bytes": 16384,
+            "share_of_file": 0.0011
+          },
+          {
+            "name": "sqlite_schema",
+            "bytes": 12288,
+            "share_of_file": 0.0008
+          },
+          {
+            "name": "commentary_poem_idx",
+            "bytes": 4096,
+            "share_of_file": 0.0003
+          },
+          {
+            "name": "corpus_meta",
+            "bytes": 4096,
+            "share_of_file": 0.0003
+          },
+          {
+            "name": "tag",
+            "bytes": 4096,
+            "share_of_file": 0.0003
+          }
+        ],
+        "fts_to_poem_ratio": 0.6787,
+        "index_to_raw_ratio": 36.8729,
+        "bytes_before_vacuum": 15290368,
+        "bytes_after_vacuum": 14643200,
+        "gzip_bytes": 5093089,
+        "gzip_ratio": 0.3478,
+        "build_seconds": 523.838,
+        "audit_bytes": 348622848,
+        "first_launch_seconds": 9.065,
+        "queries": [
+          {
+            "id": "two_char_ngram",
+            "kind": "两字查询「明月」经 n-gram 覆盖索引",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 156,
+            "p50_ms": 0.343,
+            "p95_ms": 0.374,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "three_char_match",
+            "kind": "三字 FTS5 MATCH（trigram）「明月光」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.poem_fts MATCH ?1",
+            "hits": 3,
+            "p50_ms": 0.023,
+            "p95_ms": 0.027,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:M1",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "full_line_like",
+            "kind": "整句 LIKE（trigram 约束），绑定库内最高频值「尧夫非是爱吟诗，」",
+            "sql_shape": "SELECT p.stable_id FROM poem_fts f JOIN poem p ON p.rowid = f.rowid WHERE f.body LIKE ?1",
+            "hits": 7,
+            "p50_ms": 0.074,
+            "p95_ms": 0.093,
+            "explain_query_plan": [
+              "SCAN f VIRTUAL TABLE INDEX 0:L0",
+              "SEARCH p USING INTEGER PRIMARY KEY (rowid=?)"
+            ]
+          },
+          {
+            "id": "author_lookup",
+            "kind": "作者等值（B-tree），绑定库内最高频值「陸游」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE author = ?1",
+            "hits": 202,
+            "p50_ms": 0.135,
+            "p95_ms": 0.157,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_author_idx (author=?)"
+            ]
+          },
+          {
+            "id": "first_line_prefix",
+            "kind": "首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」",
+            "sql_shape": "SELECT stable_id FROM poem WHERE first_line >= ?1 AND first_line < ?2",
+            "hits": 27,
+            "p50_ms": 0.03,
+            "p95_ms": 0.033,
+            "explain_query_plan": [
+              "SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)"
+            ]
+          },
+          {
+            "id": "rhyme_group_join",
+            "kind": "韵部连接，绑定库内最高频值「四支」",
+            "sql_shape": "SELECT g.poem_id FROM poem_rhyme_group g JOIN poem p ON p.stable_id = g.poem_id WHERE g.rhyme_book = ?1 AND g.rhyme_group = ?2",
+            "hits": 923,
+            "p50_ms": 0.558,
+            "p95_ms": 0.616,
+            "explain_query_plan": [
+              "SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?)",
+              "SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          },
+          {
+            "id": "tag_filter",
+            "kind": "标签过滤（规范化多对多表），绑定库内最高频值「送别」",
+            "sql_shape": "SELECT poem_id FROM poem_tag WHERE tag = ?1",
+            "hits": 942,
+            "p50_ms": 0.251,
+            "p95_ms": 0.264,
+            "explain_query_plan": [
+              "SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)"
+            ]
+          },
+          {
+            "id": "cold_open_first_query",
+            "kind": "冷启动后首查（每轮重开连接，不预热）「明月」",
+            "sql_shape": "SELECT p.stable_id FROM ngram n JOIN poem p ON p.stable_id = n.stable_id WHERE n.gram = ?1 AND p.body LIKE ?2",
+            "hits": 156,
+            "p50_ms": 1.169,
+            "p95_ms": 1.436,
+            "explain_query_plan": [
+              "SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?)",
+              "SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)"
+            ]
+          }
+        ],
+        "worst_p95_ms": 1.436,
+        "within_p95_budget": true,
+        "within_artifact_budget": true,
+        "structural_cleaning": {
+          "quality_scope_input_rows": 798763,
+          "structure_scope_poems": 10000,
+          "placeholder_body": 119,
+          "glued_lines": 480423,
+          "forms": {
+            "ci": 595,
+            "irregular": 3012,
+            "qijue": 2159,
+            "qilv": 2102,
+            "unknown": 7,
+            "wujue": 420,
+            "wulv": 1705
+          },
+          "is_yuefu": 1,
+          "rhyme_before": {
+            "rows": {
+              "resolved_by_vote": 4440,
+              "unambiguous": 4000,
+              "unresolved": 11540
+            },
+            "poems": {
+              "resolved_by_vote": 4408,
+              "unambiguous": 3764,
+              "unresolved": 2643
+            },
+            "analyzed_poems": 9776,
+            "unresolved_poems": 2643,
+            "unresolved_ratio": 0.27035597381342064
+          },
+          "rhyme_after": {
+            "rows": {
+              "resolved_by_vote": 3531,
+              "unambiguous": 4404,
+              "unresolved": 7198
+            },
+            "poems": {
+              "resolved_by_vote": 3515,
+              "unambiguous": 4209,
+              "unresolved": 2629
+            },
+            "analyzed_poems": 9776,
+            "unresolved_poems": 2629,
+            "unresolved_ratio": 0.2689238952536825
+          }
+        }
+      }
     },
     {
       "scale": "tang-song",
@@ -1109,7 +1392,7 @@
     "within_budget": true,
     "full_scale_measured": true,
     "largest_measured_scale": "full",
-    "summary": "随包形态实测 1 行（tang-song（474162 首）gzip 211 MB、首启派生 571.8 s、审计库另存 240 MB），全部 gzip <= 300 MB 且最差 p95 <= 150 ms，预算内。默认随包 tang-song，全量作为应用内可选下载。另有 3 行含 ngram 与审计表的实测保留在报告里，它们是拆分决策的依据而不是候选发布物。发布上限规模（full）已实测，缩小随包默认集的依据来自真实数字。",
+    "summary": "随包形态实测 2 行（10k（10000 首）gzip 4 MB、首启派生 9.1 s、审计库另存 332 MB；tang-song（474162 首）gzip 211 MB、首启派生 571.8 s、审计库另存 240 MB），全部 gzip <= 300 MB 且最差 p95 <= 150 ms，预算内。默认随包 tang-song，全量作为应用内可选下载。另有 3 行含 ngram 与审计表的实测保留在报告里，它们是拆分决策的依据而不是候选发布物。发布上限规模（full）已实测，缩小随包默认集的依据来自真实数字。",
     "mitigation": null,
     "dominant_table": {
       "name": "poem",
