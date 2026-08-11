@@ -166,8 +166,14 @@ impl Sandbox {
     }
 }
 
+/// 把路径写成合法的 TOML 字符串字面量。
+///
+/// **不能用 `format!("\"{}\"", path.display())`。** Windows 上临时目录形如
+/// `C:\Users\RUNNER~1\...`，而 `\U` 在 TOML 的 basic string 里是非法转义，解析当场失败
+/// ——CI 的 `Test (Windows)` 作业实测 18 个用例因此全红，报「解析 TOML 失败」。
+/// 交给 `toml` 自己序列化，转义规则就与生产端（`yunjian_core::config` 的模板写出）一致。
 fn quote(path: &Path) -> String {
-    format!("\"{}\"", path.display())
+    toml::Value::from(path.to_string_lossy().into_owned()).to_string()
 }
 
 // ---------------------------------------------------------------- 语料库 fixture
