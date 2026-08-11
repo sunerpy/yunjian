@@ -199,10 +199,10 @@ fn write_corpus(path: &Path) {
                  genre, title, title_raw, ci_tune, author, dynasty, dynasty_raw, body, \
                  body_original, script, first_line, last_chars, line_count, char_count, \
                  provenance_source, provenance_revision, provenance_kind, provenance_license, \
-                 provenance_license_class, work_group, edition_group) \
+                 provenance_license_class, work_group, edition_group, form, is_yuefu) \
                  VALUES (?1, ?2, ?3, 'native', 'shi', ?4, ?4, ?5, ?6, ?7, ?7, ?8, ?8, \
                  'simplified', ?9, ?10, ?11, ?12, 'chinese-poetry', 'rev-abc123', '原文', 'MIT', \
-                 'permissive', ?13, ?14)",
+                 'permissive', ?13, ?14, 'unknown', 0)",
                 params![
                     poem.stable_id,
                     format!("hash-{}", poem.stable_id),
