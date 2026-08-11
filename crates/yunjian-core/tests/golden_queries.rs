@@ -21,7 +21,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use rusqlite::{Connection, params};
 use serde::Deserialize;
+use yunjian_core::{
+    CorpusConfig, CorpusHandle, QueryPlan, SCHEMA_VERSION, plan_metadata_query, plan_query,
+};
 
 // ---------------------------------------------------------------- 契约数据结构
 
@@ -163,6 +167,95 @@ fn variant_map() -> &'static BTreeMap<char, char> {
     })
 }
 
+fn production_handle() -> &'static CorpusHandle {
+    static CELL: OnceLock<CorpusHandle> = OnceLock::new();
+    CELL.get_or_init(|| {
+        let directory =
+            std::env::temp_dir().join(format!("yunjian-golden-query-plan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("创建黄金查询 fixture 目录");
+        let path = directory.join("corpus.db");
+        let connection = Connection::open(&path).expect("创建黄金查询 fixture 数据库");
+        connection
+            .execute_batch(
+                "CREATE TABLE poem(
+                     stable_id TEXT PRIMARY KEY NOT NULL,
+                     body TEXT NOT NULL
+                 );
+                 CREATE TABLE variant_map(
+                     src_char TEXT PRIMARY KEY NOT NULL,
+                     dst_char TEXT NOT NULL
+                 ) WITHOUT ROWID;
+                 CREATE TABLE corpus_meta(
+                     singleton INTEGER PRIMARY KEY NOT NULL CHECK(singleton=1),
+                     schema_version INTEGER NOT NULL,
+                     corpus_version TEXT NOT NULL,
+                     built_at TEXT NOT NULL,
+                     poem_count INTEGER NOT NULL,
+                     index_detail_mode TEXT NOT NULL,
+                     derived_indexes TEXT NOT NULL,
+                     shipped_scope TEXT NOT NULL,
+                     integrity_check TEXT NOT NULL
+                 );",
+            )
+            .expect("创建黄金查询 fixture schema");
+        for poem in &fixtures().poems {
+            connection
+                .execute(
+                    "INSERT INTO poem(stable_id, body) VALUES (?1, ?2)",
+                    params![poem.stable_id, poem.body],
+                )
+                .expect("写黄金查询 fixture 诗");
+        }
+        for variant in &fixtures().variants {
+            connection
+                .execute(
+                    "INSERT INTO variant_map(src_char, dst_char) VALUES (?1, ?2)",
+                    params![variant.from, variant.to],
+                )
+                .expect("写黄金查询 variant_map");
+        }
+        connection
+            .execute(
+                "INSERT INTO corpus_meta VALUES
+                 (1, ?1, 'golden-fixture-v1', '2026-08-11T00:00:00Z', ?2, 'full',
+                  'first_launch', '10k', 'ok')",
+                params![SCHEMA_VERSION, fixtures().poems.len() as i64],
+            )
+            .expect("写黄金查询 corpus_meta");
+        connection.close().expect("关闭黄金查询 fixture 数据库");
+        CorpusHandle::open(&CorpusConfig {
+            path: Some(path),
+            data_dir: directory,
+            archive: None,
+        })
+        .expect("打开黄金查询 fixture")
+    })
+}
+
+fn production_plan(entry: &Entry) -> QueryPlan {
+    let handle = production_handle();
+    if is_metadata_class(&entry.class) {
+        plan_metadata_query(handle, &entry.query).expect("规划黄金元数据查询")
+    } else {
+        plan_query(handle, &entry.query).expect("规划黄金正文查询")
+    }
+}
+
+fn is_metadata_class(class: &str) -> bool {
+    matches!(
+        class,
+        "two_char_author"
+            | "title_lookup"
+            | "ci_tune_lookup"
+            | "ci_tune_title_lookup"
+            | "first_line_prefix"
+            | "last_char_lookup"
+            | "rhyme_group_query"
+            | "tag_query"
+    )
+}
+
 fn single_char(s: &str, what: &str) -> char {
     let mut it = s.chars();
     let c = it.next().unwrap_or_else(|| panic!("{what} 不能为空"));
@@ -278,6 +371,13 @@ fn check(id: &str) {
     assert!(
         e.note.chars().count() >= 10,
         "{id}: note 太短，契约里的每一条都必须写清它为什么存在"
+    );
+
+    let actual_plan = production_plan(e);
+    assert_eq!(
+        actual_plan.contract_name(),
+        e.expect_plan,
+        "{id}: 生产 plan_query 与黄金契约不一致：{actual_plan:?}"
     );
 
     let anchor = poem_by_id(&e.expect_top_id).unwrap_or_else(|| {
