@@ -46,10 +46,15 @@ const APP_DIR: &str = "yunjian";
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    /// 应用名称与通用数据目录。
     pub app: AppConfig,
+    /// 语料库发现与落地配置。
     pub corpus: CorpusConfig,
+    /// 日志级别、格式和文件目录配置。
     pub logger: LoggerConfig,
+    /// AI 服务商、模型和生成参数配置。
     pub ai: AiConfig,
+    /// 语音模型目录与运行参数配置。
     pub voice: VoiceConfig,
 }
 

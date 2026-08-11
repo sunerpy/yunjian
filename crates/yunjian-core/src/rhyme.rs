@@ -119,7 +119,7 @@ impl RhymeBook {
 ///
 /// 依赖方向：构建期的投票在 `yunjian-corpus`，运行期的检索在 `yunjian-core`，后者不能
 /// 依赖前者。两侧的契约是数据库里那三个稳定键，而不是同一个 Rust 类型。
-/// [`tests`] 里有一条守卫直接读 `../yunjian-corpus/schema.sql` 的 `CHECK` 列表，
+/// 模块测试里有一条守卫直接读 `../yunjian-corpus/schema.sql` 的 `CHECK` 列表，
 /// 两侧取值集合一旦漂移即变红。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -173,7 +173,7 @@ impl RhymeConfidence {
 
 /// 韵书里的声调维度。
 ///
-/// 与 [`yunjian_corpus::ingest::Tone`] 的平仄二分**不是**一回事：那个描述某个字在
+/// 与构建期导入器的平仄二分**不是**一回事：那个描述某个字在
 /// 某句诗里该用平还是仄，这个描述某个字在韵书里归属哪个声。两本书的声调粒度本身就
 /// 不同——平水韵分到四声（且平声再分上下平两卷），词林正韵把上声去声并成「仄声」。
 /// 这里不把词林正韵的仄声硬拆成上去：上游没有那个信息，拆就是编造。

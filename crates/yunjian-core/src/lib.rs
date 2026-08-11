@@ -8,15 +8,24 @@
 //!
 //! 具体模块由后续任务补全。
 
+#![warn(missing_docs)]
+
+pub mod api;
 pub mod config;
 pub mod corpus;
 pub mod derive;
 pub mod error;
 pub mod logger;
+pub mod operation;
 pub mod rhyme;
 pub mod search;
 pub mod text;
 
+pub use api::{
+    AuthorDetailRequest, AuthorSearchRequest, CharacterRhymesRequest, DynastyBrowseRequest,
+    FirstLineSearchRequest, LastCharacterSearchRequest, PoemDetailRequest, RhymeCheckRequest,
+    RhymeGroupSearchRequest, TagBrowseRequest, TitleSearchRequest, WorkGroupRequest, Yunjian,
+};
 pub use config::{Config, CorpusConfig, LoggerConfig, get_config, init_config};
 pub use corpus::{
     CORPUS_ARCHIVE_NAME, CORPUS_FILE_NAME, CORPUS_MANIFEST_NAME, CorpusHandle, CorpusMeta,

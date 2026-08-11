@@ -1,0 +1,9 @@
+{
+  "group_id": "two_char_ngram",
+  "function_id": null,
+  "value_str": null,
+  "throughput": null,
+  "full_id": "two_char_ngram",
+  "directory_name": "two_char_ngram",
+  "title": "two_char_ngram"
+}

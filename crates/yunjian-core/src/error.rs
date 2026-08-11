@@ -44,7 +44,9 @@ pub enum Error {
     /// [`Error::Search`] 里的一句字符串。
     #[error("韵书 {} 未随包分发：{reason}", book.display_name())]
     RhymeBookUnavailable {
+        /// 被请求但不可用的韵书。
         book: RhymeBook,
+        /// 该韵书未随包的原因。
         reason: &'static str,
     },
 
@@ -141,7 +143,7 @@ impl fmt::Display for AiError {
 }
 
 impl fmt::Debug for AiError {
-    /// 手写而非 derive：derive 会把 `detail` 原样打出来，绕过 [`Display`] 的净化。
+    /// 手写而非 derive：derive 会把 `detail` 原样打出来，绕过 [`std::fmt::Display`] 的净化。
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AiError")
             .field("provider", &self.provider)
@@ -326,7 +328,7 @@ fn match_named_credential(rest: &str, flag_style: bool) -> Option<(usize, usize)
     (p > start).then_some((start, p))
 }
 
-/// 把文本里像凭据的片段替换成 [`REDACTED`]。
+/// 把文本里像凭据的片段替换成脱敏占位符。
 ///
 /// 幂等：对已脱敏的文本再调用一次不会有额外变化。宁可多脱敏也不漏——把一个正常标识
 /// 洗成占位符只是让诊断少一点信息，把密钥写进日志则不可挽回。

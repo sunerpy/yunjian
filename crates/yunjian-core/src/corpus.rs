@@ -83,6 +83,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// 兼容范围，而依赖方向是 corpus -> core，只有放在 core 才可能是一份。
 /// `yunjian_corpus::db` 原样重导出它们。
 pub const SCHEMA_VERSION: u32 = 2;
+/// 当前应用能够读取的语料库 schema 版本范围。
 pub const SUPPORTED_SCHEMA: RangeInclusive<u32> = 2..=2;
 
 /// 落地后的语料库文件名。解析顺序第 2 级只认这一个名字。
@@ -121,17 +122,24 @@ static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 /// 区分「文件坏了」与「文件没坏、但需要换一份语料」——后者有明确的下一步动作。
 #[derive(Debug, thiserror::Error)]
 pub enum OpenCorpusError {
+    /// SQLite 无法打开或读取语料库。
     #[error("数据库错误：{0}")]
     Database(#[from] rusqlite::Error),
+    /// `corpus_meta` 缺失、重复或包含非法值。
     #[error("语料库元数据错误：{0}")]
     InvalidMetadata(String),
+    /// 语料库 schema 不在应用支持范围内。
     #[error(
         "语料库 schema 版本 {corpus_schema_version} 与应用 {app_version} 不兼容；应用支持 {supported_min}..={supported_max}。请运行 `yunjian corpus fetch` 获取兼容语料库"
     )]
     IncompatibleSchema {
+        /// 文件声明的 schema 版本。
         corpus_schema_version: u32,
+        /// 当前应用版本。
         app_version: &'static str,
+        /// 应用支持的最小 schema 版本。
         supported_min: u32,
+        /// 应用支持的最大 schema 版本。
         supported_max: u32,
     },
 }
@@ -173,12 +181,19 @@ pub fn open_corpus(path: impl AsRef<Path>) -> std::result::Result<Connection, Op
 /// 长查询能不能用 `MATCH`，而它是构建期把实测裁决刻进工件的结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CorpusMeta {
+    /// 语料库 schema 版本。
     pub schema_version: u32,
+    /// 语料数据版本。
     pub corpus_version: String,
+    /// 构建时间的 RFC 3339 字符串。
     pub built_at: String,
+    /// 作品总数。
     pub poem_count: i64,
+    /// FTS5 `detail` 模式。
     pub index_detail_mode: String,
+    /// 派生索引的分发策略。
     pub derived_indexes: String,
+    /// 随包语料范围。
     pub shipped_scope: String,
 }
 
@@ -222,7 +237,12 @@ pub enum CorpusOrigin {
     /// 第 2 级：应用数据目录里已落地的副本。
     Materialized,
     /// 第 3 级：本次运行刚从归档校验并落地。
-    JustMaterialized { archive: PathBuf, sha256: String },
+    JustMaterialized {
+        /// 本次读取并解压的归档路径。
+        archive: PathBuf,
+        /// 已校验的归档 SHA-256。
+        sha256: String,
+    },
 }
 
 /// 首启派生结构的状态。
@@ -232,12 +252,19 @@ pub enum CorpusOrigin {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DerivedState {
     /// 结构就绪。`stats` 仅在本次运行构建过时有值。
-    Ready { stats: Option<DerivedBuildStats> },
+    Ready {
+        /// 本次运行执行派生时的统计；复用已有索引时为 `None`。
+        stats: Option<DerivedBuildStats>,
+    },
     /// 结构不可用：两字查询没有候选表可走，调用方须降级并告知用户。
-    Unavailable { reason: String },
+    Unavailable {
+        /// 无法构建或验证派生索引的原因。
+        reason: String,
+    },
 }
 
 impl DerivedState {
+    /// 派生索引是否可供查询使用。
     #[must_use]
     pub fn is_ready(&self) -> bool {
         matches!(self, Self::Ready { .. })
@@ -250,26 +277,50 @@ impl DerivedState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaterializationProgress<'a> {
     /// 已有可用语料库，本次不需要落地。
-    AlreadyPresent { path: &'a Path },
+    AlreadyPresent {
+        /// 已存在的语料库路径。
+        path: &'a Path,
+    },
     /// 开始校验归档；`bytes` 是归档的实际字节数。
-    VerifyingArchive { archive: &'a Path, bytes: u64 },
+    VerifyingArchive {
+        /// 正在校验的归档路径。
+        archive: &'a Path,
+        /// 归档实际字节数。
+        bytes: u64,
+    },
     /// 归档摘要与期望一致。
-    ArchiveVerified { sha256: &'a str },
+    ArchiveVerified {
+        /// 已确认的 SHA-256 十六进制摘要。
+        sha256: &'a str,
+    },
     /// 正在解压。`bytes_total == 0` 表示清单没给出解压后大小。
-    Decompressing { bytes_done: u64, bytes_total: u64 },
+    Decompressing {
+        /// 已写出的字节数。
+        bytes_done: u64,
+        /// 预期总字节数；未知时为零。
+        bytes_total: u64,
+    },
     /// 已原子落地。
     Materialized {
+        /// 原子发布后的语料库路径。
         path: &'a Path,
+        /// 已落地语料的数据版本。
         corpus_version: &'a str,
     },
     /// 首启派生进度。唐宋规模实测总计 571.8 s。
     Deriving(DeriveProgress),
     /// 首启派生失败。字典仍可用，两字查询退化；下次运行会重来。
-    DeriveFailed { reason: &'a str },
+    DeriveFailed {
+        /// 派生失败原因。
+        reason: &'a str,
+    },
     /// 语料库已就绪，可以开始查询。
     Ready {
+        /// 可查询的语料库路径。
         path: &'a Path,
+        /// 可查询语料的数据版本。
         corpus_version: &'a str,
+        /// 派生索引是否就绪。
         derived: bool,
     },
 }
@@ -349,16 +400,19 @@ impl CorpusHandle {
     }
 
     #[must_use]
+    /// 语料库文件路径。
     pub fn path(&self) -> &Path {
         &self.inner.path
     }
 
     #[must_use]
+    /// 语料库元数据。
     pub fn meta(&self) -> &CorpusMeta {
         &self.inner.meta
     }
 
     #[must_use]
+    /// 本次解析命中的语料来源。
     pub fn origin(&self) -> &CorpusOrigin {
         &self.inner.origin
     }
