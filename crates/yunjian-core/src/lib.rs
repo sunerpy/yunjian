@@ -48,4 +48,9 @@ pub use search::text::{
     HighlightRange, HighlightedSnippet, SearchPage, TEXT_SEARCH_HARD_CAP, TextSearchHit,
     TextSearchRequest,
 };
+pub use search::topic::{
+    AuthorRecord, CommentaryCitation, CommentaryEntry, PoemDetail, PoemRecord, Provenance,
+    RhymeGroupMembership, TAG_PAGE_LIMIT, TagSummary, Tone, ToneAnnotation, ToneCell, ToneLine,
+    browse_by_tag, list_tags, poem_detail,
+};
 pub use text::{content_chars, is_punctuation};
