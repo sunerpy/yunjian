@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "measured": true,
+  "measured_at": "2026-08-11",
+  "scoring_mode": "completeness_only",
+  "cer_threshold": 0.1,
+  "fixture": {
+    "poems": 50,
+    "genres": 8,
+    "source_repo": "chinese-poetry/chinese-poetry",
+    "source_rev": "b8594f81a89752241442f2ce267d6f66f96704ee",
+    "excerpted": 4,
+    "human_recordings_used": false
+  },
+  "method": {
+    "tts_models": [
+      "vits-melo-tts-zh_en",
+      "kokoro-multi-lang-v1_0"
+    ],
+    "asr_models": [
+      "sherpa-onnx-whisper-tiny",
+      "sherpa-onnx-whisper-base",
+      "sherpa-onnx-whisper-small"
+    ],
+    "conditions": [
+      "clean",
+      "narrowband-8k",
+      "pink-20db",
+      "pink-10db",
+      "slow-110",
+      "fast-90"
+    ],
+    "utterances_planned": 1800,
+    "utterances_measured": 1800
+  },
+  "not_measured_reason": null,
+  "optimistic_bound_statement": "本表的 CER **由 TTS 合成音加信道增强测得，不是真人朗读**，因此它是真实说话人 CER 的**乐观上界**：合成音只有单一说话人、没有口音、没有吞音、没有真实房间的混响与远场衰减，韵律也比人朗读规整。增强（8 kHz 窄带往返、20 dB 与 10 dB 粉噪、±10% 变速不变调）逼近的是**信道与语速**，逼近不了说话人差异。\n\n之所以只能这样测：唯一公开的中文朗诵语料 MCGA 是 CC BY-NC-SA-4.0 且只放了 test split，NC 条款排除本项目（见 `corpus/DENYLIST.md`），而本 todo 刻意不以真人录音为门禁。\n\n乐观上界的用途是单向的——它足以**证伪**（上界都超过阈值，真人只会更差），不足以**证成**（上界达标不代表真人达标）。所以即便通过，语音路径上的逐字准确率也永远只是 advisory，不会升为分数。",
+  "overall": {
+    "cer": 0.7701488252278123,
+    "utterances": 1800
+  },
+  "per_genre": [
+    {
+      "genre": "七言古詩",
+      "poems": 3,
+      "utterances": 108,
+      "cer": 0.7506674995100915
+    },
+    {
+      "genre": "七言律詩",
+      "poems": 8,
+      "utterances": 288,
+      "cer": 0.7865823412698414
+    },
+    {
+      "genre": "七言絕句",
+      "poems": 10,
+      "utterances": 360,
+      "cer": 0.7796626984126984
+    },
+    {
+      "genre": "五言古詩",
+      "poems": 5,
+      "utterances": 180,
+      "cer": 0.8014259259259262
+    },
+    {
+      "genre": "五言律詩",
+      "poems": 8,
+      "utterances": 288,
+      "cer": 0.7498263888888891
+    },
+    {
+      "genre": "五言絕句",
+      "poems": 8,
+      "utterances": 288,
+      "cer": 0.7458333333333326
+    },
+    {
+      "genre": "樂府",
+      "poems": 4,
+      "utterances": 144,
+      "cer": 0.7729166666666667
+    },
+    {
+      "genre": "词",
+      "poems": 4,
+      "utterances": 144,
+      "cer": 0.775519743625122
+    }
+  ],
+  "per_condition": [
+    {
+      "condition": "clean",
+      "utterances": 300,
+      "cer": 0.7597648950356435
+    },
+    {
+      "condition": "fast-90",
+      "utterances": 300,
+      "cer": 0.7906422597196253
+    },
+    {
+      "condition": "narrowband-8k",
+      "utterances": 300,
+      "cer": 0.7700830001400317
+    },
+    {
+      "condition": "pink-10db",
+      "utterances": 300,
+      "cer": 0.7898708388819787
+    },
+    {
+      "condition": "pink-20db",
+      "utterances": 300,
+      "cer": 0.7663307955544939
+    },
+    {
+      "condition": "slow-110",
+      "utterances": 300,
+      "cer": 0.7442011620350916
+    }
+  ],
+  "per_model": [
+    {
+      "asr_model": "sherpa-onnx-whisper-tiny",
+      "tts_model": "kokoro-multi-lang-v1_0",
+      "utterances": 300,
+      "cer": 0.7882706397714095
+    },
+    {
+      "asr_model": "sherpa-onnx-whisper-tiny",
+      "tts_model": "vits-melo-tts-zh_en",
+      "utterances": 300,
+      "cer": 0.7728635860129288
+    },
+    {
+      "asr_model": "sherpa-onnx-whisper-base",
+      "tts_model": "kokoro-multi-lang-v1_0",
+      "utterances": 300,
+      "cer": 0.7944862876381212
+    },
+    {
+      "asr_model": "sherpa-onnx-whisper-base",
+      "tts_model": "vits-melo-tts-zh_en",
+      "utterances": 300,
+      "cer": 0.754005491763294
+    },
+    {
+      "asr_model": "sherpa-onnx-whisper-small",
+      "tts_model": "kokoro-multi-lang-v1_0",
+      "utterances": 300,
+      "cer": 0.7987516851865581
+    },
+    {
+      "asr_model": "sherpa-onnx-whisper-small",
+      "tts_model": "vits-melo-tts-zh_en",
+      "utterances": 300,
+      "cer": 0.7125152609945552
+    }
+  ]
+}

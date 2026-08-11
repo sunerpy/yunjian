@@ -28,6 +28,17 @@ toml = { workspace = true }
 tracing = { workspace = true }
 ureq = { workspace = true }
 yunjian-corpus = { path = "../crates/yunjian-corpus" }
+# `cer-spike` 的参考文本取自繁体上游，识别结果也常是繁体：两侧都要做 t2s 归一，
+# 否则字形差异会被当成识别错误算进 CER。用的是语料侧同一个实现，判据只能有一个。
+ferrous-opencc = { workspace = true }
+# `cer-spike` 的实测路径。默认不开：`voice` 会拉入静态含 GPL-3.0 espeak-ng 的
+# 预编译原生产物，默认构建必须保持纯 MIT 且不链接 onnxruntime。
+yunjian-voice = { path = "../crates/yunjian-voice" }
+
+[features]
+default = []
+# 开启后 `cer-spike` 才真的合成与识别；不开则如实写 NOT MEASURED。
+voice = ["yunjian-voice/voice"]
 
 [lints]
 workspace = true

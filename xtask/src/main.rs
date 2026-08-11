@@ -13,11 +13,13 @@
 use clap::{Parser, Subcommand};
 
 // 子命令模块在此注册（每个任务追加一行）。
+mod cer_spike;
 mod commentary_index;
 mod corpus_contract;
 mod corpus_measure;
 mod corpus_quality;
 mod index_spike;
+mod verify_models;
 mod verify_sources;
 
 #[derive(Debug, Parser)]
@@ -124,6 +126,41 @@ enum Commands {
         #[arg(long, conflicts_with_all = ["scales", "keep_databases"])]
         render_only: bool,
     },
+
+    /// 校验 `models.toml`：SPDX 允许列表（只认 MIT 与 Apache-2.0）、锁定 revision 的
+    /// 许可证据摘要、证据文件里真的写着那个许可、`models/DENYLIST.md` 的拒绝清单，
+    /// 以及夹带产物的分发影响声明。最后写出 `models.lock.json` 供 `jq` 断言。
+    VerifyModels {
+        /// 只核对随仓保存的许可证据，不访问网络。
+        #[arg(long)]
+        offline: bool,
+    },
+
+    /// 实测文言 CER 并写出 `docs/reports/asr-cer.{json,md}`，含 `scoring_mode` 裁决
+    /// （只可能是 `advisory_accuracy` 或 `completeness_only`，**永远不是 `full`**）。
+    /// todo 48、51、56、57 读那份报告。
+    ///
+    /// 不开 `voice` 特性时如实写 NOT MEASURED 并说明阻塞原因，绝不编造数字。
+    CerSpike {
+        /// 从锁定 revision 重建参考文本（需网络），不做测量。
+        #[arg(long)]
+        refresh_fixtures: bool,
+        /// **仅用于验证阈值门禁是真的**：跳过测量，直接把总 CER 设成给定值，
+        /// 确认裁决按 10% 阈值翻转。产出的报告会显式标注它不是测量结果。
+        #[arg(long, value_name = "CER", conflicts_with = "refresh_fixtures")]
+        force_cer: Option<f64>,
+        /// 只测前 N 首。试运行用，报告会标注它不是完整测量。
+        #[arg(long, value_name = "N", conflicts_with = "refresh_fixtures")]
+        limit: Option<usize>,
+        /// 把每一条的参考文本、识别结果与 CER 写成 JSONL。人工复核与排障用：
+        /// 只看聚合 CER 分不出「识别得差」与「根本没识别」。
+        #[arg(long, value_name = "PATH", conflicts_with = "refresh_fixtures")]
+        dump_transcripts: Option<std::path::PathBuf>,
+        /// 只按现有 `asr-cer.json` 重渲染 Markdown，不重跑测量。
+        /// 用于调整人读报告的措辞——实测一轮约一小时。
+        #[arg(long, conflicts_with_all = ["refresh_fixtures", "force_cer", "limit"])]
+        render_only: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -160,6 +197,21 @@ fn main() -> anyhow::Result<()> {
             repeats,
             artifact_budget_mib * 1024 * 1024,
             keep_databases,
+        ),
+        Some(Commands::VerifyModels { offline }) => verify_models::run(offline),
+        Some(Commands::CerSpike {
+            refresh_fixtures,
+            force_cer,
+            limit,
+            dump_transcripts,
+            render_only,
+        }) => cer_spike::run(
+            None,
+            refresh_fixtures,
+            force_cer,
+            limit,
+            dump_transcripts,
+            render_only,
         ),
         None => Ok(()),
     }

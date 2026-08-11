@@ -36,6 +36,8 @@
 | 索引选型     | 已实测 | FTS5 `detail` 模式与 n-gram 辅助表由实测定案，见 [语料与索引](docs/CORPUS.zh.md)                    |
 | 语音构建     | 已验证 | 五平台原生依赖构建与链接路径实测，见 [语音构建](docs/VOICE-BUILD.zh.md)                             |
 | 麦克风与底线 | 已验证 | Linux 实测采集 16 kHz 单声道；各平台授权链与系统底线见 [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md) |
+| 模型许可     | 已核实 | 逐模型核实，只放行 MIT / Apache-2.0；`xtask verify-models` 强制，见 `models.toml`                   |
+| 文言字准     | 已实测 | 合成音加增强测得，结论是字准只作参考值，见 [CER 报告](docs/reports/asr-cer.md)                      |
 
 **尚未实现**（有完整方案，但一行产品代码都还没有）：诗词检索接口、AI 赏析、背诵训练与
 FSRS 复习、离线朗读与语音识别、MCP 服务器、命令行工具、Tauri 桌面端、移动端。
@@ -121,7 +123,14 @@ cargo run -p xtask -- verify-sources --offline
 - 因此发布产物分两种：默认构建标 MIT，语音构建标 GPL-3.0。细节见
   [语音构建](docs/VOICE-BUILD.zh.md)。
 
-不会随包分发任何模型权重。语音模型按需下载，且只接受经核实的 MIT 或 Apache-2.0 许可。
+不会随包分发任何模型权重。语音模型按需下载，且只接受经核实的 MIT 或 Apache-2.0 许可——
+逐模型的判定、证据文件与摘要在 [`models.toml`](models.toml)，由 `xtask verify-models`
+强制校验；被拒的模型连同理由在 [`models/DENYLIST.md`](models/DENYLIST.md)。核实推翻了一条
+先前的判断：**FunASR 系（SenseVoice / Paraformer）走的是阿里自家的许可协议，不是 MIT 也
+不是 Apache-2.0**，因此离线识别只剩 Whisper 一族可用。
+
+**语音路径上的逐字准确率永远只是参考值，不是分数。** 这不是保守措辞，而是实测结论：
+见 [CER 报告](docs/reports/asr-cer.md)。
 
 ## 文档
 
@@ -129,6 +138,7 @@ cargo run -p xtask -- verify-sources --offline
 - [语料与索引](docs/CORPUS.zh.md)——构建管线、`stable_id` 身份模型、FTS5 索引选型实测
 - [语音构建](docs/VOICE-BUILD.zh.md)——五平台原生依赖构建、链接方式、许可影响
 - [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md)——五平台系统最低版本、麦克风授权链、低于底线时的降级行为
+- [CER 报告](docs/reports/asr-cer.md)——文言语音识别字准实测，以及它为什么只能当参考值
 
 ## 参与开发
 
