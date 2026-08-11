@@ -9,15 +9,22 @@
 //! 具体模块由后续任务补全。
 
 pub mod config;
+pub mod corpus;
 pub mod derive;
 pub mod error;
 pub mod logger;
 pub mod rhyme;
 pub mod text;
 
-pub use config::{Config, LoggerConfig, get_config, init_config};
+pub use config::{Config, CorpusConfig, LoggerConfig, get_config, init_config};
+pub use corpus::{
+    CORPUS_ARCHIVE_NAME, CORPUS_FILE_NAME, CORPUS_MANIFEST_NAME, CorpusHandle, CorpusMeta,
+    CorpusOrigin, DerivedState, MaterializationProgress, OpenCorpusError, SCHEMA_VERSION,
+    SUPPORTED_SCHEMA, open_corpus,
+};
 pub use derive::{
-    DerivedBuildStats, build_derived_indexes, derived_indexes_present, verify_derived_indexes,
+    DeriveProgress, DeriveStep, DerivedBuildStats, build_derived_indexes,
+    build_derived_indexes_with_progress, derived_indexes_present, verify_derived_indexes,
 };
 pub use error::{AiError, Error, Result, redact_credentials};
 pub use logger::{current_log_level, init_logger, set_log_level};

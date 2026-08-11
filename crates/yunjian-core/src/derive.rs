@@ -39,6 +39,60 @@ pub const DERIVED_SCHEMA_SQL: &str = include_str!("../schema-derived.sql");
 /// 首启派生出来的结构名。随包工件里这些都**不应存在**。
 pub const DERIVED_TABLES: [&str; 3] = ["ngram", "poem_fts", "poem_last_char"];
 
+/// 首启派生的阶段。
+///
+/// 之所以是**四**个而不是三个：读 `poem` 表本身在唐宋规模上就要读完 519 MiB 正文，
+/// 把它算进第一张表的时间会让「n-gram 慢」这个结论掺进一段与 n-gram 无关的 I/O。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeriveStep {
+    /// 读出 `poem` 的 `stable_id` 与 `body`。
+    Scan,
+    /// 灌 `ngram`。实测占总时长 85%（487.5 s / 571.8 s）。
+    Ngram,
+    /// 灌 `poem_last_char`。
+    LastChar,
+    /// 建 `poem_fts` 并 rebuild / optimize / integrity-check。
+    Fts,
+}
+
+impl DeriveStep {
+    /// 供 UI 直接展示的中文步骤名。
+    #[must_use]
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Scan => "读取诗词正文",
+            Self::Ngram => "构建候选索引",
+            Self::LastChar => "构建尾字索引",
+            Self::Fts => "构建全文索引",
+        }
+    }
+}
+
+/// 一次派生进度事件。
+///
+/// `total == 0` 表示该步的总量未知，UI 应当显示不确定进度而不是 0%。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeriveProgress {
+    pub step: DeriveStep,
+    pub done: u64,
+    pub total: u64,
+}
+
+impl DeriveProgress {
+    /// 已完成比例，`None` 表示总量未知。
+    #[must_use]
+    pub fn fraction(&self) -> Option<f64> {
+        (self.total > 0).then(|| (self.done as f64 / self.total as f64).clamp(0.0, 1.0))
+    }
+}
+
+/// 逐首汇报的步长。
+///
+/// 不逐首汇报：唐宋 474162 首乘四步等于近两百万次回调，而回调对面可能是 FFI 边界或
+/// 一次界面重绘。按 1024 首汇报把它压到每步四百多次，同时仍然足够让进度条平滑。
+/// 每一步结束时**另外补一次精确值**，所以最终显示不会停在 473k/474k。
+const PROGRESS_STRIDE: u64 = 1024;
+
 /// 一次首启构建的实测量。
 ///
 /// 逐步分开记录，因为首启进度要按步显示，而「哪一步慢」在只有总时长时无法回答。
@@ -77,19 +131,48 @@ pub fn derived_indexes_present(connection: &Connection) -> Result<bool> {
 /// 只读打开的那一份不可能建表。
 ///
 /// 幂等：已存在的派生结构会被丢弃后重建，因此中断后重跑是安全的。
+///
+/// 需要进度回调时用 [`build_derived_indexes_with_progress`]——唐宋规模实测 571.8 s，
+/// 没有反馈的十分钟等价于界面卡死。
 pub fn build_derived_indexes(connection: &mut Connection) -> Result<DerivedBuildStats> {
+    build_derived_indexes_with_progress(connection, &mut |_| {})
+}
+
+/// 同 [`build_derived_indexes`]，但逐步汇报进度。
+///
+/// 回调按 [`PROGRESS_STRIDE`] 首节流，且每步结束补一次精确值。
+/// `Fts` 一步只有首尾两次事件：`INSERT INTO poem_fts(poem_fts) VALUES('rebuild')` 在
+/// SQLite 内部完成，中途拿不到任何可汇报的量——**刻意不伪造一个匀速动画**，那会把
+/// 「还剩多久」这件事从「不知道」变成「错」。
+pub fn build_derived_indexes_with_progress(
+    connection: &mut Connection,
+    progress: &mut dyn FnMut(DeriveProgress),
+) -> Result<DerivedBuildStats> {
     let started = Instant::now();
     let detail_mode = index_detail_mode(connection)?;
 
     let poems = {
+        progress(DeriveProgress {
+            step: DeriveStep::Scan,
+            done: 0,
+            total: 0,
+        });
         let mut statement =
             connection.prepare("SELECT stable_id, body FROM poem ORDER BY stable_id")?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
-            .collect::<rusqlite::Result<Vec<_>>>()?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let total = rows.len() as u64;
+        progress(DeriveProgress {
+            step: DeriveStep::Scan,
+            done: total,
+            total,
+        });
+        rows
     };
+    let total_poems = poems.len() as u64;
 
     connection.execute_batch(
         "DROP TABLE IF EXISTS poem_fts;
@@ -107,16 +190,22 @@ pub fn build_derived_indexes(connection: &mut Connection) -> Result<DerivedBuild
         {
             let mut insert =
                 transaction.prepare("INSERT INTO ngram(gram, stable_id) VALUES (?1, ?2)")?;
-            for (stable_id, body) in &poems {
+            for (index, (stable_id, body)) in poems.iter().enumerate() {
                 for gram in derive_grams(body) {
                     insert.execute(rusqlite::params![gram, stable_id])?;
                     grams_written += 1;
                 }
+                report_stride(progress, DeriveStep::Ngram, index as u64 + 1, total_poems);
             }
         }
         transaction.commit()?;
     }
     let ngram_elapsed = ngram_started.elapsed();
+    progress(DeriveProgress {
+        step: DeriveStep::Ngram,
+        done: total_poems,
+        total: total_poems,
+    });
 
     let last_char_started = Instant::now();
     let mut last_chars_written: u64 = 0;
@@ -126,7 +215,7 @@ pub fn build_derived_indexes(connection: &mut Connection) -> Result<DerivedBuild
             let mut insert = transaction.prepare(
                 "INSERT INTO poem_last_char(poem_id, line_index, ch) VALUES (?1, ?2, ?3)",
             )?;
-            for (stable_id, body) in &poems {
+            for (index, (stable_id, body)) in poems.iter().enumerate() {
                 for (line_index, character) in derive_last_chars(body) {
                     insert.execute(rusqlite::params![
                         stable_id,
@@ -135,15 +224,36 @@ pub fn build_derived_indexes(connection: &mut Connection) -> Result<DerivedBuild
                     ])?;
                     last_chars_written += 1;
                 }
+                report_stride(
+                    progress,
+                    DeriveStep::LastChar,
+                    index as u64 + 1,
+                    total_poems,
+                );
             }
         }
         transaction.commit()?;
     }
     let last_char_elapsed = last_char_started.elapsed();
+    progress(DeriveProgress {
+        step: DeriveStep::LastChar,
+        done: total_poems,
+        total: total_poems,
+    });
 
     let fts_started = Instant::now();
+    progress(DeriveProgress {
+        step: DeriveStep::Fts,
+        done: 0,
+        total: total_poems,
+    });
     build_fts(connection, &detail_mode)?;
     let fts_elapsed = fts_started.elapsed();
+    progress(DeriveProgress {
+        step: DeriveStep::Fts,
+        done: total_poems,
+        total: total_poems,
+    });
 
     let stats = DerivedBuildStats {
         poems: poems.len() as u64,
@@ -364,6 +474,17 @@ fn detail_mode_from_ddl(ddl: &str) -> Result<&'static str> {
         .into_iter()
         .find(|mode| ddl.contains(&format!("detail={mode}")))
         .ok_or_else(|| derive_error(format!("poem_fts DDL 缺少可识别的 detail 模式：{ddl}")))
+}
+
+fn report_stride(
+    progress: &mut dyn FnMut(DeriveProgress),
+    step: DeriveStep,
+    done: u64,
+    total: u64,
+) {
+    if done.is_multiple_of(PROGRESS_STRIDE) {
+        progress(DeriveProgress { step, done, total });
+    }
 }
 
 fn derive_error(message: impl Into<String>) -> Error {
