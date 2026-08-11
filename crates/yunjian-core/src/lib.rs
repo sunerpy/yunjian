@@ -29,7 +29,7 @@ pub use derive::{
 };
 pub use error::{AiError, Error, Result, redact_credentials};
 pub use logger::{current_log_level, init_logger, set_log_level};
-pub use rhyme::{RhymeBook, RhymeTone};
+pub use rhyme::{RhymeBook, RhymeConfidence, RhymeTone};
 pub use search::meta::{
     Attribution, AttributionConflict, AuthorDetail, DynastyLabel, META_PAGE_LIMIT, MetaHit,
     MetaMatch, MetaPage, TITLE_SEPARATORS, author_detail, browse_by_dynasty, find_by_author,
@@ -38,6 +38,11 @@ pub use search::meta::{
 pub use search::query::{
     NGRAM_CANDIDATES_SQL, QueryPlan, escape_like_literal, normalize_query, plan_metadata_query,
     plan_query,
+};
+pub use search::rhyme::{
+    CHARACTER_RHYME_GROUPS_SQL, CharacterRhymes, RHYME_GROUP_POEMS_SQL, RhymeAnswer, RhymeGroupHit,
+    RhymeGroupMatches, RhymeGroupRef, RhymeVerdict, ToneFilter, do_these_rhyme,
+    find_by_rhyme_group, rhyme_groups_of,
 };
 pub use search::text::{
     HighlightRange, HighlightedSnippet, SearchPage, TEXT_SEARCH_HARD_CAP, TextSearchHit,

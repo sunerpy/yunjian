@@ -99,6 +99,78 @@ impl RhymeBook {
     }
 }
 
+/// 一首作品的韵部归属有多确定。
+///
+/// 这是 todo 18 韵脚投票的产物，写进 `poem_rhyme_group.confidence`。运行期检索必须
+/// 把它透出给调用方，理由是三档在格律上不等价：
+///
+/// - [`Self::Unambiguous`]：全部韵脚只落在一个韵部，无需消歧；
+/// - [`Self::ResolvedByVote`]：有多音韵脚，靠其他韵脚的单义票消解；
+/// - [`Self::Unresolved`]：无票、平票、证据矛盾或韵书未收字。
+///
+/// # 为什么 [`Self::Unresolved`] 不能算命中
+///
+/// 未消歧意味着我们**不知道**这首诗押哪个韵部，候选行是「可能」而不是「是」。把它算作
+/// 命中等于把一个猜测当成判断报给用户，因此 [`Self::is_positive_claim`] 对它返回
+/// `false`，检索侧据此把它排除在肯定的押韵判断之外——但**保留**在单独的候选列表里，
+/// 因为「不确定」同样不是「否定」。
+///
+/// # 为什么 `yunjian-corpus` 里还有一个同名枚举
+///
+/// 依赖方向：构建期的投票在 `yunjian-corpus`，运行期的检索在 `yunjian-core`，后者不能
+/// 依赖前者。两侧的契约是数据库里那三个稳定键，而不是同一个 Rust 类型。
+/// [`tests`] 里有一条守卫直接读 `../yunjian-corpus/schema.sql` 的 `CHECK` 列表，
+/// 两侧取值集合一旦漂移即变红。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RhymeConfidence {
+    /// 韵部由其他韵脚的单义票消解得出。
+    ResolvedByVote,
+    /// 全部韵脚只落在一个韵部，本就无歧义。
+    Unambiguous,
+    /// 未能唯一消歧，候选保留但不构成判断。
+    Unresolved,
+}
+
+impl RhymeConfidence {
+    /// 三档全集。
+    pub const ALL: [Self; 3] = [Self::ResolvedByVote, Self::Unambiguous, Self::Unresolved];
+
+    /// 写入数据库的稳定键，与 `poem_rhyme_group.confidence` 的 `CHECK` 取值逐字一致。
+    pub const fn as_key(self) -> &'static str {
+        match self {
+            Self::ResolvedByVote => "resolved_by_vote",
+            Self::Unambiguous => "unambiguous",
+            Self::Unresolved => "unresolved",
+        }
+    }
+
+    /// 面向用户的中文说明。
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::ResolvedByVote => "投票消歧",
+            Self::Unambiguous => "无歧义",
+            Self::Unresolved => "未消歧",
+        }
+    }
+
+    /// 该档是否足以支撑一个肯定的押韵判断。
+    ///
+    /// 只有 [`Self::Unresolved`] 返回 `false`。这是一条领域规则而不是阈值：投票消解出的
+    /// 韵部与本就无歧义的韵部一样是**结论**，只是来路不同，所以两者都算命中，UI 另据
+    /// 本枚举区分来路。
+    pub const fn is_positive_claim(self) -> bool {
+        !matches!(self, Self::Unresolved)
+    }
+
+    /// 解析数据库里的稳定键。未登记的取值返回 `None`，由调用方决定报错而不是猜一档。
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|confidence| confidence.as_key() == key)
+    }
+}
+
 /// 韵书里的声调维度。
 ///
 /// 与 [`yunjian_corpus::ingest::Tone`] 的平仄二分**不是**一回事：那个描述某个字在
@@ -121,6 +193,15 @@ pub enum RhymeTone {
 }
 
 impl RhymeTone {
+    /// 五个声的全集。
+    pub const ALL: [Self; 5] = [
+        Self::Level,
+        Self::Rising,
+        Self::Departing,
+        Self::Entering,
+        Self::Oblique,
+    ];
+
     /// 写入数据库的稳定键。
     pub const fn as_key(self) -> &'static str {
         match self {
@@ -148,6 +229,11 @@ impl RhymeTone {
     /// 平水韵四声可判；词林正韵的 [`Self::Oblique`] 本身就是仄。入声归仄。
     pub const fn is_level(self) -> bool {
         matches!(self, Self::Level)
+    }
+
+    /// 解析数据库里的稳定键。未登记的取值返回 `None`——声调不可推测，猜一个等于编造格律。
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|tone| tone.as_key() == key)
     }
 }
 
@@ -209,6 +295,72 @@ mod tests {
             assert_eq!(RhymeBook::from_key(book.as_key()), Some(book));
         }
         assert_eq!(RhymeBook::from_key("guangyun"), None);
+    }
+
+    /// 三档可信度里只有「未消歧」不构成肯定判断。
+    #[test]
+    fn only_unresolved_is_not_a_positive_claim() {
+        assert!(RhymeConfidence::Unambiguous.is_positive_claim());
+        assert!(RhymeConfidence::ResolvedByVote.is_positive_claim());
+        assert!(!RhymeConfidence::Unresolved.is_positive_claim());
+        for confidence in RhymeConfidence::ALL {
+            assert_eq!(
+                RhymeConfidence::from_key(confidence.as_key()),
+                Some(confidence)
+            );
+        }
+        assert_eq!(RhymeConfidence::from_key("probably"), None);
+    }
+
+    /// 本模块的稳定键必须与随包 schema 的 `CHECK` 取值集合逐字一致。
+    ///
+    /// `yunjian-corpus` 里另有一个同名的 `RhymeConfidence`（依赖方向不允许合并成一个
+    /// 类型），两侧唯一的契约就是数据库里这几个字符串。所以守卫直接读 schema 源文件：
+    /// 任何一侧改了取值而另一侧没跟上，这条即变红，而不是等到运行期解析失败。
+    #[test]
+    fn stable_keys_match_the_shipped_schema_checks() {
+        let schema = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../yunjian-corpus/schema.sql"),
+        )
+        .expect("读取随包 schema");
+
+        let cases: [(&str, Vec<&str>); 3] = [
+            (
+                "rhyme_book IN",
+                RhymeBook::ALL.iter().map(|book| book.as_key()).collect(),
+            ),
+            (
+                "tone IN",
+                RhymeTone::ALL.iter().map(|tone| tone.as_key()).collect(),
+            ),
+            (
+                "confidence IN",
+                RhymeConfidence::ALL
+                    .iter()
+                    .map(|confidence| confidence.as_key())
+                    .collect(),
+            ),
+        ];
+        for (marker, keys) in cases {
+            let clause = schema
+                .split(marker)
+                .nth(1)
+                .and_then(|rest| rest.split(')').next())
+                .unwrap_or_else(|| panic!("随包 schema 里找不到 `{marker}` 约束"));
+            for key in &keys {
+                assert!(
+                    clause.contains(&format!("'{key}'")),
+                    "`{marker}` 的取值集合缺少 `{key}`：{clause}"
+                );
+            }
+            let listed = clause.matches('\'').count() / 2;
+            assert_eq!(
+                listed,
+                keys.len(),
+                "`{marker}` 列出 {listed} 个取值，枚举有 {} 个：{clause}",
+                keys.len()
+            );
+        }
     }
 
     #[test]
