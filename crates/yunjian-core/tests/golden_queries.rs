@@ -24,7 +24,8 @@ use std::sync::OnceLock;
 use rusqlite::{Connection, params};
 use serde::Deserialize;
 use yunjian_core::{
-    CorpusConfig, CorpusHandle, QueryPlan, SCHEMA_VERSION, plan_metadata_query, plan_query,
+    CorpusConfig, CorpusHandle, QueryPlan, SCHEMA_VERSION, TEXT_SEARCH_HARD_CAP, TextSearchRequest,
+    plan_metadata_query, plan_query,
 };
 
 // ---------------------------------------------------------------- 契约数据结构
@@ -180,9 +181,17 @@ fn production_handle() -> &'static CorpusHandle {
             .execute_batch(
                 "CREATE TABLE poem(
                      stable_id TEXT PRIMARY KEY NOT NULL,
+                     title TEXT NOT NULL,
+                     author TEXT NOT NULL,
+                     dynasty TEXT NOT NULL,
                      body TEXT NOT NULL
-                 );
-                 CREATE TABLE variant_map(
+                  );
+                  CREATE TABLE poem_tag(
+                      poem_id TEXT NOT NULL,
+                      tag TEXT NOT NULL,
+                      PRIMARY KEY(poem_id, tag)
+                  ) WITHOUT ROWID;
+                  CREATE TABLE variant_map(
                      src_char TEXT PRIMARY KEY NOT NULL,
                      dst_char TEXT NOT NULL
                  ) WITHOUT ROWID;
@@ -202,8 +211,15 @@ fn production_handle() -> &'static CorpusHandle {
         for poem in &fixtures().poems {
             connection
                 .execute(
-                    "INSERT INTO poem(stable_id, body) VALUES (?1, ?2)",
-                    params![poem.stable_id, poem.body],
+                    "INSERT INTO poem(stable_id, title, author, dynasty, body)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        poem.stable_id,
+                        poem.title,
+                        poem.author,
+                        poem.dynasty,
+                        poem.body
+                    ],
                 )
                 .expect("写黄金查询 fixture 诗");
         }
@@ -379,6 +395,38 @@ fn check(id: &str) {
         e.expect_plan,
         "{id}: 生产 plan_query 与黄金契约不一致：{actual_plan:?}"
     );
+
+    if !is_metadata_class(&e.class) {
+        let page = production_handle()
+            .search_text(TextSearchRequest {
+                query: e.query.clone(),
+                limit: TEXT_SEARCH_HARD_CAP,
+                cursor: None,
+            })
+            .unwrap_or_else(|error| panic!("{id}: 生产 search_text 执行失败：{error}"));
+        assert_eq!(
+            page.plan_used.contract_name(),
+            e.expect_plan,
+            "{id}: search_text 报告的计划与黄金契约不一致"
+        );
+        assert!(
+            page.total_estimate >= e.expect_min_hits,
+            "{id}: 生产 search_text 只命中 {} 首，低于下界 {}",
+            page.total_estimate,
+            e.expect_min_hits
+        );
+        if e.expect_min_hits > 0 {
+            assert!(
+                page.hits.iter().any(|hit| hit.poem_id == e.expect_top_id),
+                "{id}: 生产 search_text 未返回契约锚 {}：{:?}",
+                e.expect_top_id,
+                page.hits
+                    .iter()
+                    .map(|hit| hit.poem_id.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 
     let anchor = poem_by_id(&e.expect_top_id).unwrap_or_else(|| {
         panic!(
