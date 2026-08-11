@@ -1,0 +1,512 @@
+# 文言 CER 实测的参考文本。**由 `cargo run -p xtask -- cer-spike --refresh-fixtures` 生成，不要手改。**
+#
+# 全部取自 `chinese-poetry/chinese-poetry` 锁定 revision 上的公有领域文本
+# （`corpus/sources.toml` 里 license_class = "public_domain"、shippable = true 的资产），
+# 繁体经 OpenCC `t2s` 转简体，上游夹注（形如「(明年 一作：年年)」）已剥除。
+#
+# `reference` 只留汉字：标点与空白在语音里没有对应物，计进 CER 会把「模型不输出标点」
+# 误算成识别错误。`excerpt = true` 表示原作超过 Whisper 的 30 秒窗口，已按整句截断。
+
+schema_version = 1
+source_repo = "chinese-poetry/chinese-poetry"
+source_rev = "b8594f81a89752241442f2ce267d6f66f96704ee"
+
+[[poem]]
+id = "五言絕句:元稹:行宫"
+genre = "五言絕句"
+title = "行宫"
+author = "元稹"
+body = "寥落古行宫，宫花寂寞红。白头宫女在，闲坐说玄宗。"
+reference = "寥落古行宫宫花寂寞红白头宫女在闲坐说玄宗"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言絕句:王之涣:登鹳雀楼"
+genre = "五言絕句"
+title = "登鹳雀楼"
+author = "王之涣"
+body = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+reference = "白日依山尽黄河入海流欲穷千里目更上一层楼"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言絕句:王建:新嫁娘词"
+genre = "五言絕句"
+title = "新嫁娘词"
+author = "王建"
+body = "三日入厨下，洗手作羹汤。未谙姑食性，先遣小姑尝。"
+reference = "三日入厨下洗手作羹汤未谙姑食性先遣小姑尝"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言絕句:王维:相思"
+genre = "五言絕句"
+title = "相思"
+author = "王维"
+body = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+reference = "红豆生南国春来发几枝愿君多采撷此物最相思"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言絕句:王维:杂诗"
+genre = "五言絕句"
+title = "杂诗"
+author = "王维"
+body = "君自故乡来，应知故乡事。来日绮窗前，寒梅著花未？"
+reference = "君自故乡来应知故乡事来日绮窗前寒梅著花未"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言絕句:王维:鹿柴"
+genre = "五言絕句"
+title = "鹿柴"
+author = "王维"
+body = "空山不见人，但闻人语响。返景入深林，复照青苔上。"
+reference = "空山不见人但闻人语响返景入深林复照青苔上"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言絕句:王维:竹里馆"
+genre = "五言絕句"
+title = "竹里馆"
+author = "王维"
+body = "独坐幽篁里，弹琴复长啸。深林人不知，明月来相照。"
+reference = "独坐幽篁里弹琴复长啸深林人不知明月来相照"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言絕句:王维:山中送别"
+genre = "五言絕句"
+title = "山中送别"
+author = "王维"
+body = "山中相送罢，日暮掩柴扉。春草明年绿，王孙归不归？"
+reference = "山中相送罢日暮掩柴扉春草明年绿王孙归不归"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:王昌龄:芙蓉楼送辛渐"
+genre = "七言絕句"
+title = "芙蓉楼送辛渐"
+author = "王昌龄"
+body = "寒雨连江夜入吴，平明送客楚山孤。洛阳亲友如相问，一片冰心在玉壶。"
+reference = "寒雨连江夜入吴平明送客楚山孤洛阳亲友如相问一片冰心在玉壶"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:王昌龄:闺怨"
+genre = "七言絕句"
+title = "闺怨"
+author = "王昌龄"
+body = "闺中少妇不知愁，春日凝妆上翠楼。忽见陌头杨柳色，悔教夫婿觅封侯。"
+reference = "闺中少妇不知愁春日凝妆上翠楼忽见陌头杨柳色悔教夫婿觅封侯"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:王昌龄:春宫曲"
+genre = "七言絕句"
+title = "春宫曲"
+author = "王昌龄"
+body = "昨夜风开露井桃，未央前殿月轮高。平阳歌舞新承宠，帘外春寒赐锦袍。"
+reference = "昨夜风开露井桃未央前殿月轮高平阳歌舞新承宠帘外春寒赐锦袍"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:王维:九月九日忆山东兄弟"
+genre = "七言絕句"
+title = "九月九日忆山东兄弟"
+author = "王维"
+body = "独在异乡为异客，每逢佳节倍思亲。遥知兄弟登高处，遍插茱萸少一人。"
+reference = "独在异乡为异客每逢佳节倍思亲遥知兄弟登高处遍插茱萸少一人"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:王翰:凉州词"
+genre = "七言絕句"
+title = "凉州词"
+author = "王翰"
+body = "葡萄美酒夜光杯，欲饮琵琶马上催。醉卧沙场君莫笑，古来征战几人回？"
+reference = "葡萄美酒夜光杯欲饮琵琶马上催醉卧沙场君莫笑古来征战几人回"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:白居易:后宫词"
+genre = "七言絕句"
+title = "后宫词"
+author = "白居易"
+body = "泪湿罗巾梦不成，夜深前殿按歌声。红颜未老恩先断，斜倚薰笼坐到明。"
+reference = "泪湿罗巾梦不成夜深前殿按歌声红颜未老恩先断斜倚薰笼坐到明"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:朱庆余:宫中词"
+genre = "七言絕句"
+title = "宫中词"
+author = "朱庆余"
+body = "寂寂花时闭院门，美人相并立琼轩。含情欲说宫中事，鹦鹉前头不敢言。"
+reference = "寂寂花时闭院门美人相并立琼轩含情欲说宫中事鹦鹉前头不敢言"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:朱庆余:近试上张水部"
+genre = "七言絕句"
+title = "近试上张水部"
+author = "朱庆余"
+body = "洞房昨夜停红烛，待晓堂前拜舅姑。妆罢低声问夫婿，画眉深浅入时无。"
+reference = "洞房昨夜停红烛待晓堂前拜舅姑妆罢低声问夫婿画眉深浅入时无"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:岑参:逢入京使"
+genre = "七言絕句"
+title = "逢入京使"
+author = "岑参"
+body = "故园东望路漫漫，双袖龙钟泪不干。马上相逢无纸笔，凭君传语报平安。"
+reference = "故园东望路漫漫双袖龙钟泪不干马上相逢无纸笔凭君传语报平安"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言絕句:李白:黄鹤楼送孟浩然之广陵"
+genre = "七言絕句"
+title = "黄鹤楼送孟浩然之广陵"
+author = "李白"
+body = "故人西辞黄鹤楼，烟花三月下扬州。孤帆远影碧空尽，唯见长江天际流。"
+reference = "故人西辞黄鹤楼烟花三月下扬州孤帆远影碧空尽唯见长江天际流"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王勃:送杜少府之任蜀州"
+genre = "五言律詩"
+title = "送杜少府之任蜀州"
+author = "王勃"
+body = "城阙辅三秦，风烟望五津。与君离别意，同是宦游人。海内存知己，天涯若比邻。无为在歧路，儿女共沾巾。"
+reference = "城阙辅三秦风烟望五津与君离别意同是宦游人海内存知己天涯若比邻无为在歧路儿女共沾巾"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王维:送梓州李使君"
+genre = "五言律詩"
+title = "送梓州李使君"
+author = "王维"
+body = "万壑树参天，千山响杜鹃。山中一夜雨，树杪百重泉。汉女输橦布，巴人讼芋田。文翁翻教授，不敢倚先贤。"
+reference = "万壑树参天千山响杜鹃山中一夜雨树杪百重泉汉女输橦布巴人讼芋田文翁翻教授不敢倚先贤"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王维:汉江临眺"
+genre = "五言律詩"
+title = "汉江临眺"
+author = "王维"
+body = "楚塞三湘接，荆门九派通。江流天地外，山色有无中。郡邑浮前浦，波澜动远空。襄阳好风日，留醉与山翁。"
+reference = "楚塞三湘接荆门九派通江流天地外山色有无中郡邑浮前浦波澜动远空襄阳好风日留醉与山翁"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王维:终南别业"
+genre = "五言律詩"
+title = "终南别业"
+author = "王维"
+body = "中岁颇好道，晚家南山陲。兴来每独往，胜事空自知。行到水穷处，坐看云起时。偶然值林叟，谈笑无还期。"
+reference = "中岁颇好道晚家南山陲兴来每独往胜事空自知行到水穷处坐看云起时偶然值林叟谈笑无还期"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王维:终南山"
+genre = "五言律詩"
+title = "终南山"
+author = "王维"
+body = "太乙近天都，连山接海隅。白云回望合，青霭入看无。分野中峰变，阴晴众壑殊。欲投人处宿，隔水问樵夫。"
+reference = "太乙近天都连山接海隅白云回望合青霭入看无分野中峰变阴晴众壑殊欲投人处宿隔水问樵夫"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王维:酬张少府"
+genre = "五言律詩"
+title = "酬张少府"
+author = "王维"
+body = "晚年唯好静，万事不关心。自顾无长策，空知返旧林。松风吹解带，山月照弹琴。君问穷通理，渔歌入浦深。"
+reference = "晚年唯好静万事不关心自顾无长策空知返旧林松风吹解带山月照弹琴君问穷通理渔歌入浦深"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王维:过香积寺"
+genre = "五言律詩"
+title = "过香积寺"
+author = "王维"
+body = "不知香积寺，数里入云峰。古木无人径，深山何处钟。泉声咽危石，日色冷青松。薄暮空潭曲，安禅制毒龙。"
+reference = "不知香积寺数里入云峰古木无人径深山何处钟泉声咽危石日色冷青松薄暮空潭曲安禅制毒龙"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言律詩:王维:辋川闲居赠裴秀才迪"
+genre = "五言律詩"
+title = "辋川闲居赠裴秀才迪"
+author = "王维"
+body = "寒山转苍翠，秋水日潺湲。倚杖柴门外，临风听暮蝉。渡头余落日，墟里上孤烟。复值接舆醉，狂歌五柳前。"
+reference = "寒山转苍翠秋水日潺湲倚杖柴门外临风听暮蝉渡头余落日墟里上孤烟复值接舆醉狂歌五柳前"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:元稹:遣悲怀三首·其一"
+genre = "七言律詩"
+title = "遣悲怀三首·其一"
+author = "元稹"
+body = "谢公最小偏怜女，自嫁黔娄百事乖。顾我无衣搜荩箧，泥他沽酒拔金钗。野蔬充膳甘长藿，落叶添薪仰古槐。今日俸钱过十万，与君营奠复营斋。"
+reference = "谢公最小偏怜女自嫁黔娄百事乖顾我无衣搜荩箧泥他沽酒拔金钗野蔬充膳甘长藿落叶添薪仰古槐今日俸钱过十万与君营奠复营斋"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:元稹:遣悲怀三首·其二"
+genre = "七言律詩"
+title = "遣悲怀三首·其二"
+author = "元稹"
+body = "昔日戏言身后事，今朝都到眼前来。衣裳已施行看尽，针线犹存未忍开。尚想旧情怜婢仆，也曾因梦送钱财。诚知此恨人人有，贫贱夫妻百事哀。"
+reference = "昔日戏言身后事今朝都到眼前来衣裳已施行看尽针线犹存未忍开尚想旧情怜婢仆也曾因梦送钱财诚知此恨人人有贫贱夫妻百事哀"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:元稹:遣悲怀三首·其三"
+genre = "七言律詩"
+title = "遣悲怀三首·其三"
+author = "元稹"
+body = "闲坐悲君亦自悲，百年都是几多时。邓攸无子寻知命，潘岳悼亡犹费词。同穴窅冥何所望，他生缘会更难期。惟将终夜常开眼，报答平生未展眉。"
+reference = "闲坐悲君亦自悲百年都是几多时邓攸无子寻知命潘岳悼亡犹费词同穴窅冥何所望他生缘会更难期惟将终夜常开眼报答平生未展眉"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:王维:赠郭给事"
+genre = "七言律詩"
+title = "赠郭给事"
+author = "王维"
+body = "洞门高阁霭余辉，桃李阴阴柳絮飞。禁里疏钟官舍晚，省中啼鸟吏人稀。晨摇玉佩趋金殿，夕奉天书拜琐闱。强欲从君无那老，将因卧病解朝衣。"
+reference = "洞门高阁霭余辉桃李阴阴柳絮飞禁里疏钟官舍晚省中啼鸟吏人稀晨摇玉佩趋金殿夕奉天书拜琐闱强欲从君无那老将因卧病解朝衣"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:王维:和贾至舍人早朝大明宫"
+genre = "七言律詩"
+title = "和贾至舍人早朝大明宫"
+author = "王维"
+body = "绛帻鸡人送晓筹，尚衣方进翠云裘。九天阊阖开宫殿，万国衣冠拜冕旒。日色才临仙掌动，香烟欲傍衮龙浮。朝罢须裁五色诏，佩声归向凤池头。"
+reference = "绛帻鸡人送晓筹尚衣方进翠云裘九天阊阖开宫殿万国衣冠拜冕旒日色才临仙掌动香烟欲傍衮龙浮朝罢须裁五色诏佩声归向凤池头"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:王维:奉和圣制从蓬莱向兴庆阁道"
+genre = "七言律詩"
+title = "奉和圣制从蓬莱向兴庆阁道"
+author = "王维"
+body = "渭水自萦秦塞曲，黄山旧绕汉宫斜。銮舆迥出千门柳，阁道回看上苑花。云里帝城双凤阙，雨中春树万人家。为乘阳气行时令，不是宸游玩物华。"
+reference = "渭水自萦秦塞曲黄山旧绕汉宫斜銮舆迥出千门柳阁道回看上苑花云里帝城双凤阙雨中春树万人家为乘阳气行时令不是宸游玩物华"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:王维:积雨辋川庄作"
+genre = "七言律詩"
+title = "积雨辋川庄作"
+author = "王维"
+body = "积雨空林烟火迟，蒸藜炊黍饷东菑。漠漠水田飞白鹭，阴阴夏木啭黄鹂。山中习静观朝槿，松下清斋折露葵。野老与人争席罢，海鸥何事更相疑。"
+reference = "积雨空林烟火迟蒸藜炊黍饷东菑漠漠水田飞白鹭阴阴夏木啭黄鹂山中习静观朝槿松下清斋折露葵野老与人争席罢海鸥何事更相疑"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言律詩:白居易:望月有感"
+genre = "七言律詩"
+title = "望月有感"
+author = "白居易"
+body = "时难年荒世业空，弟兄羁旅各西东。田园寥落干戈后，骨肉流离道路中。吊影分为千里雁，辞根散作九秋蓬。共看明月应垂泪，一夜乡心五处同。"
+reference = "时难年荒世业空弟兄羁旅各西东田园寥落干戈后骨肉流离道路中吊影分为千里雁辞根散作九秋蓬共看明月应垂泪一夜乡心五处同"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言古詩:元结:贼退示官吏"
+genre = "五言古詩"
+title = "贼退示官吏"
+author = "元结"
+body = "昔岁逢太平，山林二十年。泉源在庭户，洞壑当门前。井税有常期，日晏犹得眠。忽然遭世变，数岁亲戎旃。今来典斯郡，山夷又纷然。城小贼不屠，人贫伤可怜。"
+reference = "昔岁逢太平山林二十年泉源在庭户洞壑当门前井税有常期日晏犹得眠忽然遭世变数岁亲戎旃今来典斯郡山夷又纷然城小贼不屠人贫伤可怜"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = true
+
+[[poem]]
+id = "五言古詩:王昌龄:同从弟销南斋玩月忆山阴"
+genre = "五言古詩"
+title = "同从弟销南斋玩月忆山阴"
+author = "王昌龄"
+body = "高卧南斋时，开帷月初吐。清辉澹水木，演漾在窗户。冉冉几盈虚，澄澄变今古。美人清江畔，是夜越吟苦。千里共如何，微风吹兰杜。"
+reference = "高卧南斋时开帷月初吐清辉澹水木演漾在窗户冉冉几盈虚澄澄变今古美人清江畔是夜越吟苦千里共如何微风吹兰杜"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言古詩:王维:渭川田家"
+genre = "五言古詩"
+title = "渭川田家"
+author = "王维"
+body = "斜阳照墟落，穷巷牛羊归。野老念牧童，倚杖候荆扉。雉雊麦苗秀，蚕眠桑叶稀。田夫荷锄至，相见语依依。即此羡闲逸，怅然吟式微。"
+reference = "斜阳照墟落穷巷牛羊归野老念牧童倚杖候荆扉雉雊麦苗秀蚕眠桑叶稀田夫荷锄至相见语依依即此羡闲逸怅然吟式微"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "五言古詩:王维:西施咏"
+genre = "五言古詩"
+title = "西施咏"
+author = "王维"
+body = "艳色天下重，西施宁久微。朝为越溪女，暮作吴宫妃。贱日岂殊众，贵来方悟稀。邀人傅香粉，不自著罗衣。君宠益娇态，君怜无是非。当时浣纱伴，莫得同车归。"
+reference = "艳色天下重西施宁久微朝为越溪女暮作吴宫妃贱日岂殊众贵来方悟稀邀人傅香粉不自著罗衣君宠益娇态君怜无是非当时浣纱伴莫得同车归"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = true
+
+[[poem]]
+id = "五言古詩:王维:送别"
+genre = "五言古詩"
+title = "送别"
+author = "王维"
+body = "下马饮君酒，问君何所之？君言不得意，归卧南山陲。但去莫复问，白云无尽时。"
+reference = "下马饮君酒问君何所之君言不得意归卧南山陲但去莫复问白云无尽时"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言古詩:元结:石鱼湖上醉歌"
+genre = "七言古詩"
+title = "石鱼湖上醉歌"
+author = "元结"
+body = "石鱼湖，似洞庭，夏水欲满君山青。山为樽，水为沼，酒徒历历坐洲岛。长风连日作大浪，不能废人运酒舫。我持长瓢坐巴丘，酌饮四坐以散愁。"
+reference = "石鱼湖似洞庭夏水欲满君山青山为樽水为沼酒徒历历坐洲岛长风连日作大浪不能废人运酒舫我持长瓢坐巴丘酌饮四坐以散愁"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "七言古詩:白居易:长恨歌"
+genre = "七言古詩"
+title = "长恨歌"
+author = "白居易"
+body = "汉皇重色思倾国，御宇多年求不得。杨家有女初长成，养在深闺人未识。天生丽质难自弃，一朝选在君王侧。回眸一笑百媚生，六宫粉黛无颜色。"
+reference = "汉皇重色思倾国御宇多年求不得杨家有女初长成养在深闺人未识天生丽质难自弃一朝选在君王侧回眸一笑百媚生六宫粉黛无颜色"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = true
+
+[[poem]]
+id = "七言古詩:白居易:琵琶行"
+genre = "七言古詩"
+title = "琵琶行"
+author = "白居易"
+body = "浔阳江头夜送客，枫叶荻花秋瑟瑟。主人下马客在船，举酒欲饮无管弦。醉不成欢惨将别，别时茫茫江浸月。忽闻水上琵琶声，主人忘归客不发。"
+reference = "浔阳江头夜送客枫叶荻花秋瑟瑟主人下马客在船举酒欲饮无管弦醉不成欢惨将别别时茫茫江浸月忽闻水上琵琶声主人忘归客不发"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = true
+
+[[poem]]
+id = "樂府:王之涣:凉州词"
+genre = "樂府"
+title = "凉州词"
+author = "王之涣"
+body = "黄河远上白云间，一片孤城万仞山。羌笛何须怨杨柳，春风不度玉门关。"
+reference = "黄河远上白云间一片孤城万仞山羌笛何须怨杨柳春风不度玉门关"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "樂府:王昌龄:出塞·秦时明月汉时关"
+genre = "樂府"
+title = "出塞·秦时明月汉时关"
+author = "王昌龄"
+body = "秦时明月汉时关，万里长征人未还。但使龙城飞将在，不教胡马度阴山。"
+reference = "秦时明月汉时关万里长征人未还但使龙城飞将在不教胡马度阴山"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "樂府:王昌龄:塞上曲·蝉鸣空桑林"
+genre = "樂府"
+title = "塞上曲·蝉鸣空桑林"
+author = "王昌龄"
+body = "蝉鸣空桑林，八月萧关道。出塞入塞寒，处处黄芦草。从来幽并客，皆共尘沙老。莫学游侠儿，矜夸紫骝好。"
+reference = "蝉鸣空桑林八月萧关道出塞入塞寒处处黄芦草从来幽并客皆共尘沙老莫学游侠儿矜夸紫骝好"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "樂府:王昌龄:塞下曲·饮马渡秋水"
+genre = "樂府"
+title = "塞下曲·饮马渡秋水"
+author = "王昌龄"
+body = "饮马渡秋水，水寒风似刀。平沙日未没，黯黯见临洮。昔日长城战，咸言意气高。黄尘足今古，白骨乱蓬蒿。"
+reference = "饮马渡秋水水寒风似刀平沙日未没黯黯见临洮昔日长城战咸言意气高黄尘足今古白骨乱蓬蒿"
+source_path = "蒙学/tangshisanbaishou.json"
+excerpt = false
+
+[[poem]]
+id = "词:纳兰性德:长相思·山一程"
+genre = "词"
+title = "长相思·山一程"
+author = "纳兰性德"
+body = "山一程，水一程，身向榆关那畔行，夜深千帐灯风一更，雪一更，聒碎乡心梦不成，故园无此声"
+reference = "山一程水一程身向榆关那畔行夜深千帐灯风一更雪一更聒碎乡心梦不成故园无此声"
+source_path = "纳兰性德/纳兰性德诗集.json"
+excerpt = false
+
+[[poem]]
+id = "词:纳兰性德:木兰花令·拟古决绝词"
+genre = "词"
+title = "木兰花令·拟古决绝词"
+author = "纳兰性德"
+body = "人生若只如初见，何事秋风悲画扇等闲变却故人心，却道故心人易变骊山语罢清宵半，泪雨霖铃终不怨何如薄幸锦衣郎，比翼连枝当日愿"
+reference = "人生若只如初见何事秋风悲画扇等闲变却故人心却道故心人易变骊山语罢清宵半泪雨霖铃终不怨何如薄幸锦衣郎比翼连枝当日愿"
+source_path = "纳兰性德/纳兰性德诗集.json"
+excerpt = false
+
+[[poem]]
+id = "词:纳兰性德:点绛唇·咏风兰"
+genre = "词"
+title = "点绛唇·咏风兰"
+author = "纳兰性德"
+body = "别样幽芬，更无浓艳催开处凌波欲去，且为东风住忒煞萧疏，争奈秋如许还留取，冷香半缕，第一湘江雨"
+reference = "别样幽芬更无浓艳催开处凌波欲去且为东风住忒煞萧疏争奈秋如许还留取冷香半缕第一湘江雨"
+source_path = "纳兰性德/纳兰性德诗集.json"
+excerpt = false
+
+[[poem]]
+id = "词:纳兰性德:画堂春·一生一代一双人"
+genre = "词"
+title = "画堂春·一生一代一双人"
+author = "纳兰性德"
+body = "一生一代一双人，争教两处销魂相思相望不相亲，天为谁春浆向蓝桥易乞，药成碧海难奔若容相访饮牛津，相对忘贫"
+reference = "一生一代一双人争教两处销魂相思相望不相亲天为谁春浆向蓝桥易乞药成碧海难奔若容相访饮牛津相对忘贫"
+source_path = "纳兰性德/纳兰性德诗集.json"
+excerpt = false

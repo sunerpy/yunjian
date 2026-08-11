@@ -24,6 +24,9 @@ pub use error::VoiceError;
 #[cfg(feature = "capture")]
 pub mod capture;
 
+/// 音频增强。纯信号处理，不依赖 `voice` 特性，因此默认构建也能编译与自测。
+pub mod augment;
+
 #[cfg(feature = "voice")]
 pub mod asr;
 #[cfg(feature = "voice")]

@@ -2956,6 +2956,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "ferrous-opencc",
  "flate2",
  "rusqlite",
  "serde",
@@ -2965,6 +2966,7 @@ dependencies = [
  "tracing",
  "ureq 3.4.0",
  "yunjian-corpus",
+ "yunjian-voice",
 ]
 
 [[package]]

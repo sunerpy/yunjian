@@ -17,6 +17,10 @@
 # 模型缓存：仅收录 MIT / Apache-2.0 权重，且体积过大不入库
 /models/cache/
 
+# `xtask cer-spike --force-cer` 的自检产物。它刻意不是测量结果，不该被误读成结论，
+# 更不该进版本库与下游 todo 的视野。
+/docs/reports/asr-cer.selfcheck.*
+
 # 编辑器与操作系统噪声
 .DS_Store
 Thumbs.db

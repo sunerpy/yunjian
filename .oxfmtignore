@@ -18,6 +18,10 @@ release-please-config.json
 # 当前 oxfmt 不认识 `.LICENSE` 扩展名，因此这条是纵深防御：一旦有人在此目录下
 # 放入 `.md` 之类可识别的文件，它就是唯一的拦阻。
 corpus/licenses/
+# `models/licenses/` 同理，而且更硬：那里存的是**按摘要校验**的许可证据，含 HuggingFace
+# 模型卡（`.CARD.md`）。oxfmt 会重排 Markdown，一个字节都不能动——实测就撞过：
+# `make fmt` 改了 `.CARD.md` 之后 `verify-models` 立刻报「许可证据摘要不符」。
+models/licenses/
 
 # ---- 生成物与本地状态 ----
 # 语料构建产物由 xtask 从公共领域源重新生成，不属于人工维护的文本。
@@ -33,5 +37,14 @@ corpus/reports/*.md
 # `measurements.json` 的同名字段短一些就被折了。也就是说「生成的 JSON 本就是规范
 # 形态」这个说法是错的，它只在字符串恰好够长时成立。生成方持有这两个文件。
 corpus/reports/*.json
+# `docs/reports/*` 与 CER 的 fixture 同理，生成方是 `xtask cer-spike`：
+# 报告的 Markdown 含 CJK 表格，JSON 由 `serde_json::to_string_pretty` 写出，
+# `cer-poems.toml` 由 `toml::to_string_pretty` 写出，逐句转写是 JSONL（oxfmt 会试图
+# 把它当成单个 JSON 文档）。四者都会与 oxfmt 互相覆盖，因此一律归生成方持有。
+# `asr-cer-human.md` 是**人工维护**的占位文档，不在此列，仍然受格式化管辖。
+docs/reports/asr-cer.md
+docs/reports/asr-cer.json
+docs/reports/asr-cer-transcripts.jsonl
+crates/yunjian-voice/tests/fixtures/cer-poems.toml
 target/
 .omo/

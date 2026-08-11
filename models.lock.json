@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "generated_by": "xtask verify-models",
+  "models": [
+    {
+      "name": "sherpa-onnx-whisper-tiny",
+      "kind": "asr",
+      "role": "production",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2",
+      "sha256": "c46116994e539aa165266d96b325252728429c12535eb9d8b6a2b10f129e66b1",
+      "size_bytes": 116204861,
+      "license": "MIT",
+      "license_url": "https://raw.githubusercontent.com/openai/whisper/5f86d1d86363843179951550570367b37c5d6f78/LICENSE",
+      "license_file": "models/licenses/openai-whisper.LICENSE",
+      "license_sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d",
+      "license_evidence": "upstream_license",
+      "underlying_work": "OpenAI Whisper tiny 权重（MIT），由 csukuangfj 导出为 sherpa-onnx 的 ONNX 格式",
+      "verified_at": "2026-08-10",
+      "note": "转换包 `csukuangfj/sherpa-onnx-whisper-tiny` 自身不含 LICENSE 文件，也未在模型卡声明 SPDX；许可来自被转换的原始权重。同时是 todo 44 冒烟所用的模型。",
+      "bundled": []
+    },
+    {
+      "name": "sherpa-onnx-whisper-base",
+      "kind": "asr",
+      "role": "production",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-base.tar.bz2",
+      "sha256": "911b2083efd7c0dca2ac3b358b75222660dc09fb716d64fbfc417ba6c99ff3de",
+      "size_bytes": 207557382,
+      "license": "MIT",
+      "license_url": "https://raw.githubusercontent.com/openai/whisper/5f86d1d86363843179951550570367b37c5d6f78/LICENSE",
+      "license_file": "models/licenses/openai-whisper.LICENSE",
+      "license_sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d",
+      "license_evidence": "upstream_license",
+      "underlying_work": "OpenAI Whisper base 权重（MIT），由 csukuangfj 导出为 sherpa-onnx 的 ONNX 格式",
+      "verified_at": "2026-08-10",
+      "note": "许可链同 tiny：转换包不带 LICENSE，证据是原始权重发布方的 LICENSE。",
+      "bundled": []
+    },
+    {
+      "name": "sherpa-onnx-whisper-small",
+      "kind": "asr",
+      "role": "production",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2",
+      "sha256": "486a46afbb7ba798507190ffe02fea2dd726049af212e774537efac6afb210a6",
+      "size_bytes": 639387718,
+      "license": "MIT",
+      "license_url": "https://raw.githubusercontent.com/openai/whisper/5f86d1d86363843179951550570367b37c5d6f78/LICENSE",
+      "license_file": "models/licenses/openai-whisper.LICENSE",
+      "license_sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d",
+      "license_evidence": "upstream_license",
+      "underlying_work": "OpenAI Whisper small 权重（MIT），由 csukuangfj 导出为 sherpa-onnx 的 ONNX 格式",
+      "verified_at": "2026-08-10",
+      "note": "许可链同 tiny。体积 639 MB，是否随产品按需下载由 CER 报告与移动端预算共同决定。",
+      "bundled": []
+    },
+    {
+      "name": "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+      "kind": "asr",
+      "role": "production",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2",
+      "sha256": "27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8",
+      "size_bytes": 511274346,
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/raw/98590b7ed6443e77b714204da2757d75e1a642f4/README.md",
+      "license_file": "models/licenses/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.CARD.md",
+      "license_sha256": "b6f9458f4208ae821beaaf11dc983486916a4089a2f3677b40f9ff06ec4e6440",
+      "license_evidence": "model_card",
+      "underlying_work": "pfluo/k2fsa-zipformer-chinese-english-mixed 训练（icefall pruned_transducer_stateless7_streaming，AISHELL-1 + WenetSpeech），模型卡声明 apache-2.0；csukuangfj 转换为 sherpa-onnx 格式，模型卡同样声明 apache-2.0",
+      "verified_at": "2026-08-10",
+      "note": "许可链两端都核实过：上游 pfluo 的模型卡（rev 6eb615ae77ecac05c5628d5c8ed7037c14a338d5，副本见 models/licenses/k2fsa-zipformer-chinese-english-mixed.CARD.md）与转换方的模型卡都写 apache-2.0。CER 未测：`sherpa-rs` 0.6.8 只封装了 offline 识别器，流式模型需经 `sherpa_rs_sys` 直接调 online API，属 todo 54。",
+      "bundled": []
+    },
+    {
+      "name": "vits-melo-tts-zh_en",
+      "kind": "tts",
+      "role": "production",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-melo-tts-zh_en.tar.bz2",
+      "sha256": "e58351ed7149f290a54534538badd4077cdbe6fddc964b24d0bee870415d1514",
+      "size_bytes": 167006755,
+      "license": "MIT",
+      "license_url": "https://huggingface.co/csukuangfj/vits-melo-tts-zh_en/raw/a0d5c6a264c0ef92d70d8661d8cc502d79627cd6/LICENSE",
+      "license_file": "models/licenses/vits-melo-tts-zh_en.LICENSE",
+      "license_sha256": "88a50e5a02bbc2a5c2f084dc19da751aa97b1690f5fda76cd8005c8634d1ca70",
+      "license_evidence": "package_license",
+      "underlying_work": "MyShell.ai MeloTTS 中英文模型（MIT，版权行 `Copyright (c) 2024 MyShell.ai`），转换为 sherpa-onnx VITS 格式",
+      "verified_at": "2026-08-10",
+      "note": "包内 LICENSE 与 HuggingFace 锁定 revision 的字节完全一致（实测 cmp 通过）。中文单一女声（sid 0）。**不夹带 espeak-ng-data**，中文读音走包内 `dict/`（jieba）与 `lexicon.txt`，因此它是唯一一把不牵扯 GPL-3.0 数据的中文音色。",
+      "bundled": []
+    },
+    {
+      "name": "kokoro-multi-lang-v1_0",
+      "kind": "tts",
+      "role": "production",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
+      "sha256": "c133d26353d776da730870dac7da07dbfc9a5e3bc80cc5e8e83ab6e823be7046",
+      "size_bytes": 349418188,
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/csukuangfj/kokoro-multi-lang-v1_0/raw/7e9b67b79bfdcbd2b4bc144370345fcceac3cb0c/LICENSE",
+      "license_file": "models/licenses/kokoro-multi-lang-v1_0.LICENSE",
+      "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "license_evidence": "package_license",
+      "underlying_work": "hexgrad/Kokoro-82M（模型卡声明 apache-2.0），经 taylorchu/kokoro-onnx 导出、csukuangfj 转换为 sherpa-onnx 格式",
+      "verified_at": "2026-08-10",
+      "note": "包内 LICENSE 与 HuggingFace 锁定 revision 的字节完全一致（实测 cmp 通过）。53 个音色，中文在 45-52（本项目 CER 实测用 46 = zf_xiaoni）。",
+      "bundled": [
+        {
+          "path": "espeak-ng-data",
+          "work": "csukuangfj/espeak-ng 的发音词典数据（355 个文件）",
+          "license": "GPL-3.0",
+          "distribution_impact": "只是数据、不是被链接的代码，但随包分发它等于分发 GPL-3.0 材料。与 `docs/VOICE-BUILD.zh.md` 记录的「预编译 sherpa-onnx 静态含 GPL-3.0 的 espeak-ng」是同一个许可格局，结论一致：语音构建整体按 GPL-3.0 条款分发。中文合成走的是 `lexicon-zh.txt`，不经 espeak，因此纯中文用途下这份数据可以不下发——真要这么做需实测确认，尚未做。"
+        }
+      ]
+    },
+    {
+      "name": "kitten-nano-en-v0_2-fp16",
+      "kind": "tts",
+      "role": "smoke",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kitten-nano-en-v0_2-fp16.tar.bz2",
+      "sha256": "0345a8a2f4a710cb8f7912c9a731ded8b3e1e69b33a871efa95c2e64651518fe",
+      "size_bytes": 26586708,
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/csukuangfj/kitten-nano-en-v0_2-fp16/raw/7d14a97d38072576ddca7a673ab5bb49c43bb169/LICENSE",
+      "license_file": "models/licenses/kitten-nano-en-v0_2-fp16.LICENSE",
+      "license_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "license_evidence": "package_license",
+      "underlying_work": "KittenML/kitten-tts-nano-0.2（模型卡声明 apache-2.0，rev 9c81564aa56c6fb79f83780e87099357b88d6617），转换为 sherpa-onnx Kitten 格式",
+      "verified_at": "2026-08-10",
+      "note": "英文模型，只用于证明构建与链接通路成立（todo 44），不进中文产品路径。",
+      "bundled": [
+        {
+          "path": "espeak-ng-data",
+          "work": "csukuangfj/espeak-ng 的发音词典数据",
+          "license": "GPL-3.0",
+          "distribution_impact": "同 kokoro。它是冒烟模型，不随产品下发，因此不影响发布产物的许可结论。"
+        }
+      ]
+    }
+  ]
+}

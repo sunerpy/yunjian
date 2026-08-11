@@ -134,16 +134,28 @@ $ ./target/release/yunjian; echo $?
 
 「链接进最终产物的每一件东西」逐项：
 
-| 产物                                                  | 许可        | 核实方式                                                    | 是否随包分发                                    |
-| ----------------------------------------------------- | ----------- | ----------------------------------------------------------- | ----------------------------------------------- |
-| `sherpa-rs` 0.6.8                                     | MIT         | `Cargo.toml` `license` 字段 + 仓库 `LICENSE`                | 编译进二进制                                    |
-| `sherpa-rs-sys` 0.6.8                                 | MIT         | `Cargo.toml` `license` 字段                                 | 编译进二进制                                    |
-| sherpa-onnx v1.12.9 本体                              | Apache-2.0  | 上游仓库 `LICENSE`                                          | 是（`libsherpa-onnx-c-api.so`）                 |
-| onnxruntime（bundled，1.17 系）                       | MIT         | microsoft/onnxruntime `LICENSE`                             | 是（`libonnxruntime.so`）                       |
-| **espeak-ng（fork `csukuangfj/espeak-ng`）**          | **GPL-3.0** | fork 仓库 `COPYING`                                         | **是，静态包含在 `libsherpa-onnx-c-api.so` 内** |
-| Whisper tiny 权重（仅冒烟用）                         | Apache-2.0  | HF `openai/whisper-tiny` cardData                           | 否，不随仓库也不随包                            |
-| Kitten nano v0.2 fp16 权重（仅冒烟用）                | Apache-2.0  | HF `KittenML/kitten-tts-nano-0.2` cardData + 包内 `LICENSE` | 否                                              |
-| `crates/yunjian-voice/tests/fixtures/bundled-16k.wav` | 本项目自有  | 由 Apache-2.0 的 Kitten nano 合成，非第三方录音             | 是（随仓库，114 KiB）                           |
+| 产物                                                  | 许可        | 核实方式                                                           | 是否随包分发                                    |
+| ----------------------------------------------------- | ----------- | ------------------------------------------------------------------ | ----------------------------------------------- |
+| `sherpa-rs` 0.6.8                                     | MIT         | `Cargo.toml` `license` 字段 + 仓库 `LICENSE`                       | 编译进二进制                                    |
+| `sherpa-rs-sys` 0.6.8                                 | MIT         | `Cargo.toml` `license` 字段                                        | 编译进二进制                                    |
+| sherpa-onnx v1.12.9 本体                              | Apache-2.0  | 上游仓库 `LICENSE`                                                 | 是（`libsherpa-onnx-c-api.so`）                 |
+| onnxruntime（bundled，1.17 系）                       | MIT         | microsoft/onnxruntime `LICENSE`                                    | 是（`libonnxruntime.so`）                       |
+| **espeak-ng（fork `csukuangfj/espeak-ng`）**          | **GPL-3.0** | fork 仓库 `COPYING`                                                | **是，静态包含在 `libsherpa-onnx-c-api.so` 内** |
+| Whisper 权重（tiny / base / small）                   | **MIT**     | `openai/whisper` 仓库 `LICENSE`（锁定 revision，见 `models.toml`） | 否，不随仓库也不随包                            |
+| Kitten nano v0.2 fp16 权重（仅冒烟用）                | Apache-2.0  | HF `KittenML/kitten-tts-nano-0.2` cardData + 包内 `LICENSE`        | 否                                              |
+| MeloTTS 中英权重（`vits-melo-tts-zh_en`）             | MIT         | 包内 `LICENSE`（`Copyright (c) 2024 MyShell.ai`）                  | 否                                              |
+| Kokoro 多语权重（`kokoro-multi-lang-v1_0`）           | Apache-2.0  | 包内 `LICENSE`                                                     | 否                                              |
+| `crates/yunjian-voice/tests/fixtures/bundled-16k.wav` | 本项目自有  | 由 Apache-2.0 的 Kitten nano 合成，非第三方录音                    | 是（随仓库，114 KiB）                           |
+
+> Whisper 那一行由 todo 45 修正过：本文早先记的是 Apache-2.0（依据 HF `openai/whisper-tiny`
+> 的 cardData），但权重的权威声明在 `openai/whisper` 仓库的 `LICENSE`，原文是
+> "Whisper's code and model weights are released under the MIT License"。**MIT**
+> 才是正确判定。逐模型的完整清单、证据文件与摘要在 `models.toml`，由
+> `cargo run -p xtask -- verify-models` 强制校验；被拒的模型与理由在 `models/DENYLIST.md`。
+>
+> 另注：`kokoro-multi-lang-v1_0` 的发布包里**夹带 355 个 espeak-ng 数据文件**（GPL-3.0），
+> 而 `vits-melo-tts-zh_en` **不带**——它的中文读音走包内 jieba 词典与 `lexicon.txt`。
+> 这一条对下一节的许可拍板有直接影响：melo 是唯一不牵扯 GPL-3.0 数据的中文音色。
 
 **espeak-ng 这一行是本次 spike 最重要的发现**，且是可验证的事实而非推测：
 
@@ -245,6 +257,27 @@ tar xf sherpa-onnx-whisper-tiny.tar.bz2 && tar xf kitten-nano-en-v0_2-fp16.tar.b
 
 冒烟用例刻意**在模型缺失时失败而不是跳过**：跳过会让「没跑」冒充「通过」，
 在一个专门用来证明通路成立的 spike 里那是最坏的结果。
+
+## 中文合成的两个坑（todo 45 实测）
+
+- **Kokoro 的 `lang` 字段必须留空，不能填 `"zh"`。** 它取的是 espeak-ng 的 voice 名，
+  官方帮助给的例子只有 `en` / `es` / `fr` / `hi` / `it` / `pt-br`，没有中文。填 `"zh"`
+  会让 sherpa-onnx 抛 `Failed to set eSpeak-ng voice`，而那是一个 **C++ 异常**——
+  Rust 接不住它，进程直接 `abort`：
+
+  ```
+  fatal runtime error: Rust cannot catch foreign exceptions, aborting
+  ```
+
+  也就是说配置写错的代价不是一个 `Result::Err`，而是整个进程消失，调用方连降级到
+  默写练习的机会都没有。中文读音走 `lexicon`（官方帮助明说「留空则须提供
+  `--kokoro-lexicon`」）。`crates/yunjian-voice/src/tts.rs` 因此把 `lang` 硬编码为空串，
+  不向调用方开放。
+
+- **降采样到 16 kHz 之前必须抗混叠低通。** TTS 输出是 24 kHz（kokoro）或更高，
+  直接抽取会把 8 kHz 以上的能量折叠回语音频带。那是本项目自己的处理链加进去的假信号，
+  会让 CER 恶化而原因与识别器无关。`yunjian_voice::augment::resample_antialiased`
+  负责这件事，`resample` 只用于已经低通过的信号。
 
 ## 已知限制
 
