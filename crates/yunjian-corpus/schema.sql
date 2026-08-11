@@ -115,3 +115,7 @@ CREATE INDEX poem_work_group_idx ON poem(work_group);
 CREATE INDEX poem_rhyme_group_idx ON poem_rhyme_group(rhyme_book, rhyme_group, poem_id);
 CREATE INDEX poem_tag_idx ON poem_tag(tag, poem_id);
 CREATE INDEX rhyme_character_idx ON rhyme(rhyme_book, character);
+-- `commentary` 的主键是 `id`，而作品详情按 `poem_id` 取集评——没有这条索引，那条查询
+-- 会退化成扫全表。487 行时无所谓，但集评是会持续增补的，而「详情页扫一张会长大的表」
+-- 属于上线后才显现的退化，故在此就建索引。索引本身只有几十 KB，不影响随包体积。
+CREATE INDEX commentary_poem_idx ON commentary(poem_id);

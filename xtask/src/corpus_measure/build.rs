@@ -17,8 +17,13 @@ use yunjian_corpus::normalize::Normalizer;
 use yunjian_corpus::quality::{Disposition, run_pipeline};
 use yunjian_corpus::rhyme::RhymeImport;
 use yunjian_corpus::rhyme_foot::{self, PoemLastCharInput};
+use yunjian_corpus::tag::{TagVocabulary, assign_tags};
+use yunjian_corpus::{commentary, db::PoemTagRow};
 
 use super::{CORPUS_VERSION_FOR_BUILD, Scale};
+
+/// 集评种子集在仓库里的位置。与 `xtask commentary-index` 读的是同一个目录。
+const COMMENTARY_DIR: &str = "corpus/commentary";
 
 pub(super) fn assemble(
     scale: Scale,
@@ -98,6 +103,8 @@ pub(super) fn assemble(
     let normalizer = Normalizer::new()?;
     let normalized = normalizer.normalize(&records)?;
     let poem_rhyme_groups = derive_rhyme_groups(&records, &normalized.records, rhymes)?;
+    let tags = assemble_tags(&records, &normalized.records, &normalizer)?;
+    let commentaries = assemble_commentaries(&records)?;
 
     Ok(CorpusDbInput {
         shipped_scope: scale.shipped_scope(),
@@ -106,13 +113,74 @@ pub(super) fn assemble(
         index_verdict: verdict_bytes.to_vec(),
         records,
         normalized_records: normalized.records,
-        commentaries: Vec::new(),
+        commentaries,
         rhymes: shippable_rhyme_entries(rhymes),
         poem_rhyme_groups,
         variants: normalized.variant_map.rows(),
-        tags: Vec::new(),
+        tags,
         quality,
     })
+}
+
+/// 按签入的策展词表打标。
+///
+/// 词表是唯一的标签来源，规则与评审名单都在 `crates/yunjian-corpus/tags.toml` 里。
+/// 这里不做任何补充判断——xtask 里再加一条规则就等于让标签有两个事实来源。
+fn assemble_tags(
+    records: &[CanonicalRecord],
+    normalized: &[yunjian_corpus::normalize::NormalizedRecord],
+    normalizer: &Normalizer,
+) -> Result<Vec<PoemTagRow>> {
+    let vocabulary = TagVocabulary::shipped().context("解析签入的标签词表")?;
+    let assignment =
+        assign_tags(&vocabulary, records, normalized, normalizer).context("构建期打标失败")?;
+    tracing::info!(
+        rows = assignment.report.rows,
+        poems = assignment.report.tagged_poems,
+        tags = assignment.report.per_tag.len(),
+        "已按策展词表打标"
+    );
+    Ok(assignment.rows)
+}
+
+/// 装载并解析历代集评。
+///
+/// **结构与出处的缺陷是致命的，诗篇解析不上是不致命的。** 前者（缺出处、非前现代著作、
+/// 现代体裁标记……）与本次构建选了哪个规模无关，是我们自己维护的种子集出了问题；后者
+/// 在抽样规模上必然大量出现——一条评宋词的集评在只含唐诗的规模里当然找不到诗。把两者
+/// 混为一谈会导致抽样构建全部失败，或者更糟：为了让抽样跑通而把出处缺陷也放过。
+fn assemble_commentaries(records: &[CanonicalRecord]) -> Result<Vec<commentary::CommentaryRecord>> {
+    let dir = crate::index_spike::repo_root()?.join(COMMENTARY_DIR);
+    let seeds = commentary::load_seeds(&dir)
+        .with_context(|| format!("读取集评种子集 {}", dir.display()))?;
+    let outcome = commentary::ingest(&seeds, records).context("集评入库失败")?;
+
+    let (out_of_scope, defects): (Vec<_>, Vec<_>) = outcome
+        .rejections
+        .iter()
+        .partition(|rejection| rejection.reason == commentary::RejectionReason::PoemUnresolved);
+    if !defects.is_empty() {
+        let detail = defects
+            .iter()
+            .map(|rejection| {
+                format!(
+                    "{}（{}）：{}",
+                    rejection.entry_id,
+                    rejection.reason.as_key(),
+                    rejection.detail
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("；");
+        bail!("集评种子集有 {} 条结构或出处缺陷：{detail}", defects.len());
+    }
+    tracing::info!(
+        accepted = outcome.records.len(),
+        out_of_scope = out_of_scope.len(),
+        seeds = seeds.len(),
+        "已关联历代集评"
+    );
+    Ok(outcome.records)
 }
 
 /// 随包的韵书行：平水韵与词林正韵。

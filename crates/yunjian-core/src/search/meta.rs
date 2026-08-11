@@ -96,6 +96,8 @@ pub enum MetaMatch {
     FirstLinePrefix,
     /// `poem_last_char.ch` 等值（逐句末字）。
     LastChar,
+    /// `poem_tag.tag` 等值（策展主题标签）。
+    Tag,
 }
 
 /// 一条元数据命中。
@@ -142,7 +144,7 @@ pub struct MetaPage {
 
 impl MetaPage {
     /// 归一化后为空时的空页。
-    fn empty(normalized: String) -> Self {
+    pub(super) fn empty(normalized: String) -> Self {
         Self {
             hits: Vec::new(),
             next_cursor: None,
@@ -454,7 +456,7 @@ pub fn find_work_group_attributions(
 /// 全部题目/作者/朝代/首句分支共用的投影。
 ///
 /// 十二列的顺序被 [`map_hit`] 依赖；改动要两处同步。
-const POEM_COLUMNS: &str = "p.stable_id, p.title, p.title_raw, p.ci_tune, p.author, \
+pub(super) const POEM_COLUMNS: &str = "p.stable_id, p.title, p.title_raw, p.ci_tune, p.author, \
 p.dynasty, p.dynasty_raw, p.first_line, p.work_group, p.genre, p.line_count, p.char_count";
 
 /// `title` 等值。
@@ -581,11 +583,11 @@ fn dynasty_keys_sql() -> String {
 // ---------------------------------------------------------------- 分支执行
 
 /// 一条物理分支：一段 SQL、它自己的绑定值，以及命中语义。
-struct Branch {
-    rank: u8,
-    sql: String,
-    binds: Vec<Value>,
-    matched_on: MetaMatch,
+pub(super) struct Branch {
+    pub(super) rank: u8,
+    pub(super) sql: String,
+    pub(super) binds: Vec<Value>,
+    pub(super) matched_on: MetaMatch,
 }
 
 /// 分页游标：`rank:stable_id`。
@@ -639,7 +641,7 @@ fn author_branches(normalized: &str) -> Vec<Branch> {
 }
 
 /// 依次执行分支，收满一页即停，并给出续页游标。
-fn run_branches(
+pub(super) fn run_branches(
     connection: &Connection,
     branches: Vec<Branch>,
     cursor: Option<&str>,
@@ -828,7 +830,7 @@ fn dynasty_keys(connection: &Connection) -> Result<Vec<String>> {
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-fn text(value: &str) -> Value {
+pub(super) fn text(value: &str) -> Value {
     Value::Text(value.to_owned())
 }
 

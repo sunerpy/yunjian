@@ -14,3 +14,4 @@ pub mod normalize;
 pub mod quality;
 pub mod rhyme;
 pub mod rhyme_foot;
+pub mod tag;

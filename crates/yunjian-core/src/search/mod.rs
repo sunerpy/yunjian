@@ -4,3 +4,4 @@ pub mod meta;
 pub mod query;
 pub mod rhyme;
 pub mod text;
+pub mod topic;
