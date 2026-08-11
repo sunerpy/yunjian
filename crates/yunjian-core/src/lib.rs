@@ -14,6 +14,7 @@ pub mod derive;
 pub mod error;
 pub mod logger;
 pub mod rhyme;
+pub mod search;
 pub mod text;
 
 pub use config::{Config, CorpusConfig, LoggerConfig, get_config, init_config};
@@ -29,4 +30,8 @@ pub use derive::{
 pub use error::{AiError, Error, Result, redact_credentials};
 pub use logger::{current_log_level, init_logger, set_log_level};
 pub use rhyme::{RhymeBook, RhymeTone};
+pub use search::query::{
+    NGRAM_CANDIDATES_SQL, QueryPlan, escape_like_literal, normalize_query, plan_metadata_query,
+    plan_query,
+};
 pub use text::{content_chars, is_punctuation};
