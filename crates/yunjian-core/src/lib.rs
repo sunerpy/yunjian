@@ -34,4 +34,8 @@ pub use search::query::{
     NGRAM_CANDIDATES_SQL, QueryPlan, escape_like_literal, normalize_query, plan_metadata_query,
     plan_query,
 };
+pub use search::text::{
+    HighlightRange, HighlightedSnippet, SearchPage, TEXT_SEARCH_HARD_CAP, TextSearchHit,
+    TextSearchRequest,
+};
 pub use text::{content_chars, is_punctuation};
