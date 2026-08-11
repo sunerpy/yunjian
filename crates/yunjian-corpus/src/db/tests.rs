@@ -475,6 +475,44 @@ fn incompatible_schema_is_a_typed_actionable_error() {
     cleanup(&path);
 }
 
+/// 运行期打开路径必须能读**真实**随包 schema 建出来的库。
+///
+/// `yunjian_core::corpus` 的 fixture 只建它自己读的那几列——依赖方向是 corpus -> core，
+/// 它拿不到 `SCHEMA_SQL`。于是「core 读了一列而随包 schema 里没有」这类漂移只有在这里
+/// 才抓得住：用真实 schema 建库，再走运行期的 [`yunjian_core::CorpusHandle::open`]。
+#[test]
+fn a_real_built_corpus_opens_through_the_core_handle() {
+    let path = temp_db("core-handle");
+    build(&path);
+    let cfg = yunjian_core::CorpusConfig {
+        path: Some(path.clone()),
+        data_dir: path.parent().expect("父目录").to_path_buf(),
+        archive: None,
+    };
+
+    let handle = yunjian_core::CorpusHandle::open(&cfg).expect("真实随包库必须能被运行期打开");
+    let meta = handle.meta();
+    assert_eq!(meta.schema_version, SCHEMA_VERSION);
+    assert_eq!(meta.corpus_version, "1.2.3");
+    assert_eq!(meta.poem_count, 2);
+    assert_eq!(meta.index_detail_mode, "full");
+    assert_eq!(meta.derived_indexes, "first_launch");
+    assert_eq!(meta.shipped_scope, "10k");
+    // 随包库不带派生结构，所以首启就在这里发生——这条同时证明了「随包形态 + 首启派生」
+    // 这条链在真实 schema 上走得通，而不只是在 fixture 上。
+    assert!(
+        handle.derived().is_ready(),
+        "首启派生应当在真实随包库上跑通：{:?}",
+        handle.derived()
+    );
+    let connection = handle.connect().expect("取只读连接");
+    let error = connection
+        .execute("INSERT INTO tag(name) VALUES (?1)", params!["不应写入"])
+        .expect_err("运行期句柄必须只读");
+    assert!(error.to_string().contains("readonly"));
+    cleanup(&path);
+}
+
 #[test]
 fn opened_corpus_is_query_only_and_blocks_insert() {
     let path = temp_db("readonly");

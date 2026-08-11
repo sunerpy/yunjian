@@ -11,19 +11,16 @@ use rusqlite::{Connection, OpenFlags, params};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use yunjian_core::{Error, Result};
 
-/// schema v2 相对 v1 的变化：`defect` / `disposition` 移进审计库，`ngram` 改为首启
-/// 派生，`corpus_meta` 增加 `ngram_source` 与 `shipped_scope` 两列。
+/// 兼容范围、只读打开与其错误类型都住在 `yunjian-core`，这里只重导出。
 ///
-/// 之所以升版号而不是留在 1：`corpus_meta` 新增了 NOT NULL 列，拿 v1 的文件跑
-/// v2 的查询会在 SQL 层报 `no such column`。升版号把它变成
-/// [`OpenCorpusError::IncompatibleSchema`] 这条带下一步指引的类型化错误。
-/// 尚无已发布工件，因此不需要迁移代码。
-pub const SCHEMA_VERSION: u32 = 2;
-pub const SUPPORTED_SCHEMA: RangeInclusive<u32> = 2..=2;
+/// 为什么不留在本 crate：构建期（这里）与运行期（`yunjian_core::corpus`）必须共用**同一个**
+/// 兼容范围，而依赖方向是 corpus -> core，两份常量迟早漂移。运行期还要在落地前用它
+/// 预判归档能不能读，那条路径根本到不了本 crate。
+pub use yunjian_core::corpus::{OpenCorpusError, SCHEMA_VERSION, SUPPORTED_SCHEMA, open_corpus};
+
 pub const SCHEMA_SQL: &str = include_str!("../schema.sql");
 /// 审计库 schema。与 [`SCHEMA_SQL`] 同样是签入的唯一事实来源，本文件内零 DDL 拼接。
 pub const AUDIT_SCHEMA_SQL: &str = include_str!("../schema-audit.sql");
@@ -96,23 +93,6 @@ pub struct CorpusDbInput {
     pub variants: Vec<VariantRow>,
     pub tags: Vec<PoemTagRow>,
     pub quality: QualityReport,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum OpenCorpusError {
-    #[error("数据库错误：{0}")]
-    Database(#[from] rusqlite::Error),
-    #[error("语料库元数据错误：{0}")]
-    InvalidMetadata(String),
-    #[error(
-        "语料库 schema 版本 {corpus_schema_version} 与应用 {app_version} 不兼容；应用支持 {supported_min}..={supported_max}。请运行 `yunjian corpus fetch` 获取兼容语料库"
-    )]
-    IncompatibleSchema {
-        corpus_schema_version: u32,
-        app_version: &'static str,
-        supported_min: u32,
-        supported_max: u32,
-    },
 }
 
 #[derive(Deserialize)]
@@ -379,33 +359,6 @@ pub fn verify_conservation_across_files(
         )));
     }
     Ok(())
-}
-
-pub fn open_corpus(path: impl AsRef<Path>) -> std::result::Result<Connection, OpenCorpusError> {
-    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-    let (rows, schema_version): (i64, Option<u32>) = connection.query_row(
-        "SELECT count(*), min(schema_version) FROM corpus_meta",
-        [],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
-    if rows != 1 {
-        return Err(OpenCorpusError::InvalidMetadata(format!(
-            "corpus_meta 必须恰有一行，实际为 {rows} 行"
-        )));
-    }
-    let schema_version = schema_version.ok_or_else(|| {
-        OpenCorpusError::InvalidMetadata("corpus_meta.schema_version 不能为空".to_owned())
-    })?;
-    if !SUPPORTED_SCHEMA.contains(&schema_version) {
-        return Err(OpenCorpusError::IncompatibleSchema {
-            corpus_schema_version: schema_version,
-            app_version: env!("CARGO_PKG_VERSION"),
-            supported_min: *SUPPORTED_SCHEMA.start(),
-            supported_max: *SUPPORTED_SCHEMA.end(),
-        });
-    }
-    connection.pragma_update(None, "query_only", true)?;
-    Ok(connection)
 }
 
 pub fn schema_statements(schema: &str) -> Result<Vec<String>> {
