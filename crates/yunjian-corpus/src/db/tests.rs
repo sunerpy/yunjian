@@ -220,6 +220,38 @@ fn schema_is_the_checked_in_single_source_of_truth() {
 }
 
 #[test]
+fn schema_defaults_structured_fields_for_legacy_inserts() {
+    let connection = Connection::open_in_memory().expect("open in-memory db");
+    connection.execute_batch(SCHEMA_SQL).expect("apply schema");
+    connection
+        .execute("INSERT INTO author(name) VALUES ('李白')", [])
+        .expect("insert author");
+    connection
+        .execute(
+            "INSERT INTO poem(stable_id, content_hash, source_locator, source_locator_kind, \
+             genre, title, title_raw, author, dynasty, dynasty_raw, body, body_original, script, \
+             first_line, last_chars, line_count, char_count, provenance_source, \
+             provenance_revision, provenance_kind, provenance_license, \
+             provenance_license_class, work_group, edition_group) \
+             VALUES ('legacy', 'hash', 'fixture:legacy', 'native', 'shi', '静夜思', '静夜思', \
+             '李白', '唐', '唐', '床前明月光', '床前明月光', 'simplified', '床前明月光', \
+             '[\"光\"]', 1, 5, 'fixture', 'revision', '原文', 'MIT', 'permissive', \
+             'work', 'edition')",
+            [],
+        )
+        .expect("insert legacy poem");
+
+    let classification: (String, i64) = connection
+        .query_row(
+            "SELECT form, is_yuefu FROM poem WHERE stable_id='legacy'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("read default classification");
+    assert_eq!(classification, ("unknown".to_owned(), 0));
+}
+
+#[test]
 fn the_first_launch_build_turns_a_shipped_artifact_into_a_searchable_corpus() {
     let path = temp_db("fts-integration");
     let input = fixture();
