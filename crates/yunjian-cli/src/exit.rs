@@ -69,6 +69,13 @@ pub fn describe(error: &Error) -> (Exit, Failure) {
             Exit::Usage,
             Failure::new(ErrorCode::Usage, error.to_string()),
         ),
+        // 密钥没配是配置问题，用户自己就能改；建议去取语料是误导，所以是 2 而不是 3。
+        // 密钥只存操作系统钥匙串，因此下一步指向钥匙串而不是 `config.toml`。
+        Error::AiKeyNotConfigured { .. } => (
+            Exit::Usage,
+            Failure::new(ErrorCode::Usage, error.to_string())
+                .with_hint("把该供应商的 API key 存入操作系统钥匙串后重试；密钥不进 `config.toml`"),
+        ),
         Error::Corpus(_)
         | Error::CommentaryCitationMissing { .. }
         | Error::Io(_)
@@ -149,6 +156,25 @@ mod tests {
         assert_eq!(
             describe(&Error::Io(std::io::Error::other("磁盘错误"))).0,
             Exit::CorpusUnavailable
+        );
+    }
+
+    #[test]
+    fn a_missing_api_key_is_two_and_points_at_the_keychain_not_the_corpus() {
+        let (exit, failure) = describe(&Error::AiKeyNotConfigured {
+            provider: "openai".to_owned(),
+        });
+        assert_eq!(exit, Exit::Usage);
+        assert_eq!(failure.code, ErrorCode::Usage);
+        assert!(
+            !failure.render().contains("corpus fetch"),
+            "密钥没配与语料无关，不该建议去取语料：{}",
+            failure.render()
+        );
+        assert!(
+            failure.render().contains("钥匙串"),
+            "必须指向密钥真正的存放处：{}",
+            failure.render()
         );
     }
 
