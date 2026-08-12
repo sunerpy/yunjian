@@ -97,9 +97,7 @@ pub enum Command {
         action: CorpusAction,
     },
     /// 以 stdio 承载 MCP 服务器。
-    ///
-    /// **本版本只有占位**：子命令与 `--help` 已就位，服务端实现见方案 todo 31。
-    /// 保留占位而不是等实现完再加，是为了让 `yunjian mcp` 这个入口名从第一天起就固定。
+    #[cfg(feature = "mcp")]
     Mcp,
 }
 
@@ -118,6 +116,7 @@ impl Command {
             Self::Corpus {
                 action: CorpusAction::Fetch,
             } => "corpus.fetch",
+            #[cfg(feature = "mcp")]
             Self::Mcp => "mcp",
         }
     }

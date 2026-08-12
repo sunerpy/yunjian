@@ -24,7 +24,8 @@ name = "yunjian_cli"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["mcp"]
+mcp = ["dep:tokio", "dep:yunjian-mcp"]
 # 语音能力从这里向下透传。默认关闭：不开时二进制不链接 onnxruntime，
 # 词典与默写功能因此不受原生依赖的成败影响。
 voice = ["yunjian-voice/voice"]
@@ -35,7 +36,9 @@ clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true, optional = true }
 yunjian-core = { path = "../yunjian-core" }
+yunjian-mcp = { path = "../yunjian-mcp", optional = true }
 yunjian-voice = { path = "../yunjian-voice" }
 
 [dev-dependencies]
