@@ -150,15 +150,8 @@ fn run(
 ) -> std::result::Result<Produced, Failed> {
     let corpus = corpus_config(config, corpus_override);
     match command {
-        Command::Mcp => Err(Failed {
-            exit: Exit::Usage,
-            failure: Failure::new(
-                ErrorCode::NotImplemented,
-                "`yunjian mcp` 的服务端尚未实现（方案 todo 31）",
-            )
-            .with_hint("当前请用 `yunjian search` / `yunjian show` 直接检索"),
-            warnings: Vec::new(),
-        }),
+        #[cfg(feature = "mcp")]
+        Command::Mcp => unreachable!("mcp 子命令由 stdio 专用入口执行"),
         Command::Corpus {
             action: CorpusAction::Status,
         } => corpus_status(&corpus),
@@ -470,19 +463,6 @@ mod tests {
             archive: None,
         });
         assert_eq!(materialized, PathBuf::from("/tmp/data/corpus.db"));
-    }
-
-    #[test]
-    fn the_mcp_placeholder_refuses_with_a_usage_error_rather_than_pretending_to_serve() {
-        let failed = run(&Command::Mcp, &config_with("/tmp/yunjian-data"), None)
-            .err()
-            .expect("mcp 占位必须失败");
-        assert_eq!(failed.exit, Exit::Usage);
-        assert!(
-            failed.failure.render().contains("todo 31"),
-            "占位要指明实现在哪一步：{}",
-            failed.failure.render()
-        );
     }
 
     #[test]

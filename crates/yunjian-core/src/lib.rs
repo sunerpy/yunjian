@@ -38,7 +38,7 @@ pub use derive::{
     split_rhyme_feet, verify_derived_indexes,
 };
 pub use error::{AiError, Error, Result, redact_credentials};
-pub use logger::{current_log_level, init_logger, set_log_level};
+pub use logger::{current_log_level, init_logger, init_stdio_logger, set_log_level};
 pub use rhyme::{RhymeBook, RhymeConfidence, RhymeTone};
 pub use search::meta::{
     Attribution, AttributionConflict, AuthorDetail, DynastyLabel, META_PAGE_LIMIT, MetaHit,

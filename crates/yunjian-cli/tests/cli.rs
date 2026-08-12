@@ -633,7 +633,7 @@ fn corpus_fetch_opens_the_configured_corpus_and_reports_it_ready() {
 }
 
 #[test]
-fn the_mcp_subcommand_exists_and_says_it_is_not_implemented_yet() {
+fn the_mcp_subcommand_enters_stdio_mode_without_a_cli_envelope() {
     let sandbox = Sandbox::new();
     let help = sandbox
         .command()
@@ -653,8 +653,17 @@ fn the_mcp_subcommand_exists_and_says_it_is_not_implemented_yet() {
         .output()
         .expect("运行 yunjian mcp");
     assert_eq!(output.status.code(), Some(2));
-    let value = parse_single_json_line(&utf8(&output.stdout));
-    assert_eq!(value["error"]["code"], "not_implemented");
+    assert!(
+        output.stdout.is_empty(),
+        "stdio 模式不得输出 CLI JSON 信封：{}",
+        utf8(&output.stdout)
+    );
+    assert_stdout_has_no_log_text(&utf8(&output.stdout));
+    assert!(
+        utf8(&output.stderr).contains("initialize request"),
+        "握手前 EOF 应被识别为 MCP 初始化失败：{}",
+        utf8(&output.stderr)
+    );
 }
 
 #[test]
