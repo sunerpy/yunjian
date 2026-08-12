@@ -102,6 +102,12 @@ pub enum Command {
         #[command(subcommand)]
         action: ModelsAction,
     },
+    /// AI 赏析维护。
+    Ai {
+        /// 具体动作。
+        #[command(subcommand)]
+        action: AiAction,
+    },
     /// 承载 MCP 服务器。默认 stdio。
     #[cfg(feature = "mcp")]
     Mcp(McpArgs),
@@ -153,6 +159,7 @@ impl Command {
                 action: CorpusAction::Fetch,
             } => "corpus.fetch",
             Self::Models { action } => action.envelope_name(),
+            Self::Ai { action } => action.envelope_name(),
             #[cfg(feature = "mcp")]
             Self::Mcp(McpArgs { action: None, .. }) => "mcp",
             #[cfg(feature = "mcp")]
@@ -162,6 +169,51 @@ impl Command {
             }) => "mcp.install",
         }
     }
+}
+
+/// `ai` 的动作。
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum AiAction {
+    /// 赏析缓存维护。
+    Cache {
+        /// 具体动作。
+        #[command(subcommand)]
+        action: AiCacheAction,
+    },
+}
+
+impl AiAction {
+    /// 信封里的命令名。
+    #[must_use]
+    pub const fn envelope_name(&self) -> &'static str {
+        match self {
+            Self::Cache {
+                action: AiCacheAction::Purge(_),
+            } => "ai.cache.purge",
+        }
+    }
+}
+
+/// `ai cache` 的动作。
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum AiCacheAction {
+    /// 清理用户自己付费生成的赏析；内置赏析不受影响。
+    Purge(AiCachePurgeArgs),
+}
+
+/// 用户赏析缓存的清理范围。
+#[derive(Debug, Clone, PartialEq, Eq, Args)]
+#[group(id = "scope", required = true, multiple = false)]
+pub struct AiCachePurgeArgs {
+    /// 只清理指定模板版本。
+    #[arg(long, value_name = "VERSION", group = "scope")]
+    pub template: Option<String>,
+    /// 只清理指定作品的稳定标识。
+    #[arg(long, value_name = "ID", group = "scope")]
+    pub poem: Option<String>,
+    /// 清理全部用户赏析缓存。
+    #[arg(long, group = "scope")]
+    pub all: bool,
 }
 
 /// `models` 的动作。
@@ -308,7 +360,7 @@ impl From<Tone> for ToneFilter {
 
 #[cfg(test)]
 mod tests {
-    use super::{Book, Cli, Command, CorpusAction, LogLevel, Tone};
+    use super::{AiAction, AiCacheAction, Book, Cli, Command, CorpusAction, LogLevel, Tone};
     #[cfg(feature = "mcp")]
     use super::{McpAction, McpArgs};
     use clap::{CommandFactory, Parser};
@@ -408,6 +460,41 @@ mod tests {
     }
 
     #[test]
+    fn ai_cache_purge_requires_exactly_one_scope() {
+        for arguments in [["--template", "1.0.0"], ["--poem", "poem-fixture"]] {
+            let cli = Cli::try_parse_from([
+                "yunjian",
+                "ai",
+                "cache",
+                "purge",
+                arguments[0],
+                arguments[1],
+            ])
+            .expect("单一清理范围应解析成功");
+            assert!(matches!(
+                cli.command,
+                Command::Ai {
+                    action: AiAction::Cache {
+                        action: AiCacheAction::Purge(_)
+                    }
+                }
+            ));
+        }
+        assert!(Cli::try_parse_from(["yunjian", "ai", "cache", "purge", "--all"]).is_ok());
+        Cli::try_parse_from(["yunjian", "ai", "cache", "purge"]).expect_err("缺清理范围必须报错");
+        Cli::try_parse_from([
+            "yunjian",
+            "ai",
+            "cache",
+            "purge",
+            "--all",
+            "--poem",
+            "poem-fixture",
+        ])
+        .expect_err("多个清理范围必须报错");
+    }
+
+    #[test]
     fn the_mcp_subcommand_exists_so_the_entry_name_is_fixed_from_day_one() {
         assert!(matches!(
             Cli::try_parse_from(["yunjian", "mcp"])
@@ -489,6 +576,7 @@ mod tests {
                 action: CorpusAction::Fetch,
             }
             .name(),
+            parse_command(&["yunjian", "ai", "cache", "purge", "--all"]).name(),
             parse_command(&["yunjian", "mcp"]).name(),
             parse_command(&["yunjian", "mcp", "install", "--client", "opencode"]).name(),
         ];

@@ -20,6 +20,26 @@ pub trait Renderable {
     fn render(&self) -> Vec<String>;
 }
 
+/// `ai cache purge` 的载荷。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AiCachePurgeOut {
+    /// 被清理的范围。
+    pub scope: String,
+    /// 删除的用户缓存行数。
+    pub removed: usize,
+    /// 缓存数据库路径。
+    pub database: String,
+}
+
+impl Renderable for AiCachePurgeOut {
+    fn render(&self) -> Vec<String> {
+        vec![format!(
+            "已从 {} 清理 {} 条用户赏析缓存（范围：{}）；内置赏析未改动",
+            self.database, self.removed, self.scope
+        )]
+    }
+}
+
 /// `search` 的载荷。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SearchOut {

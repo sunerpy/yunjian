@@ -14,11 +14,17 @@
 
 #![warn(missing_docs)]
 
+pub mod cache;
 pub mod genai_provider;
 pub mod keystore;
 pub mod provider;
 mod stream;
 
+pub use cache::{
+    APPRECIATION_DATABASE_FILE, AppreciationCache, CacheCounts, CacheHit, CacheSource,
+    CachedAppreciationProvider, DEFAULT_APPRECIATION_CACHE_CAPACITY, PurgeScope,
+    ShippedAppreciation,
+};
 pub use genai_provider::{GenAiProvider, GenAiProviderConfig, ProviderKind};
 pub use keystore::{
     Backend, KeyStore, KeyStoreConfig, Lookup, OsKeychain, Persistence, Protection, StorageReport,
