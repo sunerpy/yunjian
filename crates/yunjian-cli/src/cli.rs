@@ -96,9 +96,24 @@ pub enum Command {
         #[command(subcommand)]
         action: CorpusAction,
     },
-    /// 以 stdio 承载 MCP 服务器。
+    /// 承载 MCP 服务器。默认 stdio。
     #[cfg(feature = "mcp")]
-    Mcp,
+    Mcp(McpArgs),
+}
+
+/// `mcp` 的参数。
+///
+/// 启用 `mcp-http` 特性时它多出 `yunjian-mcp` 定义的那组 HTTP 开关；不启用时它是一个空的
+/// 参数集，`yunjian mcp` 仍然只有 stdio 一种形态。**HTTP 的 flag 定义与守卫都在
+/// `yunjian-mcp` 里**，这里只做转发：把 flag 抄一份到 CLI 会让「参数还在、守卫被删了」
+/// 变成一次谁都不会发现的回归。
+#[cfg(feature = "mcp")]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Args)]
+pub struct McpArgs {
+    /// Streamable HTTP 传输的开关与绑定地址。
+    #[cfg(feature = "mcp-http")]
+    #[command(flatten)]
+    pub http: yunjian_mcp::http::HttpOptions,
 }
 
 impl Command {
@@ -117,7 +132,7 @@ impl Command {
                 action: CorpusAction::Fetch,
             } => "corpus.fetch",
             #[cfg(feature = "mcp")]
-            Self::Mcp => "mcp",
+            Self::Mcp(_) => "mcp",
         }
     }
 }
@@ -225,6 +240,8 @@ impl From<Tone> for ToneFilter {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "mcp")]
+    use super::McpArgs;
     use super::{Book, Cli, Command, CorpusAction, LogLevel, Tone};
     use clap::{CommandFactory, Parser};
     use yunjian_core::{RhymeBook, RhymeTone, ToneFilter};
@@ -321,7 +338,7 @@ mod tests {
             Cli::try_parse_from(["yunjian", "mcp"])
                 .expect("解析 mcp")
                 .command,
-            Command::Mcp
+            Command::Mcp(_)
         ));
     }
 
@@ -360,7 +377,7 @@ mod tests {
                 action: CorpusAction::Fetch,
             }
             .name(),
-            Command::Mcp.name(),
+            Command::Mcp(McpArgs::default()).name(),
         ];
         for name in names {
             assert!(

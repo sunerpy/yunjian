@@ -157,6 +157,19 @@ ureq = "3"
 flate2 = "1"
 # 统计基准框架。精确锁定，避免基准输出格式和采样默认值随次版本漂移。
 criterion = "=0.8.2"
+# 仅 `yunjian-mcp` 的 `http` 特性使用（默认关闭）：把 `rmcp` 的 `StreamableHttpService`
+# 挂成一个 tower service，并在它前面叠一层 bearer + Origin 守卫。**刻意选 axum 而不是
+# 裸 hyper**：守卫必须是一层无法被绕过的中间件，而 `Router::nest_service` + `layer` 是
+# 「路由之外的一切都过守卫」这件事在类型上唯一显式的表达；手写 hyper service 时漏判一条
+# 分支不会有任何编译错误。
+axum = "0.8.9"
+# `CancellationToken`。`StreamableHttpServerConfig` 的关停字段就是这个类型，不是可替换的
+# 实现细节；`rmcp` 内部已依赖同一个 crate，此处显式声明只是为了能在调用侧构造它。
+tokio-util = "0.7.19"
+# MCP HTTP 传输的 bearer token 取自操作系统 CSPRNG。**刻意只依赖 `getrandom` 而不是
+# `rand`**：这里要的就是「向内核要 32 字节」这一件事，`rand` 的分布、序列与可复现种子
+# 在这个用途上全是负债——一个可被种子复现的认证 token 是缺陷而不是特性。
+getrandom = "0.4"
 # 桌面外壳。**只固定次版本线**：`tauri` 与 `tauri-build` 的补丁号必须同步演进
 # （`tauri-build` 内部依赖 `tauri-utils`，两侧配置结构体不同版会报出
 # `unknown field` 这种看不出根因的错误，`tauri-build` 自己的诊断里甚至专门为它写了

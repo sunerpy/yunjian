@@ -1,7 +1,13 @@
-//! 云笺 MCP stdio 服务端。
+//! 云笺 MCP 服务端。默认走 stdio。
 //!
 //! 服务启动不以语料可用为前提：缺语料时仍完成握手并列出工具，调用工具则返回可见的
 //! `corpus_missing` 结构化错误。stdout 只承载换行分隔的 JSON-RPC 协议帧。
+//!
+//! # 可选的 HTTP 传输
+//!
+//! `http` cargo 特性（**默认关闭**）加上 Streamable HTTP 传输，见 [`http`]。它默认只绑回环、
+//! 强制每个请求带 bearer token、校验 `Origin`；这些不是加固项，而是把 stdio 从操作系统那里
+//! 免费得到的隔离手工补回来。
 //!
 //! # 三个工具都是只读、离线、无 key
 //!
@@ -18,6 +24,8 @@
 
 #![warn(missing_docs)]
 
+#[cfg(feature = "http")]
+pub mod http;
 pub mod schema;
 pub mod similarity;
 
