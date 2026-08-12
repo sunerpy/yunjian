@@ -38,7 +38,7 @@ use cli::{Cli, Global};
 use command::{Body, Report};
 use envelope::{Envelope, ErrorCode, Failure};
 use exit::Exit;
-use yunjian_core::{Config, LoggerConfig, init_config, init_logger};
+use yunjian_core::{Config, LoggerConfig, init_config, init_logger, init_stdio_logger};
 
 /// 配置发现与用户配置目录使用的应用名。
 pub const APP: &str = "yunjian";
@@ -75,7 +75,12 @@ pub fn run() -> i32 {
     };
 
     let logger = logger_config(config, &cli.global);
-    let Ok(_guard) = init_logger(&logger) else {
+    let logger_result = if is_mcp(&cli.command) {
+        init_stdio_logger(&logger)
+    } else {
+        init_logger(&logger)
+    };
+    let Ok(_guard) = logger_result else {
         // 走到这里意味着进程里已经有全局订阅器了，在一个刚启动的可执行文件里不可能发生。
         // 既然日志设施状态不明，只报信封、不试图记录。
         return emit(
@@ -99,8 +104,67 @@ pub fn run() -> i32 {
         "云笺命令行启动"
     );
 
+    #[cfg(feature = "mcp")]
+    if matches!(cli.command, cli::Command::Mcp) {
+        return run_mcp(config, cli.global.corpus.as_deref());
+    }
+
     let report = command::execute(&cli.command, config, cli.global.corpus.as_deref());
     emit(&report, cli.global.json)
+}
+
+fn is_mcp(command: &cli::Command) -> bool {
+    #[cfg(feature = "mcp")]
+    if matches!(command, cli::Command::Mcp) {
+        return true;
+    }
+    false
+}
+
+#[cfg(feature = "mcp")]
+fn run_mcp(config: &Config, corpus_override: Option<&std::path::Path>) -> i32 {
+    use yunjian_core::{CORPUS_FILE_NAME, CorpusHandle, Yunjian};
+    use yunjian_mcp::YunjianServer;
+
+    let mut corpus = config.corpus.clone();
+    if let Some(path) = corpus_override {
+        corpus.path = Some(path.to_path_buf());
+    }
+    let path = corpus
+        .path
+        .clone()
+        .unwrap_or_else(|| corpus.data_dir.join(CORPUS_FILE_NAME));
+    let server = if path.is_file() {
+        corpus.path = Some(path);
+        match CorpusHandle::open(&corpus) {
+            Ok(handle) => YunjianServer::new(Yunjian::new(handle)),
+            Err(error) => {
+                tracing::warn!(error = %error, "语料库不可用，MCP 将以缺语料模式启动");
+                YunjianServer::without_corpus()
+            }
+        }
+    } else {
+        tracing::warn!(corpus = %path.display(), "未找到语料库，MCP 将以缺语料模式启动");
+        YunjianServer::without_corpus()
+    };
+
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            tracing::error!(error = %error, "创建 MCP 异步运行时失败");
+            return Exit::Usage.code();
+        }
+    };
+    match runtime.block_on(yunjian_mcp::serve_stdio(server)) {
+        Ok(()) => Exit::Success.code(),
+        Err(error) => {
+            tracing::error!(error = %error, "MCP stdio 服务异常结束");
+            Exit::Usage.code()
+        }
+    }
 }
 
 /// 把命令行给出的日志级别叠加到配置上。

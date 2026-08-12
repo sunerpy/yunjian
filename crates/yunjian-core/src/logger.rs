@@ -148,14 +148,14 @@ fn probe_dir(dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn console_layer(json: bool, timer: OffsetTime<Rfc3339>) -> BoxedLayer {
+fn console_layer(json: bool, timer: OffsetTime<Rfc3339>, ansi: bool) -> BoxedLayer {
     // stdout 属于 MCP 协议流，控制台层永远只能写 stderr。
     let layer = fmt::layer()
         .with_writer(std::io::stderr)
         .with_timer(timer)
         .with_target(true)
         // 只有连着终端才上色：MCP 客户端会把 stderr 收进日志文件，转义序列在那里是噪声。
-        .with_ansi(std::io::stderr().is_terminal());
+        .with_ansi(ansi);
     if json {
         layer.json().with_current_span(true).boxed()
     } else {
@@ -190,6 +190,24 @@ fn file_layer(cfg: &LoggerConfig, timer: OffsetTime<Rfc3339>) -> (BoxedLayer, Wo
 ///
 /// 已经存在全局订阅器（含重复调用本函数）时返回 `Err`，绝不静默覆盖。
 pub fn init_logger(cfg: &LoggerConfig) -> Result<Option<WorkerGuard>, Box<dyn std::error::Error>> {
+    init_logger_with_ansi(cfg, std::io::stderr().is_terminal())
+}
+
+/// 安装适用于 stdio 协议服务的日志订阅器，控制台固定写 stderr 且禁用 ANSI。
+///
+/// # Errors
+///
+/// 已经存在全局订阅器时返回错误。
+pub fn init_stdio_logger(
+    cfg: &LoggerConfig,
+) -> Result<Option<WorkerGuard>, Box<dyn std::error::Error>> {
+    init_logger_with_ansi(cfg, false)
+}
+
+fn init_logger_with_ansi(
+    cfg: &LoggerConfig,
+    ansi: bool,
+) -> Result<Option<WorkerGuard>, Box<dyn std::error::Error>> {
     // 先解析时区偏移再创建 appender：`time` 在多线程进程里拒绝推断本地偏移，而下面的
     // 非阻塞 writer 会起后台线程，顺序颠倒就永远只能拿到 UTC。
     let (timer, zone) = rfc3339_timer();
@@ -198,7 +216,7 @@ pub fn init_logger(cfg: &LoggerConfig) -> Result<Option<WorkerGuard>, Box<dyn st
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(configured));
     let (filter_layer, handle) = reload::Layer::<EnvFilter, Registry>::new(filter);
 
-    let mut layers: Vec<BoxedLayer> = vec![console_layer(cfg.json, timer.clone())];
+    let mut layers: Vec<BoxedLayer> = vec![console_layer(cfg.json, timer.clone(), ansi)];
     let (guard, dir_error) = match probe_dir(&cfg.dir) {
         Ok(()) => {
             let (layer, guard) = file_layer(cfg, timer);
