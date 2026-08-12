@@ -78,8 +78,10 @@ genai = { version = "0.6", default-features = false, features = ["rustls-tls"] }
 tokio = { version = "1", default-features = false, features = [
   "rt-multi-thread",
   "macros",
+  "sync",
   "time",
 ] }
+futures = "=0.3.33"
 # 麦克风采集。`default-features = false` 是刻意的：默认特性会拖进 symphonia 的整套
 # 解码器（flac/mp3/mp4/vorbis），而采集路径一个都不需要。`recording` 提供
 # `rodio::microphone`，`playback` 提供 `rodio::cpal` 重导出——两者都要，因为设备

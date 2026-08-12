@@ -25,21 +25,26 @@
 //!   `unwrap_or_else(|| default_auth(...))` 回落到 `AuthData::FromEnv`——也就是说，一次
 //!   看起来无害的 `Ok(None)` 会静默地重新启用环境变量读取。缺密钥时返回 `Err`。
 
+use crate::AppreciationCacheWriter;
 use crate::keystore::{KeyStore, Lookup};
 use crate::provider::{
     Appreciation, AppreciationProgress, AppreciationProvider, AppreciationRequest,
-    AppreciationStreamItem, ProviderId,
+    AppreciationStreamItem, ProviderId, TokenUsage,
 };
 use async_trait::async_trait;
+use futures::StreamExt;
 use genai::adapter::AdapterKind;
-use genai::chat::{ChatMessage, ChatOptions, ChatRequest};
+use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent, Usage};
 use genai::resolver::{AuthData, AuthResolver, Endpoint, ServiceTargetResolver};
 use genai::{Client, ModelIden, ServiceTarget};
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::Value;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use yunjian_core::operation::{OperationHandle, start_operation};
 use yunjian_core::{Error, Result};
 
@@ -252,6 +257,19 @@ pub struct GenAiProvider {
     provider: ProviderId,
     client: Client,
     has_key: bool,
+    cache_writer: Option<Arc<dyn AppreciationCacheWriter>>,
+}
+
+impl Clone for GenAiProvider {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            provider: self.provider.clone(),
+            client: self.client.clone(),
+            has_key: self.has_key,
+            cache_writer: self.cache_writer.clone(),
+        }
+    }
 }
 
 impl fmt::Debug for GenAiProvider {
@@ -316,7 +334,15 @@ impl GenAiProvider {
             provider,
             client,
             has_key,
+            cache_writer: None,
         })
+    }
+
+    /// 安装完整结果缓存写入器；取消或失败的流不会调用它。
+    #[must_use]
+    pub fn with_cache_writer(mut self, cache_writer: Arc<dyn AppreciationCacheWriter>) -> Self {
+        self.cache_writer = Some(cache_writer);
+        self
     }
 
     /// 非机密配置。
@@ -388,6 +414,141 @@ impl GenAiProvider {
             format!("模型 {}：{detail}", self.config.kind),
         )
     }
+
+    async fn stream_to_channel(
+        self,
+        request: AppreciationRequest,
+        sender: mpsc::Sender<StreamMessage>,
+        cancellation: CancellationToken,
+    ) {
+        let result = self.consume_stream(request, &sender, &cancellation).await;
+        if let Err(error) = result {
+            let _ = sender.send(StreamMessage::Failed(error.to_string())).await;
+        }
+    }
+
+    async fn consume_stream(
+        &self,
+        request: AppreciationRequest,
+        sender: &mpsc::Sender<StreamMessage>,
+        cancellation: &CancellationToken,
+    ) -> Result<()> {
+        let chat_request =
+            ChatRequest::default().append_message(ChatMessage::user(request.render_prompt()));
+        let options = self.chat_options(&request);
+        let response = tokio::select! {
+            () = cancellation.cancelled() => return Ok(()),
+            response = self.client.exec_chat_stream(request.model(), chat_request, Some(&options)) => {
+                response.map_err(|error| self.wrap_error(error))?
+            }
+        };
+        let mut stream = response.stream;
+        let mut text = String::new();
+
+        loop {
+            let event = tokio::select! {
+                () = cancellation.cancelled() => return Ok(()),
+                event = stream.next() => event,
+            };
+            match event {
+                Some(Ok(ChatStreamEvent::Chunk(chunk))) => {
+                    text.push_str(&chunk.content);
+                    if !send_unless_cancelled(
+                        sender,
+                        StreamMessage::Chunk(chunk.content),
+                        cancellation,
+                    )
+                    .await
+                    {
+                        return Ok(());
+                    }
+                }
+                Some(Ok(ChatStreamEvent::End(end))) => {
+                    if text.is_empty() {
+                        return Err(Error::ai(
+                            self.provider.as_str(),
+                            format!("模型 {} 返回了空赏析", self.config.kind),
+                        ));
+                    }
+                    let appreciation = Appreciation {
+                        text,
+                        model: request.model().to_owned(),
+                        provider: self.provider.clone(),
+                        generated_at: unix_seconds(),
+                        template_version: request.template_version().to_owned(),
+                        grounding_digest: request.grounding_digest().to_owned(),
+                        usage: end.captured_usage.and_then(normalize_usage),
+                    };
+                    if cancellation.is_cancelled() {
+                        return Ok(());
+                    }
+                    if let Some(cache_writer) = &self.cache_writer {
+                        cache_writer
+                            .store_completed(&request.cache_key(&self.provider), &appreciation)?;
+                    }
+                    let _ = send_unless_cancelled(
+                        sender,
+                        StreamMessage::Complete(appreciation),
+                        cancellation,
+                    )
+                    .await;
+                    return Ok(());
+                }
+                Some(Ok(
+                    ChatStreamEvent::Start
+                    | ChatStreamEvent::ReasoningChunk(_)
+                    | ChatStreamEvent::ThoughtSignatureChunk(_)
+                    | ChatStreamEvent::ToolCallChunk(_),
+                )) => {}
+                Some(Err(error)) => return Err(self.wrap_error(error)),
+                None => {
+                    return Err(Error::ai(
+                        self.provider.as_str(),
+                        format!("模型 {} 的响应流在终态前结束", self.config.kind),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum StreamMessage {
+    Chunk(String),
+    Complete(Appreciation),
+    Failed(String),
+}
+
+async fn send_unless_cancelled(
+    sender: &mpsc::Sender<StreamMessage>,
+    message: StreamMessage,
+    cancellation: &CancellationToken,
+) -> bool {
+    tokio::select! {
+        () = cancellation.cancelled() => false,
+        result = sender.send(message) => result.is_ok(),
+    }
+}
+
+fn normalize_usage(usage: Usage) -> Option<TokenUsage> {
+    let input_tokens = nonnegative_tokens(usage.prompt_tokens);
+    let output_tokens = nonnegative_tokens(usage.completion_tokens);
+    let total_tokens = nonnegative_tokens(usage.total_tokens).unwrap_or_else(|| {
+        input_tokens
+            .unwrap_or_default()
+            .saturating_add(output_tokens.unwrap_or_default())
+    });
+    let normalized = TokenUsage {
+        input_tokens: input_tokens.unwrap_or_default(),
+        output_tokens: output_tokens.unwrap_or_default(),
+        total_tokens,
+    };
+    (normalized.input_tokens != 0 || normalized.output_tokens != 0 || normalized.total_tokens != 0)
+        .then_some(normalized)
+}
+
+fn nonnegative_tokens(tokens: Option<i32>) -> Option<u32> {
+    tokens.and_then(|value| u32::try_from(value).ok())
 }
 
 #[async_trait]
@@ -403,6 +564,7 @@ impl AppreciationProvider for GenAiProvider {
             .await
             .map_err(|error| self.wrap_error(error))?;
 
+        let usage = normalize_usage(response.usage.clone());
         let text = response.into_first_text().ok_or_else(|| {
             Error::ai(
                 self.provider.as_str(),
@@ -417,22 +579,58 @@ impl AppreciationProvider for GenAiProvider {
             generated_at: unix_seconds(),
             template_version: request.template_version().to_owned(),
             grounding_digest: request.grounding_digest().to_owned(),
+            usage,
         })
     }
 
-    /// 一次性生成后作为单个 `Complete` 事件发出。
-    ///
-    /// 真正的增量转发与取消语义属于 todo 39（`exec_chat_stream` + `CancellationToken`）。
-    /// 此处给出的是协议合规的最小实现：事件有序、恰好一个终止事件，因此调用方与
-    /// `yunjian-core::operation` 的一致性测试现在就能对它跑。
     async fn appreciate_stream(
         &self,
         request: AppreciationRequest,
     ) -> Result<OperationHandle<AppreciationProgress, AppreciationStreamItem>> {
-        let appreciation = self.appreciate(request).await?;
+        let (sender, mut receiver) = mpsc::channel(1);
+        let cancellation = CancellationToken::new();
+        let task_cancellation = cancellation.clone();
+        let provider = self.clone();
+        std::mem::drop(tokio::spawn(async move {
+            provider
+                .stream_to_channel(request, sender, task_cancellation)
+                .await;
+        }));
+
         Ok(start_operation(move |reporter| {
-            reporter.item(AppreciationStreamItem::Complete(appreciation));
-            Ok(())
+            let mut generated_chars = 0_usize;
+            loop {
+                if reporter.wait_for_stop(Duration::from_millis(2)) {
+                    cancellation.cancel();
+                    return Ok(());
+                }
+                match receiver.try_recv() {
+                    Ok(StreamMessage::Chunk(chunk)) => {
+                        generated_chars += chunk.chars().count();
+                        if !reporter.item(AppreciationStreamItem::Chunk(chunk)) {
+                            cancellation.cancel();
+                            return Ok(());
+                        }
+                        reporter.progress(AppreciationProgress { generated_chars });
+                    }
+                    Ok(StreamMessage::Complete(appreciation)) => {
+                        if reporter.item(AppreciationStreamItem::Complete(appreciation)) {
+                            return Ok(());
+                        }
+                        cancellation.cancel();
+                        return Ok(());
+                    }
+                    Ok(StreamMessage::Failed(message)) => return Err(message),
+                    Err(mpsc::error::TryRecvError::Empty) => {}
+                    Err(mpsc::error::TryRecvError::Disconnected) => {
+                        if reporter.is_cancelled() || reporter.is_closed() {
+                            cancellation.cancel();
+                            return Ok(());
+                        }
+                        return Err("AI 响应流生产者异常退出".to_owned());
+                    }
+                }
+            }
         }))
     }
 
