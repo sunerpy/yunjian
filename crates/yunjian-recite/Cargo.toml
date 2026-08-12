@@ -9,6 +9,10 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+yunjian-core = { path = "../yunjian-core" }
+
+[dev-dependencies]
+rusqlite.workspace = true
 
 [lints]
 workspace = true
