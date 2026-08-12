@@ -8,6 +8,7 @@ members = [
   "crates/yunjian-voice",
   "crates/yunjian-mcp",
   "crates/yunjian-cli",
+  "crates/yunjian-app",
   "xtask",
 ]
 
@@ -140,6 +141,22 @@ ureq = "3"
 flate2 = "1"
 # 统计基准框架。精确锁定，避免基准输出格式和采样默认值随次版本漂移。
 criterion = "=0.8.2"
+# 桌面外壳。**只固定次版本线**：`tauri` 与 `tauri-build` 的补丁号必须同步演进
+# （`tauri-build` 内部依赖 `tauri-utils`，两侧配置结构体不同版会报出
+# `unknown field` 这种看不出根因的错误，`tauri-build` 自己的诊断里甚至专门为它写了
+# 一段「CLI 比 tauri-build 新」的提示）。因此二者一起升，不单独放宽任何一侧。
+#
+# 刻意**不**引入 `tauri-plugin-log`：日志走 `yunjian_core::init_logger`，
+# 命令行、MCP stdio 服务端与桌面 GUI 共用同一份级别解析、脱敏与滚动文件布局，
+# 控制台一律写 stderr。插件会带来第二套格式与第二套过滤语义。
+#
+# 这里**保留默认特性**，与本文件其余条目的做法相反。理由是具体的：默认集
+# （`wry` / `compression` / `common-controls-v6` / `dynamic-acl` / `x11` / `dbus`）是上游
+# 唯一按组合测试过的那一套，逐项裁剪属于体积优化，而体积优化必须先量再做——目前没有
+# 任何测量支持裁掉其中哪一项，凭直觉关掉 `dbus` 或 `x11` 会在某个 Linux 桌面环境上
+# 变成运行期缺陷而不是编译错误。
+tauri = { version = "2.11" }
+tauri-build = { version = "2.6" }
 
 # 工作区级 lint 门禁。每个成员以 `[lints] workspace = true` 引用，没有例外。
 #
