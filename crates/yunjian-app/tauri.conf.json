@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "云笺",
+  "mainBinaryName": "yunjian-desktop",
+  "version": "0.1.0",
+  "identifier": "top.onethinker.yunjian",
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../app/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "云笺",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "center": true,
+        "decorations": false,
+        "shadow": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "publisher": "sunerpy",
+    "homepage": "https://github.com/sunerpy/yunjian",
+    "shortDescription": "云笺：古典诗词检索与背诵",
+    "longDescription": "云笺是一款离线优先的古典诗词工具，提供检索、阅读、背诵与 AI 赏析。"
+  }
+}

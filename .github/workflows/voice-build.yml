@@ -41,6 +41,27 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
+      # 本作业跑的是 `cargo build --workspace`，而工作区自 todo 59 起含 `yunjian-app`
+      # （Tauri）。它在 Linux 上链接系统 WebKitGTK，缺包时连 `glib-sys` 的 build script
+      # 都过不去，于是这条与 onnxruntime 毫无关系的断言会因为缺 GTK 而失败。
+      # 刻意不改成 `--exclude yunjian-app`：本作业要证明的是**默认构建整体**不链接
+      # onnxruntime，把新成员排除掉就等于把断言的覆盖面缩小到它自己没声明的范围。
+      - name: 安装 Tauri 的 Linux 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev
+
+      # 前端产物是 `yunjian-app` 的编译期前置条件（`generate_context!` 在
+      # `build.frontendDist` 缺失时 panic）。本作业直接跑 cargo，拿不到 Makefile 里
+      # 那条自动构建的前置，所以显式构建。
+      - name: 构建桌面端前端
+        run: npm ci && npm run build
+        working-directory: app
+
       - run: cargo build --workspace --release
       - name: 断言未链接 onnxruntime 且可运行
         run: |

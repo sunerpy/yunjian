@@ -32,8 +32,20 @@ GATE := fmt-check lint test
 CORPUS_GATE_SCALE := 10000
 
 .DEFAULT_GOAL := help
+# 前端构建产物的存在标记。**这是一个真实的编译期前置条件，不是便利设施**：
+# `crates/yunjian-app` 的 `generate_context!` 在 `build.frontendDist` 指向的目录缺失时
+# 直接 panic（tauri-codegen 的 "this path doesn't exist"），而 `cargo test --workspace`
+# 与 `cargo clippy --workspace` 都要编译那个 crate。于是一个没跑过前端构建的新检出
+# 会让全部测试**无法编译**，失败信息还落在一段 codegen panic 里。
+#
+# 不能改用「往版本库里放一个 dist/.gitkeep」绕过：`vite build` 会先清空 outDir，
+# 占位文件在第一次构建后就没了（已实测）。所以只能真的构建。
+FRONTEND_DIST := app/dist/index.html
+
+NPM := npm
+
 .PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test build check ci corpus-gate \
-	corpus-artifact hooks
+	corpus-artifact hooks frontend
 
 help: ## 列出全部可用目标
 	@echo "云笺 · make 目标"
@@ -75,6 +87,28 @@ fmt-check: ## 校验格式；Rust 与 oxfmt 两步都会跑完，一次报出全
 		echo "格式校验未通过：运行 make fmt 修复后重试。" >&2; \
 	fi; \
 	exit "$$status"
+
+frontend: ## 构建桌面端前端（app/）。lint / test / build 会在产物缺失时自动先跑它
+	@command -v $(NPM) >/dev/null 2>&1 || { \
+		echo "缺少 npm。桌面端前端是 cargo 的编译期前置条件，不是可选项。" >&2; \
+		echo "安装 Node.js（>= 20）后重试：mise use -g node" >&2; \
+		exit 1; \
+	}
+	@echo "==> npm ci（app/）"
+	@cd app && if [ -f package-lock.json ]; then $(NPM) ci; else $(NPM) install; fi
+	@echo "==> npm run build（app/）"
+	@cd app && $(NPM) run build
+
+# 产物缺失时才构建。写成文件目标而不是 .PHONY，这样已经构建过的树上零开销。
+$(FRONTEND_DIST):
+	@$(MAKE) --no-print-directory frontend
+
+# order-only 前置（`|` 右侧）：只要求产物存在，不因它比源码旧就重跑。
+# 前端源码改了要重新构建的是开发者自己的事（`make frontend`），
+# 把它做成时间戳依赖会让每次 `make test` 都可能触发一次 npm，门禁时长随之抖动。
+lint: | $(FRONTEND_DIST)
+test: | $(FRONTEND_DIST)
+build: | $(FRONTEND_DIST)
 
 lint: ## clippy 覆盖全工作区与全 target，出现警告即失败
 	@echo "==> cargo clippy $(CLIPPY_FLAGS)"

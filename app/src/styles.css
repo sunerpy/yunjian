@@ -1,0 +1,98 @@
+/*
+ * 云笺前端的设计令牌层。
+ *
+ * 这里**只有令牌，没有组件**：本 todo 的范围是外壳骨架，检索、阅读、设置与背诵界面分别属
+ * todo 61 / 62 / 63。先把令牌立起来是为了让那三个 todo 有同一套刻度可用——否则三处会各自
+ * 写死颜色与间距，最后拼出三种视觉语言。
+ *
+ * 三条约定，后续 todo 必须遵守：
+ * 1. 颜色一律引用 `--color-*`，不写字面 hex。
+ * 2. 间距一律取 `--space-*`（4px 基数），不写任意像素。
+ * 3. 字号一律取 `--text-*`，不写临时字号。
+ *
+ * `--titlebar-height` 由自绘标题栏（todo 60）与其下方的滚动容器共用。两处各写一个数
+ * 会得到一条缝或一段重叠，而这种偏差在截图上才看得见。
+ */
+:root {
+  color-scheme: light dark;
+
+  /* 间距：4px 基数 */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* 圆角 */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* 字号 */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+
+  /* 正文用衬线：主体内容是古典诗词，衬线的竖排笔画更贴近刻本的观感。
+     依次回落到各平台自带的中文衬线字体，不下载任何 webfont——离线优先是产品前提。 */
+  --font-serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+  --font-sans:
+    system-ui, -apple-system, "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 等宽仅用于诊断与数字对齐，正文不用 */
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+
+  /* 颜色：浅色为默认，深色在下方的 media query 里整体替换。
+     只声明语义名，不声明色号名——组件引用 `--color-surface` 而不是 `--paper-50`，
+     换主题时才不必逐处改引用。 */
+  --color-bg: #f7f5f1;
+  --color-surface: #ffffff;
+  --color-surface-raised: #fffefb;
+  --color-border: #e2ddd4;
+  --color-text: #1f2933;
+  --color-text-muted: #6b7280;
+  --color-accent: #1a364a;
+  --color-titlebar-bg: #efece6;
+
+  /* 自绘标题栏高度。标题栏与其下的内容区共用这一个值。 */
+  --titlebar-height: 2.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #14171a;
+    --color-surface: #1b1f23;
+    --color-surface-raised: #22272c;
+    --color-border: #2f353b;
+    --color-text: #e6e3dd;
+    --color-text-muted: #9aa3ad;
+    --color-accent: #8fb8d4;
+    --color-titlebar-bg: #101316;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  /* 桌面外壳不是网页：整页级别的选中与拖拽会让窗口拖动与文本选择互相打断。
+     正文容器会在需要的地方显式恢复 `user-select: text`（todo 61）。 */
+  -webkit-user-select: none;
+  user-select: none;
+}

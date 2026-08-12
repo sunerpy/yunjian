@@ -1,0 +1,50 @@
+[package]
+name = "yunjian-app"
+description = "云笺桌面端：Tauri v2 外壳，承载 React 前端"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+
+# 这个 crate 同时扮演 Tauri 约定里的 `src-tauri` 角色：`tauri.conf.json` 与
+# `tauri.macos.conf.json` 都在这里，因为 `generate_context!` 与 `tauri-build` 都以
+# **manifest 所在目录**为配置根。把配置挪到仓库根的 `src-tauri/` 会多出一个空壳
+# crate 根，且 `cargo tauri build` 必须靠 `--config` 才找得到，白增一处可漂移的耦合。
+
+# 库目标存在的理由与 `yunjian-cli` 相同：可执行文件的行为要能在两个层次上被验证。
+# 窗口配置的跨文件一致性、日志引导顺序适合进程内/集成测试，而真正拉起 WebView
+# 只能靠真机验收（todo 67）。没有库目标，前一半就只能靠后一半间接推断。
+#
+# 另外这也是 Tauri v2 移动端的既定形态（入口在库里、平台外壳调用它），
+# todo 68/69 接移动端时不必再改结构。
+[lib]
+name = "yunjian_app"
+path = "src/lib.rs"
+
+# 可执行文件叫 `yunjian-desktop` 而不是 `yunjian`：后者是 `yunjian-cli` 的产物名
+# （`crates/yunjian-cli/Cargo.toml` 里唯一的产品名落点），同名会让两个 crate 争抢
+# `target/{debug,release}/yunjian`，谁后构建谁覆盖，且这种冲突 cargo 不报错。
+[[bin]]
+name = "yunjian-desktop"
+path = "src/main.rs"
+
+[dependencies]
+tauri = { workspace = true }
+tracing = { workspace = true }
+yunjian-core = { path = "../yunjian-core" }
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dev-dependencies]
+# 窗口配置的一致性断言要按 JSON 逐键比对两份配置文件。刻意不反序列化成
+# `tauri_utils::config::Config`：那条路会把缺失的键补成 serde 默认值，于是
+# 「macOS overlay 漏写 minWidth」这个真实陷阱会被默认值抹平成「两边都是 None，相等」，
+# 断言永远变不了红。必须在 `serde_json::Value` 这一层判断键是否**存在**。
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

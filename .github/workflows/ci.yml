@@ -46,6 +46,18 @@ jobs:
       # 同时缓存 cargo registry / git 与 target 目录。
       - uses: Swatinem/rust-cache@v2
 
+      # Tauri 在 Linux 上链接系统 WebKitGTK，缺了这些包 `crates/yunjian-app` 连编译都
+      # 过不去——而它现在是工作区成员，于是 `cargo test --workspace` 会整体失败。
+      # 这不是「桌面端专用」的额外步骤，是本作业能编译工作区的前提。
+      # 版本必须是 4.1（Tauri v2 用 libsoup3 那一支），4.0 是 v1 的搭配。
+      - name: 安装 Tauri 的 Linux 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev
+
       # 必须显式安装：`make fmt-check` 在缺 oxfmt 时是**硬失败**而不是跳过
       # （todo 5 的刻意选择——跳过等于门禁静默蒸发）。
       # 注意来源是 npm 的 oxc-project/oxc，**不是 crates.io**：crates.io 上叫
@@ -79,6 +91,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
+      # 本作业刻意直接跑 cargo，所以拿不到 Makefile 里那条「产物缺失就自动构建前端」的
+      # 前置依赖，必须在这里显式构建：`crates/yunjian-app` 的 `generate_context!` 在
+      # `app/dist` 缺失时 panic，`cargo test --workspace` 会因此无法编译。
+      # Windows runner 不需要额外系统依赖（WebView2 随系统常青分发），只需要前端产物。
+      - name: 构建桌面端前端
+        run: npm ci && npm run build
+        working-directory: app
+
       - name: 测试
         run: cargo test --workspace
 
