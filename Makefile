@@ -25,7 +25,10 @@ OXFMT_ARGS := --ignore-path .oxfmtignore --ignore-path .gitignore .
 
 # `check` 与 `ci` 共用同一份门禁定义。用一个变量展开两处，从机制上杜绝
 # 「本地 check 通过、CI 却多跑一步」这种漂移。
-GATE := fmt-check lint test
+# `frontend-test` 必须在门禁里，不是可选补充：自绘标题栏的时序缺陷（StrictMode 双调用下
+# 卸载后写状态、订阅泄漏）与非 Tauri 降级只有 Vitest 验得到，Rust 侧一条都覆盖不到。
+# 不进 GATE 就等于那些断言只在有人手动想起来的时候才跑。
+GATE := fmt-check lint test frontend-test
 
 # 语料门禁跑的样本规模。10k 是方案为 CI 指定的规模：足够大到让索引行为与真实语料同形
 # （两字查询在 19 首上无论怎么查都是零点几毫秒，看不出路径退化），又足够小到能在几秒内跑完。
@@ -45,7 +48,7 @@ FRONTEND_DIST := app/dist/index.html
 NPM := npm
 
 .PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test build check ci corpus-gate \
-	corpus-artifact hooks frontend
+	corpus-artifact hooks frontend frontend-test
 
 help: ## 列出全部可用目标
 	@echo "云笺 · make 目标"
@@ -102,6 +105,13 @@ frontend: ## 构建桌面端前端（app/）。lint / test / build 会在产物�
 # 产物缺失时才构建。写成文件目标而不是 .PHONY，这样已经构建过的树上零开销。
 $(FRONTEND_DIST):
 	@$(MAKE) --no-print-directory frontend
+
+# 前端测试。依赖 `$(FRONTEND_DIST)` 不只是为了拿到 node_modules：`contracts.test.ts` 里
+# 「构建产物的样式表里没有那个 Electron 拖动属性」这条断言要读真实产物，而它刻意
+# **不跳过**产物缺失的情况（跳过会让门禁里最需要它的那次执行变成空操作）。
+frontend-test: | $(FRONTEND_DIST) ## 跑桌面端前端测试（Vitest）
+	@echo "==> npm test（app/）"
+	@cd app && $(NPM) test
 
 # order-only 前置（`|` 右侧）：只要求产物存在，不因它比源码旧就重跑。
 # 前端源码改了要重新构建的是开发者自己的事（`make frontend`），

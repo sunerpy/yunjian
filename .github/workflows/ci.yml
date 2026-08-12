@@ -76,6 +76,12 @@ jobs:
       - name: 测试
         run: make test
 
+      # 自绘标题栏的时序缺陷（StrictMode 下卸载后写状态、订阅泄漏）与非 Tauri 降级
+      # 只有 Vitest 验得到，Rust 侧一条都覆盖不到。它在 `make ci` 的 GATE 里，
+      # 这里单列一步只是为了让失败定位到「前端测试」而不是一整条 ci。
+      - name: 前端测试
+        run: make frontend-test
+
       # `build` 刻意不在 `make ci` 里（耗时且不是正确性门禁），所以在 CI 里单列一步。
       - name: 发布构建
         run: make build
@@ -98,6 +104,13 @@ jobs:
       # Windows runner 不需要额外系统依赖（WebView2 随系统常青分发），只需要前端产物。
       - name: 构建桌面端前端
         run: npm ci && npm run build
+        working-directory: app
+
+      # 前端测试在 Windows 上也跑：标题栏的契约测试要在磁盘上按路径找文件
+      # （capabilities JSON、两份 tauri 配置、构建产物），而路径处理正是这个项目
+      # 一再栽跟头的地方。Linux 上绿不代表 Windows 上绿。
+      - name: 前端测试
+        run: npm test
         working-directory: app
 
       - name: 测试
