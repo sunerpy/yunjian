@@ -6,9 +6,11 @@
 #![warn(missing_docs)]
 
 pub mod align;
+pub mod modes;
 pub mod score;
 
 pub use align::{AlignOp, Alignment, align};
+pub use modes::{ClozeOptions, MASK_CHARACTER, MaskStage, PracticeMode, PracticeSession};
 pub use score::{
     BiasedHyp, OpsSummary, Poem, RelativeRhythm, TypedAttempt, TypedScore, VoicePracticeFeedback,
     score_typed,
