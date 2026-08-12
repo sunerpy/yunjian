@@ -112,7 +112,15 @@ tracing-appender = "0.2"
 # 特性组合就会让时间戳静默变形。
 time = { version = "0.3", features = ["formatting", "local-offset"] }
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+# **下限写到补丁号（`^0.8.23`，不是 `^0.8`）是必需的，不是洁癖。** 引入 Tauri 后，
+# GTK 的各个 `*-sys` crate 会带进 `system-deps 6.2.2`，它也要求 `toml = "0.8"`
+# （`default-features = false, features = ["parse"]`）。两个 `^0.8` 要求被 cargo 统一成
+# 一个版本时，实测它选中的是 **0.8.2** 而不是图里可用的 0.8.23——cargo 自己都在
+# `Adding toml v0.8.2 (available: v0.8.23)` 里标注了这一点。
+# 后果是「加了个桌面外壳」把 `yunjian-core` 解析 `config.toml` 用的库静默降了 21 个补丁版本。
+# 写成 `0.8.23` 把统一点顶回去（`system-deps` 的 `^0.8` 照样满足），
+# 于是这条降级不会因为某次无关的重新解析又冒出来。
+toml = "0.8.23"
 thiserror = "2"
 anyhow = "1"
 async-trait = "=0.1.89"
