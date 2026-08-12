@@ -5,22 +5,28 @@
 //! 依赖这层稳定性。
 
 use crate::cli::{
-    AiAction, AiCacheAction, AiCachePurgeArgs, Book, Command, CorpusAction, ModelsAction,
+    AiAction, AiCacheAction, AiCachePurgeArgs, Book, Command, CorpusAction, Mode, ModelsAction,
+    ReciteAction, ReciteArgs,
 };
 use crate::envelope::{ErrorCode, Failure, Status, Warning, WarningCode};
 use crate::exit::{Exit, corpus_failure, describe, describe_model};
 use crate::output::{
-    AiCachePurgeOut, CorpusOut, ModelFetchOut, ModelListOut, ModelRemoveOut, ModelRow, NotFound,
-    Renderable, SearchFilters, SearchHit, SearchOut,
+    AiCachePurgeOut, CorpusOut, GradeCountsOut, ModelFetchOut, ModelListOut, ModelRemoveOut,
+    ModelRow, NotFound, OpOut, RECITE_DATABASE_FILE, ReciteDueOut, ReciteOut, ReciteStatsOut,
+    Renderable, ReviewItemOut, ScoreOut, SearchFilters, SearchHit, SearchOut, grade_key,
 };
 use crate::provision::{Provisioned, degradation, provision};
 use serde::Serialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use yunjian_core::{
-    AuthorDetailRequest, Config, CorpusConfig, Error, PoemDetailRequest, Result,
+    AuthorDetailRequest, Config, CorpusConfig, CorpusHandle, Error, PoemDetailRequest, Result,
     RhymeGroupMembership, RhymeGroupSearchRequest, TEXT_SEARCH_HARD_CAP, TextSearchRequest,
     Yunjian,
+};
+use yunjian_recite::{
+    FsrsGrade, PracticeMode, PracticeSession, Scheduler, TypedAttempt, align, grade_typed,
+    review_typed,
 };
 use yunjian_voice::models::{FetchProgress, ModelCache, ModelError};
 
@@ -224,7 +230,294 @@ fn run(
                 .map(|produced| produced.warn(warnings))
                 .map_err(Failed::from)
         }
+        // 排程查询刻意**不打开语料库**，理由见 `cli::ReciteAction::Due` 的说明。
+        Command::Recite(ReciteArgs {
+            action: Some(ReciteAction::Due { all }),
+            ..
+        }) => recite_due(config, *all),
+        Command::Recite(ReciteArgs {
+            action: Some(ReciteAction::Stats),
+            ..
+        }) => recite_stats(config),
+        Command::Recite(args) => recite(config, &corpus, args),
     }
+}
+
+/// 复习库路径。与赏析缓存并列放在 `app.data_dir` 下。
+fn review_database(config: &Config) -> PathBuf {
+    config.app.data_dir.join(RECITE_DATABASE_FILE)
+}
+
+fn recite_due(config: &Config, all: bool) -> std::result::Result<Produced, Failed> {
+    let scheduler = Scheduler::open(review_database(config)).map_err(Failed::from)?;
+    let states = if all {
+        // 「到期日不晚于可表示的最大日序」就是整份排程；内核没有另一个列全部的入口，
+        // 而在 CLI 里绕过它自己查表就等于把排程逻辑抄了第二份。
+        scheduler.due_on(i64::MAX)
+    } else {
+        scheduler.due_today()
+    }
+    .map_err(Failed::from)?;
+    let empty = states.is_empty();
+    let out = ReciteDueOut {
+        database: review_database(config).display().to_string(),
+        scope: if all { "all" } else { "due_today" },
+        items: states.iter().map(ReviewItemOut::from).collect(),
+    };
+    Produced::new(&out, empty).map_err(Failed::from)
+}
+
+fn recite_stats(config: &Config) -> std::result::Result<Produced, Failed> {
+    let scheduler = Scheduler::open(review_database(config)).map_err(Failed::from)?;
+    let scheduled = scheduler.due_on(i64::MAX).map_err(Failed::from)?;
+    let due_today = scheduler.due_today().map_err(Failed::from)?.len();
+    let empty = scheduled.is_empty();
+    let out = ReciteStatsOut {
+        database: review_database(config).display().to_string(),
+        scheduled_total: scheduled.len(),
+        due_today,
+        by_last_grade: GradeCountsOut::tally(&scheduled),
+        grading: config.recite.grading,
+    };
+    Produced::new(&out, empty).map_err(Failed::from)
+}
+
+/// `--mode voice` 为什么这次走不了语音。
+///
+/// 每个变体都对应一个真实条件，没有「理论上可用」的分支：语音会话（todo 56）还没接进来，
+/// 所以即使特性开着、模型也在，本构建依然只能按打字形态完成。报成别的样子就是撒谎。
+enum VoiceFallback {
+    /// 本构建没开 `voice` 特性。
+    FeatureDisabled,
+    /// 特性开着，但清单里的识别模型一个都没就位。
+    ModelMissing,
+    /// 特性与模型都齐，但语音会话尚未接入。
+    SessionUnavailable,
+}
+
+impl VoiceFallback {
+    /// 面向用户的一句说明。**必须点明「已按打字形态完成」**，否则用户会以为这次没练成。
+    fn message(&self) -> String {
+        let tail = "已退化为挖空打字练习并照常计入排程；评分内核与语音路径完全相同";
+        match self {
+            Self::FeatureDisabled => {
+                format!("本构建未启用 voice 特性，语音练习不可用；{tail}")
+            }
+            Self::ModelMissing => {
+                format!("语音识别模型尚未就位；{tail}")
+            }
+            Self::SessionUnavailable => {
+                format!("语音会话尚未接入本版本；{tail}")
+            }
+        }
+    }
+
+    fn hint(&self) -> Option<&'static str> {
+        match self {
+            Self::ModelMissing => {
+                Some("联网后运行 `yunjian models fetch <模型名>`，名字见 `yunjian models list`")
+            }
+            Self::FeatureDisabled | Self::SessionUnavailable => None,
+        }
+    }
+
+    /// 按真实条件判定退化原因。
+    fn detect() -> Self {
+        if !cfg!(feature = "voice") {
+            return Self::FeatureDisabled;
+        }
+        if production_asr_ready() {
+            Self::SessionUnavailable
+        } else {
+            Self::ModelMissing
+        }
+    }
+}
+
+/// 清单里是否有一个已解包的生产识别模型。
+///
+/// 读不到清单时按「没就位」处理：这条路径只决定退化文案，为它把整条命令判失败是把
+/// 一次能完成的练习变成一次失败。
+fn production_asr_ready() -> bool {
+    ModelCache::discover()
+        .statuses()
+        .map(|statuses| {
+            statuses
+                .iter()
+                .any(|status| status.kind.as_str() == "asr" && status.unpacked)
+        })
+        .unwrap_or(false)
+}
+
+/// 跑一轮练习：出题、读入作答、由内核评分、提交排程。
+///
+/// **本函数不含任何评分逻辑**：分数来自 `review_typed`，对齐操作来自 `align`，等级来自
+/// `grade_typed`，间隔来自 `Scheduler::review`。这里只负责取数据、读 stdin 与组装载荷。
+fn recite(
+    config: &Config,
+    corpus: &CorpusConfig,
+    args: &ReciteArgs,
+) -> std::result::Result<Produced, Failed> {
+    let poem_id = args
+        .poem_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| Failed {
+            exit: Exit::Usage,
+            failure: Failure::new(ErrorCode::Usage, "`recite` 需要一个非空的 stable_id"),
+            warnings: Vec::new(),
+        })?;
+
+    let (handle, mut warnings) = open_handle(corpus)?;
+    // 查不到就是**用法错误**而不是空结果：`show` 是查询，查不到是一种答案；`recite` 是对
+    // 一个具名对象的动作，名字不成立时这条命令根本无从执行，得让调用方改参数。
+    let detail = yunjian_core::poem_detail(&handle, poem_id).map_err(|error| match error {
+        Error::Search(_) => Failed {
+            exit: Exit::Usage,
+            failure: Failure::new(
+                ErrorCode::Usage,
+                format!("语料里没有 stable_id 为 `{poem_id}` 的作品，无法背诵"),
+            )
+            .with_hint(
+                "用 `yunjian search <关键词>` 或 `yunjian author <作者>` 先查到它的 stable_id",
+            ),
+            warnings: Vec::new(),
+        },
+        other => Failed::from_core(&other),
+    })?;
+
+    let (mode, fallback) =
+        match args
+            .mode
+            .practice(args.ratio, effective_seed(args), args.masked_lines)
+        {
+            Some(mode) => (mode, None),
+            None => {
+                let fallback = VoiceFallback::detect();
+                let mut warning = Warning::new(WarningCode::VoiceFallback, fallback.message());
+                if let Some(hint) = fallback.hint() {
+                    warning.message.push_str(&format!("；{hint}"));
+                }
+                warnings.push(warning);
+                (
+                    Mode::Cloze
+                        .practice(args.ratio, effective_seed(args), args.masked_lines)
+                        .unwrap_or_else(|| unreachable!("挖空形态恒有对应内核形态")),
+                    Some(fallback),
+                )
+            }
+        };
+
+    let session = PracticeSession::start(&handle, &detail.poem.body, mode).map_err(Failed::from)?;
+    let answer = read_answer(&session)?;
+    let attempt = TypedAttempt::new(&handle, &answer).map_err(Failed::from)?;
+    let review = review_typed(session.reference(), &attempt);
+    let alignment = align(&handle, &detail.poem.body, &answer).map_err(Failed::from)?;
+
+    let mut scheduler = Scheduler::open(review_database(config)).map_err(Failed::from)?;
+    let first_attempt = scheduler.state(poem_id).map_err(Failed::from)?.is_none();
+    let (grade, grade_source) = match args.grade {
+        Some(chosen) => (FsrsGrade::from(chosen), "user_chosen"),
+        None => (
+            grade_typed(&review.score, first_attempt, &config.recite.grading),
+            "typed_mapping",
+        ),
+    };
+    let state = scheduler.review(poem_id, grade).map_err(Failed::from)?;
+
+    let executed = session.mode();
+    let out = ReciteOut {
+        poem_id: poem_id.to_owned(),
+        title: detail.poem.title.clone(),
+        author: detail.poem.author.clone(),
+        dynasty: detail.poem.dynasty.raw.clone(),
+        mode: mode_key(executed),
+        requested_mode: fallback.as_ref().map(|_| args.mode.as_key()),
+        fallback_reason: fallback.as_ref().map(VoiceFallback::message),
+        ratio: cloze_ratio(executed),
+        seed: cloze_seed(executed),
+        masked_lines: masked_lines(executed),
+        prompt: session.prompt().to_owned(),
+        hidden_indices: session.hidden_indices().to_vec(),
+        reference: session.reference().as_str().to_owned(),
+        answer: attempt.as_str().to_owned(),
+        score: ScoreOut::from(&review.score),
+        ops: alignment.ops.iter().map(OpOut::from).collect(),
+        grade: grade_key(grade),
+        grade_source,
+        first_attempt,
+        database: review_database(config).display().to_string(),
+        review: ReviewItemOut::from(&state),
+    };
+    Ok(Produced::new(&out, false)?.warn(warnings))
+}
+
+/// 本次生效的挖空种子。省略 `--seed` 时按当前时间取一个，并由载荷回显以便复现。
+///
+/// 固定默认值会让每次练同一首诗都挖同样的字，练成认位置而不是记诗。
+fn effective_seed(args: &ReciteArgs) -> u64 {
+    args.seed.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos() as u64)
+    })
+}
+
+fn mode_key(mode: PracticeMode) -> &'static str {
+    match mode {
+        PracticeMode::Cloze(_) => "cloze",
+        PracticeMode::FirstChar => "first-char",
+        PracticeMode::Masked(_) => "masked",
+    }
+}
+
+fn cloze_ratio(mode: PracticeMode) -> Option<f32> {
+    match mode {
+        PracticeMode::Cloze(options) => Some(options.ratio()),
+        PracticeMode::FirstChar | PracticeMode::Masked(_) => None,
+    }
+}
+
+fn cloze_seed(mode: PracticeMode) -> Option<u64> {
+    match mode {
+        PracticeMode::Cloze(options) => Some(options.seed()),
+        PracticeMode::FirstChar | PracticeMode::Masked(_) => None,
+    }
+}
+
+fn masked_lines(mode: PracticeMode) -> Option<usize> {
+    match mode {
+        PracticeMode::Masked(stage) => Some(stage.masked_lines()),
+        PracticeMode::Cloze(_) | PracticeMode::FirstChar => None,
+    }
+}
+
+/// 从 stdin 读入作答。
+///
+/// 读之前先把提示写到 stderr：stdout 属于结果与 `--json` 那一行信封，而一条在终端里
+/// 静默等待输入的命令与卡死无法区分。提示同时进载荷，脚本不必解析日志。
+///
+/// 空作答判**用法错误**而不是零分：它几乎总是「忘了接管道」，而按零分记账会往复习历史
+/// 里写一条用户没做过的 `Again`，那笔账事后无法撤回。
+fn read_answer(session: &PracticeSession) -> std::result::Result<String, Failed> {
+    tracing::info!(prompt = %session.prompt(), "请照提示默写，输入完成后以 EOF 结束");
+    let mut answer = String::new();
+    std::io::Read::read_to_string(&mut std::io::stdin(), &mut answer).map_err(|error| Failed {
+        exit: Exit::Usage,
+        failure: Failure::new(ErrorCode::Usage, format!("读取 stdin 失败：{error}")),
+        warnings: Vec::new(),
+    })?;
+    if answer.trim().is_empty() {
+        return Err(Failed {
+            exit: Exit::Usage,
+            failure: Failure::new(ErrorCode::Usage, "作答为空，本次不计入复习排程").with_hint(
+                "作答从 stdin 读入，例如 `echo '床前明月光…' | yunjian recite <poem-id>`",
+            ),
+            warnings: Vec::new(),
+        });
+    }
+    Ok(answer)
 }
 
 fn ai_cache_purge(
@@ -276,13 +569,22 @@ fn corpus_config(config: &Config, corpus_override: Option<&Path>) -> CorpusConfi
 
 /// 取语料并把派生退化转成警告。
 fn open(corpus: &CorpusConfig) -> std::result::Result<(Yunjian, Vec<Warning>), Failed> {
+    let (handle, warnings) = open_handle(corpus)?;
+    Ok((Yunjian::new(handle), warnings))
+}
+
+/// 同 [`open`]，但交回裸句柄。
+///
+/// 背诵内核要的是 [`CorpusHandle`]：它用随包 `variant_map` 归一化文本，而 [`Yunjian`]
+/// 把句柄收进了 `Arc<Inner>` 里取不出来。
+fn open_handle(corpus: &CorpusConfig) -> std::result::Result<(CorpusHandle, Vec<Warning>), Failed> {
     let provisioned = provision(corpus).map_err(|reason| Failed {
         exit: Exit::CorpusUnavailable,
         failure: corpus_failure(reason),
         warnings: Vec::new(),
     })?;
     let warnings = derived_warnings(&provisioned);
-    Ok((Yunjian::new(provisioned.handle), warnings))
+    Ok((provisioned.handle, warnings))
 }
 
 fn derived_warnings(provisioned: &Provisioned) -> Vec<Warning> {
