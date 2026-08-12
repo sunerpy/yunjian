@@ -44,6 +44,12 @@ pub mod lexicon;
 /// 模型、没有声卡的机器仍然能验证节奏是对的。
 pub mod prosody;
 
+/// 流式识别的双路解码、卡顿判定与事件驱动。**判定层不带特性开关**——类型隔离、
+/// 卡顿时序、识别器配置取值与降级策略都是纯逻辑，真实推理藏在
+/// [`recognize::DualDecode`] 之后，于是一台没有模型、没有麦克风的机器仍然能验证
+/// 「偏置输出进不了评分」「四字后停顿恰好提示一次」这两件最要紧的事。
+pub mod recognize;
+
 #[cfg(feature = "voice")]
 pub mod asr;
 #[cfg(feature = "voice")]

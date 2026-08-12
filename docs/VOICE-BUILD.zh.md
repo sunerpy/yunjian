@@ -28,6 +28,7 @@
 - [五平台结论](#五平台结论)
 - [按平台前置条件](#按平台前置条件)
 - [冒烟模型](#冒烟模型)
+- [流式识别与双路解码](#流式识别与双路解码)
 - [已知限制](#已知限制)
 - [复现命令](#复现命令)
 
@@ -257,6 +258,96 @@ tar xf sherpa-onnx-whisper-tiny.tar.bz2 && tar xf kitten-nano-en-v0_2-fp16.tar.b
 
 冒烟用例刻意**在模型缺失时失败而不是跳过**：跳过会让「没跑」冒充「通过」，
 在一个专门用来证明通路成立的 spike 里那是最坏的结果。
+
+## 流式识别与双路解码
+
+流式识别走 `sherpa_rs_sys` 的在线 C API，因为 `sherpa-rs` 0.6.8 只封装了 offline
+识别器（`whisper.rs` 与 `zipformer.rs` 用的都是 `SherpaOnnxCreateOfflineRecognizer`）。
+判定层与 FFI 层分开：
+
+| 层     | 位置                                        | 特性开关 | 里面是什么                                             |
+| ------ | ------------------------------------------- | -------- | ------------------------------------------------------ |
+| 判定层 | `crates/yunjian-voice/src/recognize.rs`     | **无**   | 双路的类型隔离、卡顿时序、ITN 取值、双路成本的降级策略 |
+| FFI 层 | `crates/yunjian-voice/src/asr/streaming.rs` | `voice`  | 识别器与流的构造、喂帧、取结果、墙钟计时               |
+
+分层的理由与 `models` / `prosody` / `audio` 三处一致：一台没有模型、没有麦克风的机器
+仍然能验证「偏置输出进不了评分」与「四字后停顿恰好提示一次」，而那两件事恰是最需要
+被守住的。
+
+### 为什么必须两路解码
+
+把诗文本本身当 hotwords 去偏置识别器，会让它吐出**用户没说的字**。这不是推测，是本机
+实测：同一段与诗无关的随包测试音频，两路输出不同——
+
+```
+无偏置 = "昨天是 MONDAY TODAY IS LIBR THE DAY AFTER TOMORROW是星期三"
+偏置（诗文本作 hotwords）= "昨天天是 MONDAY TODAY IS LIBR THE DAY AFTER TOMORROW是星期三"
+```
+
+多出来的那个「天」正是偏置在无据可依处补出的字。因此两路在类型上不可互换：无偏置一路
+包成 `UnbiasedAsrHyp`（携带一枚只能由 `recognize.rs` 里唯一构造点签发的
+`DecodeWitness`），偏置一路是 `yunjian_recite::BiasedHyp`——复用背诵内核那个已被
+`trybuild` 守住「不得进入打字评分」的类型，而不是另造一个同名类型。
+
+**两路假设谁都不能进入评分。** 2026-08-11 裁决（CER 77.01%）作废了「无偏置即可评分」
+这条语义：见证只能证明没有 hotword 偏置，证明不了转写可靠。因此
+`RecognitionPlan::diagnostics` 默认关闭，两路假设默认不出现在事件流里。
+
+### 两道门禁互补，谁都不能删
+
+实测证明这两道门禁抓的不是同一件事：往 `score.rs` 注入一条
+`impl From<BiasedHyp> for TypedAttempt` 之后——
+
+- `trybuild` 用例**照旧通过**（那条用例传值而形参要引用，编译仍然失败）；
+- `score.rs` 里的 grep 守卫**变红**，点名 `implFrom<BiasedHyp>forTypedAttempt`。
+
+也就是说 trybuild 守的是「现有调用形态编不过」，grep 守的是「没人新开一条通路」。
+只留一道就会漏掉另一半。
+
+### 卡顿提示不依赖时间戳
+
+上游明确不做 forced alignment（sherpa-onnx #3536），且只暴露 token 的 **start** 时间而
+没有 stop（#985）。因此 `StuckDetector` 只看两件事：能量门控给出的连续静音时长，以及
+会话游标。它**刻意不接受任何识别假设**——CER 77% 下 partial 的 matched prefix 是噪声，
+用它推进位置会把提示指到错误的字上。
+
+阈值取自参考产品 `vad_speech_tail` 的默认值 2000 ms（`DEFAULT_TRAILING_SILENCE_MS`），
+「尚未开口」用同一个值（`DEFAULT_NO_SPEECH_MS`）。同一个游标位置最多提示一次。
+
+### 双路成本实测
+
+模型 `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20`（int8，Apache-2.0），
+音频 10.05 s，`num_threads = 1`，参考机 Xeon 6975P-C：
+
+| 模式       |    实时率 |
+| ---------- | --------: |
+| 单路无偏置 | **0.066** |
+| 双路       | **0.150** |
+
+两路共用一份权重（hotwords 在 sherpa-onnx 里是**流级**设置，见
+`SherpaOnnxCreateOnlineStreamWithHotwords`），所以差值就是纯解码开销，不掺入两次模型
+加载。桌面级 CPU 上双路距 1.0 还有近 7 倍余量，判定为 `DecodePlan::Dual`。
+
+**移动级设备上的实时率未实测**（没有设备），因此「双路 RTF 超 1.0 就降为单路无偏置并
+关闭高亮」这条策略当前只有判定函数与它两侧的单元测试，没有真机数据。降级形态里
+**没有「丢帧」这个取值**：丢帧会让保留下来的那一路也不可信，等于用两个坏结果换一个坏
+结果。
+
+### 两处必须照抄的配置细节
+
+- **`model_type` 留空**，让 sherpa-onnx 从 ONNX 元数据里读。写死 `"zipformer2"` 会让
+  白名单里那个 2023-02-20 双语包（它是 zipformer 而非 zipformer2）报
+  `'query_head_dims' does not exist in the metadata`——一条完全不指向病因的错误。
+- **hotwords 必须逐字空格分隔、每句一条**。`modeling_unit = "cjkchar"` 要求逐字编码；
+  整句不分隔会被当成一个未知 token 而**静默失效**，而静默失效的偏置路径看起来只像
+  「模型不认识这首诗」。整首诗一条也不行：那会把「必须整首连读」变成匹配前提。
+
+### ITN 恒关
+
+`ItnPolicy` 只有 `Disabled` 一个取值，`OnlineDecodeConfig::rule_fsts()` 恒返回空串，
+而 `rule_fsts` 正是 sherpa-onnx 里 ITN 的入口。做成枚举而不是 `bool` 是为了让「打开
+ITN」在类型层面无从表达：ITN 会把「三千」改写成「3000」，而背诵比对的是诗的原字形，
+任何改写都直接制造假的替换与漏读。
 
 ## 中文合成的两个坑（todo 45 实测）
 
