@@ -17,6 +17,7 @@
 pub mod cache;
 pub mod genai_provider;
 pub mod keystore;
+pub mod pregenerate;
 pub mod provider;
 mod stream;
 
@@ -29,6 +30,12 @@ pub use genai_provider::{GenAiProvider, GenAiProviderConfig, ProviderKind};
 pub use keystore::{
     Backend, KeyStore, KeyStoreConfig, Lookup, OsKeychain, Persistence, Protection, StorageReport,
     default_plaintext_path, install_default_store,
+};
+pub use pregenerate::{
+    ANTHOLOGY_TAGS, CoverageSelector, DATASET_SCHEMA_VERSION, DISCLOSURE_MARKERS, DatasetManifest,
+    LOCAL_CACHE_TABLE, NOT_GENERATED_MARKER, OPEN_WEIGHT_LICENSES, OPEN_WEIGHT_PROVIDERS,
+    OpenWeightModel, PregeneratedDataset, PregeneratedRecord, SHIPPED_TABLE, closed_api_provider,
+    ensure_disclosure, ensure_readable_table, existing_pregenerated_ids, sha256_hex,
 };
 pub use provider::{
     APPRECIATION_TEMPLATE, APPRECIATION_TEMPLATE_FILE, APPRECIATION_TEMPLATE_VERSION, Appreciation,

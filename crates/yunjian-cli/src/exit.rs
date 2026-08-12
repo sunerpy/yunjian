@@ -80,6 +80,17 @@ pub fn describe(error: &Error) -> (Exit, Failure) {
             Failure::new(ErrorCode::Usage, error.to_string())
                 .with_hint("把该供应商的 API key 存入操作系统钥匙串后重试；密钥不进 `config.toml`"),
         ),
+        // 预生成门禁只在 `xtask pregenerate` 这条构建期路径上触发，用户的 CLI 走不到它。
+        // 但它是配置错误而不是语料缺失——归到 3 会让用户被引导去下载语料，而真正要改的是
+        // 生成配置或披露文件。所以是 2，且下一步指向那两处。
+        Error::PregenerationRejected(_) | Error::PregenerationClosedProvider { .. } => (
+            Exit::Usage,
+            Failure::new(ErrorCode::Usage, error.to_string()).with_hint(
+                "随包赏析数据集只能由开放权重模型生成：检查 `xtask pregenerate` 的 \
+                 `--model-license`（只认 MIT 与 Apache-2.0）、`--provider`（须是本地运行时）\
+                 与 `dataset/README.md` 的披露段",
+            ),
+        ),
         Error::Corpus(_)
         | Error::CommentaryCitationMissing { .. }
         | Error::Io(_)

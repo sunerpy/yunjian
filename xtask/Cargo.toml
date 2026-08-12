@@ -29,6 +29,13 @@ tracing = { workspace = true }
 ureq = { workspace = true }
 yunjian-core = { path = "../crates/yunjian-core" }
 yunjian-corpus = { path = "../crates/yunjian-corpus" }
+# `pregenerate` 复用 `yunjian-ai::pregenerate` 的开放权重门禁与溯源结构，绝不在 xtask
+# 里另写一套判据——「这条内容我们凭什么可以发」只能有一个实现。事实块也必须由
+# `AppreciationRequest` 渲染，否则算出的 grounding_digest 与运行期查随包表时的对不上。
+yunjian-ai = { path = "../crates/yunjian-ai" }
+# `pregenerate` 真的调模型时要驱动 `AppreciationProvider` 的 future。xtask 本身是
+# 同步程序，故只建一个当前线程运行时。
+tokio = { workspace = true }
 # `cer-spike` 的参考文本取自繁体上游，识别结果也常是繁体：两侧都要做 t2s 归一，
 # 否则字形差异会被当成识别错误算进 CER。用的是语料侧同一个实现，判据只能有一个。
 ferrous-opencc = { workspace = true }
