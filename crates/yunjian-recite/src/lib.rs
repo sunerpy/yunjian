@@ -7,10 +7,15 @@
 
 pub mod align;
 pub mod modes;
+pub mod phonetic;
 pub mod score;
 
 pub use align::{AlignOp, Alignment, align};
 pub use modes::{ClozeOptions, MASK_CHARACTER, MaskStage, PracticeMode, PracticeSession};
+pub use phonetic::{
+    NEAR_HOMOPHONE_ERROR_WEIGHT, NEAR_HOMOPHONE_MAX_DISTANCE, PhoneticReview, SubstitutionClass,
+    SubstitutionReview, classify_substitution, nearest_reading_distance, review_typed,
+};
 pub use score::{
     BiasedHyp, OpsSummary, Poem, RelativeRhythm, TypedAttempt, TypedScore, VoicePracticeFeedback,
     score_typed,

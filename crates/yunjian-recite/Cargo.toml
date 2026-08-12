@@ -10,6 +10,8 @@ authors.workspace = true
 
 [dependencies]
 yunjian-core = { path = "../yunjian-core" }
+pinyin.workspace = true
+inputx-phonetic-edit.workspace = true
 
 [dev-dependencies]
 rusqlite.workspace = true
