@@ -59,8 +59,8 @@ pub use search::text::{
     TextSearchRequest,
 };
 pub use search::topic::{
-    AuthorRecord, CommentaryCitation, CommentaryEntry, PoemDetail, PoemRecord, Provenance,
-    RhymeGroupMembership, TAG_PAGE_LIMIT, TagSummary, Tone, ToneAnnotation, ToneCell, ToneLine,
-    browse_by_tag, list_tags, poem_detail,
+    AuthorRecord, CommentaryCitation, CommentaryEntry, PoemDetail, PoemFeatures, PoemRecord,
+    Provenance, RhymeGroupMembership, TAG_PAGE_LIMIT, TagSummary, Tone, ToneAnnotation, ToneCell,
+    ToneLine, browse_by_tag, frequent_content_chars, list_tags, poem_detail, poem_features,
 };
 pub use text::{content_chars, is_punctuation};

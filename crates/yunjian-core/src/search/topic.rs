@@ -337,6 +337,17 @@ pub struct TagSummary {
     pub poem_count: usize,
 }
 
+/// 一首作品可用于与其它作品比对的属性集合。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PoemFeatures {
+    /// 作品本体，含正文、`ci_tune` 与 `work_group`。
+    pub poem: PoemRecord,
+    /// 构建期打上的策展标签，有序。
+    pub tags: Vec<String>,
+    /// 逐韵书的韵部归属，含可信度。
+    pub rhyme_groups: Vec<RhymeGroupMembership>,
+}
+
 /// 作品详情。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PoemDetail {
@@ -379,6 +390,43 @@ pub fn list_tags(handle: &CorpusHandle) -> Result<Vec<TagSummary>> {
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
+/// 按「出现在多少首作品里」降序取前 `limit` 个正文字。
+///
+/// **口径是文档频率而不是字频**：走首启派生的 `ngram` 表，那张表对每首作品的每个不同
+/// 正文字只有一行（见 [`crate::derive`] 的 `derive_grams` 用 `BTreeSet` 去重），所以
+/// `COUNT(*)` 数出来的是「多少首诗里出现过这个字」。这正是相似度需要的口径：一个字在
+/// 单篇里重复十次不该让它变成停用字，出现在半个语料里才该。
+///
+/// 排序键是 `(文档频率降序, 字升序)`，因此同频时的次序跨机器一致，取前 N 的结果可复现。
+///
+/// **派生结构缺失时返回空列表而不是报错**：调用方（相似度里的字面重叠项）在没有停用字表
+/// 时仍应给出结果，只是重叠项会把常用字算进去。把它升级成错误会让「相似作品」这个功能
+/// 因为一张可重建的索引缺失而整体不可用。
+///
+/// # Errors
+///
+/// 打开只读连接或执行查询失败时返回错误。
+pub fn frequent_content_chars(handle: &CorpusHandle, limit: usize) -> Result<Vec<char>> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    let connection = handle.connect()?;
+    if !crate::derive::derived_indexes_present(&connection)? {
+        return Ok(Vec::new());
+    }
+    let mut statement = connection.prepare_cached(FREQUENT_CHARS_SQL)?;
+    let rows = statement.query_map([i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
+        row.get::<_, String>(0)
+    })?;
+    let mut characters = Vec::with_capacity(limit);
+    for gram in rows {
+        if let Some(character) = gram?.chars().next() {
+            characters.push(character);
+        }
+    }
+    Ok(characters)
+}
+
 /// 按策展标签浏览。
 ///
 /// 未登记的标签名返回 [`Error::Search`] 并列出现有标签，而不是空页。
@@ -399,6 +447,37 @@ pub fn browse_by_tag(handle: &CorpusHandle, tag: &str, cursor: Option<&str>) -> 
         cursor,
         normalized,
     )
+}
+
+/// 批量读取若干作品的本体、标签与韵部归属。
+///
+/// **它刻意不是 [`poem_detail`] 的批量版**：详情还要做逐字平仄反查、溯源、`work_group`
+/// 全表归属扫描与集评出处校验，其中平仄一项就是每字一次索引查询。凡是「一次要看几十上
+/// 百首、只需要比对属性」的调用方（相关作品排序即是）用详情会把成本乘上候选数，而那些
+/// 多出来的字段一个都用不到。
+///
+/// 找不到的 `poem_id` **静默跳过**而不是报错：调用方给的是检索结果里的 id 集合，其中一条
+/// 恰好在并发的语料替换里消失时，整批不该因此失败。返回顺序与入参一致。
+///
+/// # Errors
+///
+/// 打开只读连接或执行查询失败时返回错误。
+pub fn poem_features(handle: &CorpusHandle, poem_ids: &[&str]) -> Result<Vec<PoemFeatures>> {
+    let connection = handle.connect()?;
+    let mut features = Vec::with_capacity(poem_ids.len());
+    for poem_id in poem_ids {
+        let poem = match load_poem(&connection, poem_id) {
+            Ok(poem) => poem,
+            Err(Error::Search(_)) => continue,
+            Err(error) => return Err(error),
+        };
+        features.push(PoemFeatures {
+            tags: load_tags(&connection, poem_id)?,
+            rhyme_groups: load_rhyme_groups(&connection, poem_id)?,
+            poem,
+        });
+    }
+    Ok(features)
 }
 
 /// 作品详情：本体、作者、平仄、韵部、`work_group` 兄弟项、溯源、标签与历代集评。
@@ -461,6 +540,11 @@ const TAG_POEMS_SQL: &str = concat!(
 /// 全部标签及其作品数。`tag` 是驱动表，故计数为零的标签也会出现。
 const TAG_SUMMARY_SQL: &str = "SELECT g.name, COUNT(t.poem_id) FROM tag AS g \
      LEFT JOIN poem_tag AS t ON t.tag = g.name GROUP BY g.name ORDER BY g.name";
+
+/// 文档频率最高的单字 gram。`ngram_gram_idx (gram, stable_id)` 是覆盖索引，故分组按索引
+/// 序完成、不建临时 B 树；`LENGTH(gram) = 1` 在 TEXT 上按字符计数，排除二字 gram。
+const FREQUENT_CHARS_SQL: &str = "SELECT gram FROM ngram WHERE LENGTH(gram) = 1 \
+     GROUP BY gram ORDER BY COUNT(*) DESC, gram ASC LIMIT ?1";
 
 /// 标签是否已在 `tag` 表里登记。
 const TAG_EXISTS_SQL: &str = "SELECT 1 FROM tag WHERE name = ?1";

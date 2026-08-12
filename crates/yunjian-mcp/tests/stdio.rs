@@ -15,6 +15,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 const CHILD_ENV: &str = "YUNJIAN_MCP_STDIO_TEST_CHILD";
 
+/// 缺语料场景用来探测的工具。固定按名字取，不用 `tools[0]`：声明顺序变一次就会静默换掉
+/// 被测对象。
+const PROBE_TOOL: &str = "search_poem";
+
 fn main() {
     if std::env::var_os(CHILD_ENV).is_some() {
         child_main();
@@ -152,11 +156,19 @@ async fn run_session(session: Session) -> SessionOutput {
     let reader = CapturingReader::new(stdout, Arc::clone(&capture));
     let client = ().serve((reader, stdin)).await.expect("完成 MCP 握手");
     let tools = client.list_all_tools().await.expect("调用 tools/list");
-    assert!(!tools.is_empty(), "todo 31 至少应暴露一个骨架工具");
+    assert!(!tools.is_empty(), "至少应暴露一个工具");
+    assert!(
+        tools.iter().any(|tool| tool.name == PROBE_TOOL),
+        "缺语料探针要调的 {PROBE_TOOL} 应在 tools/list 里"
+    );
     let call_result = if matches!(session, Session::MissingCorpus) {
+        // 参数必须合法。缺语料是**语料层**的失败，而参数错误会先在反序列化处被拦掉，
+        // 于是拿到的是 invalid_params 而不是 corpus_missing——那样这条断言就换了被测对象。
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("query".to_owned(), Value::String("明月".to_owned()));
         Some(
             client
-                .call_tool(CallToolRequestParams::new(tools[0].name.clone()))
+                .call_tool(CallToolRequestParams::new(PROBE_TOOL).with_arguments(arguments))
                 .await
                 .expect("缺语料应返回工具结果而不是协议错误"),
         )

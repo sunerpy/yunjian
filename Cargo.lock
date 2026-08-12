@@ -7422,8 +7422,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rmcp",
+ "rusqlite",
+ "schemars 1.2.2",
+ "serde",
  "serde_json",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
  "yunjian-core",

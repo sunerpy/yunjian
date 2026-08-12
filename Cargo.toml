@@ -25,6 +25,12 @@ authors = ["sunerpy <nkuzhangshn@gmail.com>"]
 [workspace.dependencies]
 # MCP 协议：3.x 无 SSE 传输，且一个月内发生过 major 变更，故精确锁定。
 rmcp = "=3.1.2"
+# MCP 工具的 `inputSchema` / `outputSchema` 由 `JsonSchema` 派生生成。**必须与 `rmcp`
+# 内部所用的主版本一致**（`rmcp 3.1.2` 依赖 `schemars 1.0`，实测解析到 1.2.2）：两份
+# 不同主版本的 `schemars` 会让 `derive` 产出的 `JsonSchema` 实现落在另一个 trait 上，
+# 而 `Parameters<T>` / `Json<T>` 的约束只认 `rmcp` 那一份，报出只有版本注记区别的
+# 「trait bound not satisfied」。这里跟着 `rmcp` 走，不独立选版本。
+schemars = "1"
 # `bundled` 不是默认特性，且不可移除：系统 SQLite 可能早于 FTS5 trigram 分词器（3.34.0）。
 rusqlite = { version = "0.40", features = ["bundled"] }
 fsrs = "6.6"
