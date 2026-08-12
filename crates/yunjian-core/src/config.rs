@@ -178,6 +178,8 @@ pub struct VoiceConfig {
     pub asr_model: Option<String>,
     /// 是否允许按需下载模型；关闭后缺模型直接降级为键入练习。
     pub allow_download: bool,
+    /// 朗读节奏。
+    pub prosody: VoiceProsodyConfig,
 }
 
 impl Default for VoiceConfig {
@@ -187,6 +189,31 @@ impl Default for VoiceConfig {
             tts_model: None,
             asr_model: None,
             allow_download: true,
+            prosody: VoiceProsodyConfig::default(),
+        }
+    }
+}
+
+/// `[voice.prosody]`
+///
+/// 朗读节奏的两个停顿时长。**它们是配置项而不是常量，理由是可测性而非灵活性**：合成引擎
+/// 既无 SSML、其 `silence_scale` 也已报损，所以节奏只能由逐音步合成加 Rust 侧插静音得到，
+/// 而验收断言的是「间隔不短于配置值」。做成配置之后，把 120 调成 150 不会让任何测试失效——
+/// 测试的结构不随调参而改。写成常量则每次调参都要同步改一个硬编码数字，那正是会被改漏的地方。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct VoiceProsodyConfig {
+    /// 同一行内相邻音步之间的静音，毫秒。
+    pub foot_pause_ms: u32,
+    /// 行与行之间的静音，毫秒。
+    pub line_pause_ms: u32,
+}
+
+impl Default for VoiceProsodyConfig {
+    fn default() -> Self {
+        Self {
+            foot_pause_ms: 120,
+            line_pause_ms: 400,
         }
     }
 }
@@ -391,6 +418,12 @@ model_dir = {voice_model_dir}
 # asr_model = "sherpa-onnx-streaming-zipformer-zh"
 # 是否允许按需下载模型；关闭后缺模型将直接降级为键入练习。
 allow_download = {voice_allow_download}
+
+[voice.prosody]
+# 朗读时音步之间与行之间插入的静音，毫秒。引擎既无 SSML、其静音参数也已报损，节奏由
+# 逐音步合成加 Rust 侧插静音得到，这两个值就是那两段静音的时长。
+foot_pause_ms = {voice_foot_pause_ms}
+line_pause_ms = {voice_line_pause_ms}
 "#,
         env_config = ENV_CONFIG,
         env_corpus = ENV_CORPUS_PATH,
@@ -410,6 +443,8 @@ allow_download = {voice_allow_download}
         ai_template_version = quote(&config.ai.prompt_template_version),
         voice_model_dir = quote_path(&config.voice.model_dir),
         voice_allow_download = config.voice.allow_download,
+        voice_foot_pause_ms = config.voice.prosody.foot_pause_ms,
+        voice_line_pause_ms = config.voice.prosody.line_pause_ms,
     )
 }
 
@@ -503,6 +538,10 @@ model_dir = "/tmp/yj/models"
 tts_model = "vits-melo-tts-zh_en"
 asr_model = "sherpa-onnx-streaming-zipformer-zh"
 allow_download = false
+
+[voice.prosody]
+foot_pause_ms = 150
+line_pause_ms = 500
 "#;
 
     /// 每个字段都填非默认值、且**穷尽**书写字面量（不用 `..Default::default()`）：
@@ -536,6 +575,10 @@ allow_download = false
                 tts_model: Some("tts".to_owned()),
                 asr_model: Some("asr".to_owned()),
                 allow_download: false,
+                prosody: VoiceProsodyConfig {
+                    foot_pause_ms: 90,
+                    line_pause_ms: 333,
+                },
             },
         }
     }
@@ -583,6 +626,8 @@ allow_download = false
             Some("sherpa-onnx-streaming-zipformer-zh")
         );
         assert!(!config.voice.allow_download);
+        assert_eq!(config.voice.prosody.foot_pause_ms, 150);
+        assert_eq!(config.voice.prosody.line_pause_ms, 500);
     }
 
     #[test]

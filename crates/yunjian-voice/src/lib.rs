@@ -35,6 +35,15 @@ pub mod audio;
 /// 摘要校验、原子落地、缺失时的降级信号都在这一层，只有真正的 HTTP 与解压要 `download`。
 pub mod models;
 
+/// 破读词表、词谱句式表与朗读覆盖名册。**判定层不带特性开关**——三份 TSV 由 `include_str!`
+/// 编译期内联，于是「数据站不站得住」在默认构建里就能回答，不需要模型也不需要语料库。
+pub mod lexicon;
+
+/// 朗读节奏：音步切分、静音拼接与逐音步时间戳。**判定层不带特性开关**——切分规则、拼接
+/// 算术与静音判定都是纯函数，合成抽象在 [`prosody::FootSynthesizer`] 之后，于是一台没有
+/// 模型、没有声卡的机器仍然能验证节奏是对的。
+pub mod prosody;
+
 #[cfg(feature = "voice")]
 pub mod asr;
 #[cfg(feature = "voice")]

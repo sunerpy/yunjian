@@ -1,0 +1,46 @@
+# 云笺朗读覆盖名册 —— 覆盖闭合检查的作用域。
+#
+# 为什么要有这个文件：破读词表的「覆盖完整」必须相对于一份**写下来的**作品名单才有意义，
+# 否则「完整」就是一句无法证伪的话。本文件就是那份名单，覆盖检查断言的是「名册内每一个
+# 多音字都在 data/poyin.tsv 里有一行」，即闭合，而不是一个百分比。
+#
+# **v1 覆盖范围的诚实声明。** 方案原定覆盖唐诗三百首与宋词三百首两个选本的全部作品。
+# 落地时核实发现那不可能在本仓库内完成，原因是三条实测事实，不是取舍：
+#   1. corpus.db 的 poem_tag 表为空（实测 n=0），选本归属没有入库；
+#   2. corpus/sources.toml 只有「蒙学/tangshisanbaishou.json」一个唐诗三百首资产，
+#      而该资产并未随仓 vendor，构建期才下载；宋词三百首**没有任何资产**；
+#   3. 因此仓库内唯一可信的选本归属，是 crates/yunjian-corpus/tags.toml 的人工评审名单，
+#      它共 19 条，其中 8 条标注了 唐诗三百首/宋词三百首。
+# 所以本名册 = 那 19 首（黄金查询契约的自包含 fixture，逐字校对过）+ 3 首破读黄金用例，
+# 共 22 首。**这不是两个选本的完整覆盖**，缺口已在交付报告与 learnings 里写明。
+# 名册扩容是纯数据工作：往本文件加行，覆盖检查会立刻要求补齐对应的破读行。
+#
+# 列：id <TAB> 选本 <TAB> 作者 <TAB> 题目 <TAB> 词牌 <TAB> 正文 <TAB> 依据
+#   选本   `-` 表示不属于任何已评审选本名单。**绝不凭印象填选本归属**：选本收录是历史
+#          事实而非文本特征，任何规则都推不出它（tags.toml 的 rule_note 已把这点写死）。
+#   词牌   `-` 表示诗（非词）。
+#   正文   公有领域原文，换行已去掉——句读由标点承载，逐音步切分只认标点与字数。
+#   依据   与破读词表同一标准：卷次/编号定位符 + 所据版本。
+id	选本	作者	题目	词牌	正文	依据
+fixture:tang-libai-jingyesi	唐诗三百首	李白	静夜思	-	床前明月光，疑是地上霜。举头望明月，低头思故乡。	《唐诗三百首》卷六 五言绝句；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 80 行起之校本。
+fixture:tang-dufu-chunwang	唐诗三百首	杜甫	春望	-	国破山河在，城春草木深。感时花溅泪，恨别鸟惊心。烽火连三月，家书抵万金。白头搔更短，浑欲不胜簪。	《唐诗三百首》卷四 五言律诗；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 94 行起之校本。
+fixture:tang-wangzhihuan-dengguanquelou	-	王之涣	登鹳雀楼	-	白日依山尽，黄河入海流。欲穷千里目，更上一层楼。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 108 行起之校本。
+fixture:tang-libai-zaofabaidicheng	唐诗三百首	李白	早发白帝城	-	朝辞白帝彩云间，千里江陵一日还。两岸猿声啼不住，轻舟已过万重山。	《唐诗三百首》卷八 七言绝句；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 122 行起之校本。
+fixture:tang-zhangji-fengqiaoyebo	唐诗三百首	张继	枫桥夜泊	-	月落乌啼霜满天，江枫渔火对愁眠。姑苏城外寒山寺，夜半钟声到客船。	《唐诗三百首》卷八 七言绝句；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 136 行起之校本。
+fixture:tang-wangwei-xiangsi	-	王维	相思	-	红豆生南国，春来发几枝。愿君多采撷，此物最相思。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 150 行起之校本。
+fixture:tang-zhangruoxu-chunjianghuayueye	-	张若虚	春江花月夜	-	春江潮水连海平，海上明月共潮生。滟滟随波千万里，何处春江无月明。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 164 行起之校本。
+fixture:song-sushi-niannujiao-chibihuaigu	宋词三百首	苏轼	念奴娇·赤壁怀古	念奴娇	大江东去，浪淘尽，千古风流人物。故垒西边，人道是，三国周郎赤壁。	《宋词三百首》（朱祖谋编）收录，该名单未记卷次；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 178 行起之校本。
+fixture:song-sushi-shuidiaogetou-mingyue	宋词三百首	苏轼	水调歌头·明月几时有	水调歌头	明月几时有，把酒问青天。不知天上宫阙，今夕是何年。	《宋词三百首》（朱祖谋编）收录，该名单未记卷次；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 192 行起之校本。
+fixture:song-sushi-tixilinbi	-	苏轼	题西林壁	-	横看成岭侧成峰，远近高低各不同。不识庐山真面目，只缘身在此山中。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 206 行起之校本。
+fixture:tang-libai-xinglunan	-	李白	行路难	-	欲渡黄河冰塞川，将登太行雪满山。闲来垂钓碧溪上，忽复乘舟梦日边。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 220 行起之校本。
+fixture:tang-libai-shudaonan	-	李白	蜀道难	-	噫吁嚱，危乎高哉！蜀道之难，难于上青天。蚕丛及鱼凫，开国何茫然。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 234 行起之校本。
+fixture:song-wanganshi-yuanri	-	王安石	元日	-	爆竹声中一岁除，春风送暖入屠苏。千门万户曈曈日，总把新桃换旧符。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 248 行起之校本。
+fixture:song-wanganshi-bochuanguazhou	-	王安石	泊船瓜洲	-	京口瓜洲一水间，钟山只隔数重山。春风又绿江南岸，明月何时照我还。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 262 行起之校本。
+fixture:tang-dufu-jueju	-	杜甫	绝句	-	两个黄鹂鸣翠柳，一行白鹭上青天。窗含西岭千秋雪，门泊东吴万里船。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 276 行起之校本。
+fixture:tang-wangchangling-chusai	唐诗三百首	王昌龄	出塞	-	秦时明月汉时关，万里长征人未还。但使龙城飞将在，不教胡马度阴山。	《唐诗三百首》卷八 七言乐府；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 290 行起之校本。
+fixture:tang-libai-huangheloused	唐诗三百首	李白	黄鹤楼送孟浩然之广陵	-	故人西辞黄鹤楼，烟花三月下扬州。孤帆远影碧空尽，唯见长江天际流。	《唐诗三百首》卷八 七言绝句；选本归属据 crates/yunjian-corpus/tags.toml 已评审名单转录本；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 304 行起之校本。
+fixture:tang-libai-sanwuqiyan	-	李白	三五七言	-	秋风清，秋月明。落叶聚还散，寒鸦栖复惊。相思相见知何日，此时此夜难为情。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 318 行起之校本。
+fixture:tang-dufu-chunyexiyu	-	杜甫	春夜喜雨	-	好雨知时节，当春乃发生。随风潜入夜，润物细无声。	未列入任何已评审选本名单，本行只作朗读覆盖名册用；正文据 crates/yunjian-core/tests/fixtures/poems.toml 第 332 行起之校本。
+corpus:d1ca6ef0f933dc59	-	杜牧	山行	-	远上寒山石径斜，白云生处有人家。停车坐爱枫林晚，霜叶红于二月花。	破读黄金用例（斜=xiá）；正文据 corpus.db poem 表 stable_id 为 d1ca6ef0f933dc59 的第 1 条记录校本，另有 a684bf9a51c9d2b3 号「远目」异文。
+corpus:ee24fca2a62ae0fc#2	-	贺知章	回乡偶书二首·其二	-	少小离家老大回，乡音难改鬓毛衰。儿童相见不相识，笑问客从何处来。	破读黄金用例（衰=cuī）；正文据 corpus.db poem 表 stable_id 为 ee24fca2a62ae0fc 的记录之第 2 首校本。
+corpus:d666756a3b60a4ae#1	-	杜牧	过华清宫绝句三首·其一	-	长安回望绣成堆，山顶千门次第开。一骑红尘妃子笑，无人知是荔枝来。	破读黄金用例（骑=jì）；正文据 corpus.db poem 表 stable_id 为 d666756a3b60a4ae 的记录之第 1 首校本。
