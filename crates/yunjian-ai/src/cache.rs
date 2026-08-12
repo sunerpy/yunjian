@@ -168,6 +168,9 @@ impl AppreciationCache {
             }));
         }
 
+        if request.style().is_some() {
+            return Ok(None);
+        }
         let stable_id = &request.poem().poem.stable_id;
         let shipped = connection
             .query_row(
@@ -424,6 +427,7 @@ fn cache_key(request: &AppreciationRequest, provider: &ProviderId) -> [u8; 32] {
     for component in [
         provider.as_str(),
         request.model(),
+        request.style().unwrap_or(""),
         request.template_version(),
         &request.poem().poem.stable_id,
         request.grounding_digest(),

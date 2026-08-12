@@ -7646,6 +7646,7 @@ name = "yunjian-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "blake3",
  "clap",
@@ -7662,6 +7663,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "yunjian-ai",
  "yunjian-core",
 ]
 

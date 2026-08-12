@@ -31,8 +31,9 @@ pub use keystore::{
     default_plaintext_path, install_default_store,
 };
 pub use provider::{
-    APPRECIATION_TEMPLATE, APPRECIATION_TEMPLATE_FILE, APPRECIATION_TEMPLATE_VERSION, Appreciation,
-    AppreciationProgress, AppreciationProvider, AppreciationRequest, AppreciationStreamItem,
-    NullProvider, PromptTemplate, ProviderId, TokenUsage,
+    APPRECIATION_TEMPLATE, APPRECIATION_TEMPLATE_FILE, APPRECIATION_TEMPLATE_VERSION, AiProvider,
+    Appreciation, AppreciationProgress, AppreciationProvider, AppreciationRequest,
+    AppreciationStreamItem, GeneratedPoem, NullProvider, PoemGenerationProvider,
+    PoemGenerationRequest, PromptTemplate, ProviderId, TokenUsage,
 };
 pub use stream::AppreciationCacheWriter;
