@@ -13,14 +13,24 @@ build = "build.rs"
 default = []
 # 采集。只拉 `rodio`（MIT/Apache-2.0），不碰 sherpa-onnx，因此这一条不触发 GPL-3.0。
 capture = ["dep:rodio"]
-# 原生推理。隐含 `capture`：识别没有输入源就没有意义。
-voice = ["dep:sherpa-rs", "capture"]
+# 模型按需下载。只拉 HTTP 客户端与解压库（均 MIT/Apache-2.0），不碰 sherpa-onnx。
+# **刻意不进 `default`**：默认构建里 `models` 的判定层照样完整可用（许可门禁、摘要校验、
+# 原子落地、缺失降级），缺的只有「真的去下载」这一件事，而那一件事需要联网。
+download = ["dep:ureq", "dep:tar", "dep:bzip2"]
+# 原生推理。隐含 `capture` 与 `download`：识别没有输入源、没有权重都没有意义。
+voice = ["dep:sherpa-rs", "capture", "download"]
 
 [dependencies]
+serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+toml.workspace = true
 tracing.workspace = true
+bzip2 = { workspace = true, optional = true }
 rodio = { workspace = true, optional = true }
 sherpa-rs = { workspace = true, optional = true }
+tar = { workspace = true, optional = true }
+ureq = { workspace = true, optional = true }
 
 [dev-dependencies]
 hound.workspace = true

@@ -108,7 +108,12 @@ This is the **intended** shape. Actual progress is always [Project status](#proj
   Mandarin.
 - **MCP server.** `yunjian mcp` speaks stdio so clients like Claude Desktop and OpenCode can query
   your library directly. Generated output is labelled as AI-written and is never written back into
-  the corpus.
+  the corpus. `yunjian mcp install --client <claude|opencode>` writes the client config for you —
+  **the two shapes are not interchangeable**: Claude uses `mcpServers` with a string `command` plus a
+  separate `args`, OpenCode uses `mcp` with an array `command` that includes the argument plus
+  `type`/`enabled`. It merges rather than overwrites: other server entries and comments are kept
+  verbatim, the file is backed up first, and a config that fails to parse is refused rather than
+  replaced. Exact shapes in [CLI](../CLI.zh.md).
 - **Multiple surfaces.** Tauri v2 + React on the desktop; a CLI with machine-readable output; the
   mobile framework is chosen by real-device measurement.
 

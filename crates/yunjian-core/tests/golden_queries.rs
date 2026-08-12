@@ -733,7 +733,10 @@ fn workspace_root() -> PathBuf {
 /// 跳过 `target/` 是必需的而非优化：那里面可能出现任何被构建过程复制进去的文件，
 /// 把它算进来会让这条守卫的结果取决于「跑之前有没有构建过」。
 fn collect_queries_toml(dir: &Path, out: &mut Vec<String>) {
-    const SKIP: [&str; 4] = ["target", ".git", ".omo", "node_modules"];
+    // `.worktrees` 与 `.git` 同类：那是同一个仓库的另一份工作副本，里面必然有一份
+    // `queries.toml`，但它不是「消费方复制了一份契约」，而是并行任务的隔离目录。
+    // 不排除它会让这条守卫在任何有 worktree 的机器上假报，而假报会让人倾向于删掉守卫。
+    const SKIP: [&str; 5] = ["target", ".git", ".omo", "node_modules", ".worktrees"];
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };

@@ -782,3 +782,268 @@ fn walk_sources(dir: &Path, root: &Path, found: &mut Vec<PathBuf>) {
         }
     }
 }
+
+// ---------------------------------------------------------------- models 子命令
+
+/// 模型缓存指向沙箱内的空目录。
+///
+/// **必须显式设置**：不设时 `models` 会落到仓库内 `models/cache`，于是测试结果取决于
+/// 开发机上有没有下载过权重——那正是「随机绿」的来源。
+fn models_command(sandbox: &Sandbox, args: &[&str]) -> std::process::Output {
+    let cache = sandbox.dir.join("model-cache");
+    std::fs::create_dir_all(&cache).expect("建模型缓存目录");
+    sandbox
+        .command()
+        .env("YUNJIAN_MODEL_DIR", &cache)
+        .args(args)
+        .output()
+        .expect("运行 yunjian models")
+}
+
+#[test]
+fn models_list_reports_every_manifest_entry_with_its_license_and_never_opens_the_corpus() {
+    let sandbox = Sandbox::new();
+    // 语料库删掉：`models` 与诗库无关，删了它仍必须成功。这条同时证明 `models` 不会
+    // 触发首启落地那个十分钟级的副作用。
+    std::fs::remove_file(sandbox.corpus()).expect("删掉 fixture 语料库");
+
+    let output = models_command(&sandbox, &["models", "list", "--json"]);
+    let stdout = utf8(&output.stdout);
+    let stderr = utf8(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "list 应当退出 0（即使没有语料库）\nstderr:\n{stderr}"
+    );
+
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["command"], "models.list");
+    assert_eq!(value["status"], "ok");
+    let models = value["data"]["models"]
+        .as_array()
+        .expect("data.models 必须是数组");
+    assert!(!models.is_empty(), "清单不能是空的：\n{stdout}");
+    for model in models {
+        let license = model["license"].as_str().expect("license 必须是字符串");
+        assert!(
+            license == "MIT" || license == "Apache-2.0",
+            "{} 的许可 {license} 不在允许列表",
+            model["name"]
+        );
+        assert_eq!(model["unpacked"], false, "空缓存里不该有已就位的模型");
+        assert!(
+            model["refused"].is_null(),
+            "清单里不该有被拒的条目：{model}"
+        );
+    }
+    assert_stdout_has_no_log_text(&stdout);
+}
+
+#[test]
+fn models_list_in_human_mode_names_the_attribution_directory() {
+    let sandbox = Sandbox::new();
+    let output = models_command(&sandbox, &["models", "list"]);
+    let stdout = utf8(&output.stdout);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stdout.contains("licenses/"),
+        "人类输出要指向许可原文所在目录：\n{stdout}"
+    );
+    assert!(
+        stdout.contains("未下载"),
+        "空缓存下每一行都该标未下载：\n{stdout}"
+    );
+    assert_stdout_has_no_log_text(&stdout);
+}
+
+#[test]
+fn models_fetch_with_an_unknown_name_exits_two_and_lists_the_real_names() {
+    let sandbox = Sandbox::new();
+    let output = models_command(&sandbox, &["models", "fetch", "no-such-model", "--json"]);
+    let stdout = utf8(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "名字打错是用法错误，不是数据不可用\nstdout:\n{stdout}"
+    );
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["command"], "models.fetch");
+    assert_eq!(value["status"], "error");
+    assert_eq!(value["error"]["code"], "usage");
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .expect("message 必须是字符串")
+            .contains("sherpa-onnx-whisper-tiny"),
+        "报错要列出实际可用的名字：{value}"
+    );
+    assert!(
+        !value["error"]["hint"]
+            .as_str()
+            .expect("hint 必须存在")
+            .contains("corpus fetch"),
+        "模型的问题不该建议去取语料：{value}"
+    );
+}
+
+/// 缺模型时的失败必须指向 `models fetch`，退出 3，且**不建议去取语料**。
+#[test]
+fn a_missing_model_exits_three_and_points_at_models_fetch_not_corpus_fetch() {
+    let sandbox = Sandbox::new();
+    // 一个体积最小的真实条目：本机无外网访问不到它的 CDN，因此这条必然走到下载失败或
+    // 缺失，两者都必须是退出 3 加模型侧的提示。
+    let output = models_command(
+        &sandbox,
+        &["models", "fetch", "kitten-nano-en-v0_2-fp16", "--json"],
+    );
+    let stdout = utf8(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "模型取不到是数据不可用\nstdout:\n{stdout}"
+    );
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["command"], "models.fetch");
+    assert_eq!(
+        value["error"]["code"], "model_unavailable",
+        "必须是模型不可用而不是语料不可用：{value}"
+    );
+    let hint = value["error"]["hint"].as_str().expect("hint 必须存在");
+    assert!(
+        hint.contains("models fetch"),
+        "提示要点名 models fetch：{hint}"
+    );
+    assert!(
+        !hint.contains("corpus fetch"),
+        "绝不能把用户指去取语料：{hint}"
+    );
+}
+
+#[test]
+fn models_verify_on_an_empty_cache_succeeds_because_nothing_local_is_not_a_failure() {
+    let sandbox = Sandbox::new();
+    let output = models_command(&sandbox, &["models", "verify", "--json"]);
+    let stdout = utf8(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "本地没有归档时跳过而不算失败\nstdout:\n{stdout}"
+    );
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["command"], "models.verify");
+    for model in value["data"]["models"]
+        .as_array()
+        .expect("data.models 必须是数组")
+    {
+        assert!(
+            model["verified_sha256"].is_null(),
+            "本地无归档时不该声称核对过摘要：{model}"
+        );
+    }
+}
+
+/// 归档摘要不符时必须变红，而不是「核对了，通过」。
+#[test]
+fn models_verify_rejects_a_local_archive_whose_digest_does_not_match() {
+    let sandbox = Sandbox::new();
+    let cache = sandbox.dir.join("model-cache");
+    let archives = cache.join("archives");
+    std::fs::create_dir_all(&archives).expect("建归档目录");
+    std::fs::write(
+        archives.join("kitten-nano-en-v0_2-fp16.tar.bz2"),
+        "这不是真的归档".as_bytes(),
+    )
+    .expect("写一个假归档");
+
+    let output = models_command(
+        &sandbox,
+        &["models", "verify", "kitten-nano-en-v0_2-fp16", "--json"],
+    );
+    let stdout = utf8(&output.stdout);
+    assert_eq!(output.status.code(), Some(3), "假归档必须失败\n{stdout}");
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["error"]["code"], "model_unavailable");
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .expect("message 必须是字符串")
+            .contains("字节"),
+        "字节数不符要先报出来：{value}"
+    );
+}
+
+#[test]
+fn models_remove_on_an_empty_cache_exits_one_rather_than_claiming_it_deleted_something() {
+    let sandbox = Sandbox::new();
+    let output = models_command(
+        &sandbox,
+        &["models", "remove", "kitten-nano-en-v0_2-fp16", "--json"],
+    );
+    let stdout = utf8(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "什么都没删是「无结果」，不是成功也不是失败\n{stdout}"
+    );
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["command"], "models.remove");
+    assert_eq!(value["status"], "empty");
+    assert_eq!(value["data"]["removed_dir"], false);
+    assert_eq!(value["data"]["removed_archive"], false);
+}
+
+#[test]
+fn models_remove_deletes_a_present_cache_and_reports_what_went() {
+    let sandbox = Sandbox::new();
+    let cache = sandbox.dir.join("model-cache");
+    let dir = cache.join("kitten-nano-en-v0_2-fp16");
+    std::fs::create_dir_all(&dir).expect("建模型目录");
+    std::fs::write(dir.join("tokens.txt"), b"0 <blk>\n").expect("写文件");
+
+    let output = models_command(
+        &sandbox,
+        &["models", "remove", "kitten-nano-en-v0_2-fp16", "--json"],
+    );
+    let stdout = utf8(&output.stdout);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "删掉了东西应当退出 0\n{stdout}"
+    );
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["data"]["removed_dir"], true);
+    assert!(!dir.exists(), "目录必须真的没了");
+}
+
+/// 已就位的模型必须直接返回，不发起任何网络请求。
+///
+/// 本机无外网，所以「命令在毫秒级返回退出 0」本身就是证据：真去下载 25 MiB 会超时失败。
+#[test]
+fn models_fetch_on_a_present_model_returns_immediately_without_downloading() {
+    let sandbox = Sandbox::new();
+    let cache = sandbox.dir.join("model-cache");
+    let dir = cache.join("kitten-nano-en-v0_2-fp16");
+    std::fs::create_dir_all(&dir).expect("建模型目录");
+    std::fs::write(dir.join("tokens.txt"), b"0 <blk>\n").expect("写文件");
+
+    let started = std::time::Instant::now();
+    let output = models_command(
+        &sandbox,
+        &["models", "fetch", "kitten-nano-en-v0_2-fp16", "--json"],
+    );
+    let elapsed = started.elapsed();
+    let stdout = utf8(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "已就位必须成功\n{stdout}");
+    let value = parse_single_json_line(&stdout);
+    assert_eq!(value["command"], "models.fetch");
+    assert_eq!(value["data"]["license"], "Apache-2.0");
+    assert_eq!(
+        value["data"]["attribution"], "kitten-nano-en-v0_2-fp16.LICENSE",
+        "必须指向 licenses/ 下真实存在的那份原文"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(10),
+        "已就位时不该有网络往返，实测 {elapsed:?}"
+    );
+}

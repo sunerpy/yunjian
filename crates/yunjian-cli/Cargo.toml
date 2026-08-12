@@ -26,6 +26,9 @@ path = "src/lib.rs"
 [features]
 default = ["mcp"]
 mcp = ["dep:tokio", "dep:yunjian-mcp"]
+# `yunjian mcp --http`。**刻意不进 `default`**：stdio 传输没有监听端口，HTTP 传输一开就有一个
+# 同机任何进程都能连的 socket。默认构建里那个 socket 不存在，也就没有「忘记加认证」的机会。
+mcp-http = ["mcp", "dep:tokio-util", "tokio/signal", "yunjian-mcp/http"]
 # 语音能力从这里向下透传。默认关闭：不开时二进制不链接 onnxruntime，
 # 词典与默写功能因此不受原生依赖的成败影响。
 voice = ["yunjian-voice/voice"]
@@ -33,10 +36,14 @@ voice = ["yunjian-voice/voice"]
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+# `mcp install` 要按平台推导客户端配置目录。三个平台三套惯例，手写会漏掉
+# macOS 的 `~/Library/Application Support` 与 Windows 不读 `%APPDATA%` 这两件事。
+dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 yunjian-core = { path = "../yunjian-core" }
 yunjian-mcp = { path = "../yunjian-mcp", optional = true }
 yunjian-voice = { path = "../yunjian-voice" }

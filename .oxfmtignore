@@ -22,6 +22,11 @@ corpus/licenses/
 # 模型卡（`.CARD.md`）。oxfmt 会重排 Markdown，一个字节都不能动——实测就撞过：
 # `make fmt` 改了 `.CARD.md` 之后 `verify-models` 立刻报「许可证据摘要不符」。
 models/licenses/
+# 顶层 `licenses/` 是分发用的署名副本，与 `models/licenses/` 必须逐字节相同（有测试断言）。
+# 它同样含 `.CARD.md`，改一个字节两处就不再相同。**只挡许可原文，不挡 README.md**——
+# 那份是人工维护的说明文档，仍受格式化管辖。
+licenses/*.LICENSE
+licenses/*.CARD.md
 
 # ---- 生成物与本地状态 ----
 # 语料构建产物由 xtask 从公共领域源重新生成，不属于人工维护的文本。

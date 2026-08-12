@@ -4,7 +4,7 @@
 
 `yunjian` 是云笺的终端入口。语料是一份只读 SQLite 文件，检索不联网、不登录。
 
-> **本文档描述已实现的部分。** `yunjian mcp` 当前只有子命令占位，服务端实现见方案 todo 31。
+> **本文档描述已实现的部分。**
 
 ## 目录
 
@@ -12,6 +12,7 @@
 - [退出码](#退出码)
 - [JSON 信封](#json-信封)
 - [子命令](#子命令)
+- [注册进 MCP 客户端](#注册进-mcp-客户端)
 - [全局参数](#全局参数)
 - [过滤的作用范围](#过滤的作用范围)
 
@@ -65,14 +66,14 @@ yunjian search 明月 --json | jq -e '.data.hits | length > 0'
 }
 ```
 
-| 字段             | 出现时机           | 说明                                                                                             |
-| ---------------- | ------------------ | ------------------------------------------------------------------------------------------------ |
-| `schema_version` | 总是               | 当前为 `1`；不兼容变更才递增                                                                     |
-| `command`        | 总是               | 稳定 ASCII 名：`search` / `show` / `author` / `rhyme` / `corpus.status` / `corpus.fetch` / `mcp` |
-| `status`         | 总是               | `ok`（有结果）/ `empty`（无结果）/ `error`                                                       |
-| `warnings`       | 总是（可为空数组） | 降级提示，每条带稳定 `code` 与中文 `message`                                                     |
-| `data`           | `status != error`  | 子命令载荷；`status = empty` 时仍在（空数组也是答案）                                            |
-| `error`          | `status == error`  | `code` + 中文 `message` + 可选 `hint`                                                            |
+| 字段             | 出现时机           | 说明                                                                                                             |
+| ---------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `schema_version` | 总是               | 当前为 `1`；不兼容变更才递增                                                                                     |
+| `command`        | 总是               | 稳定 ASCII 名：`search` / `show` / `author` / `rhyme` / `corpus.status` / `corpus.fetch` / `mcp` / `mcp.install` |
+| `status`         | 总是               | `ok`（有结果）/ `empty`（无结果）/ `error`                                                                       |
+| `warnings`       | 总是（可为空数组） | 降级提示，每条带稳定 `code` 与中文 `message`                                                                     |
+| `data`           | `status != error`  | 子命令载荷；`status = empty` 时仍在（空数组也是答案）                                                            |
+| `error`          | `status == error`  | `code` + 中文 `message` + 可选 `hint`                                                                            |
 
 `status` 与退出码一一对应：`ok` → 0，`empty` → 1，`error` → 2 或 3。
 
@@ -80,14 +81,16 @@ yunjian search 明月 --json | jq -e '.data.hits | length > 0'
 
 `warnings[].code` 的取值：
 
-| code                     | 含义                                                   |
-| ------------------------ | ------------------------------------------------------ |
-| `derived_unavailable`    | 首启派生结构不可用，一至两字查询本次退化为全表扫描     |
-| `degraded_plan`          | 本次查询没有走索引约束，附退化原因                     |
-| `filtered_page_empty`    | 本页命中被 `--author` / `--dynasty` 清空，但还有后续页 |
-| `rhyme_book_unavailable` | 请求的韵书未随包，相关标注为空而不是「没有韵部」       |
+| code                     | 含义                                                     |
+| ------------------------ | -------------------------------------------------------- |
+| `derived_unavailable`    | 首启派生结构不可用，一至两字查询本次退化为全表扫描       |
+| `degraded_plan`          | 本次查询没有走索引约束，附退化原因                       |
+| `filtered_page_empty`    | 本页命中被 `--author` / `--dynasty` 清空，但还有后续页   |
+| `rhyme_book_unavailable` | 请求的韵书未随包，相关标注为空而不是「没有韵部」         |
+| `client_scope_ignored`   | 请求的作用域对该客户端不适用，已按它唯一支持的作用域处理 |
 
-`error.code` 的取值：`usage`、`rhyme_book_unavailable`、`corpus_unavailable`、`not_implemented`。
+`error.code` 的取值：`usage`、`rhyme_book_unavailable`、`corpus_unavailable`、
+`not_implemented`、`client_config_invalid`、`client_config_write_failed`。
 
 **兼容性**：新增字段、新增 `warnings` 或 `error` 的 `code` 取值都不递增 `schema_version`；
 删除字段或改变既有字段含义才递增。调用方遇到未知 `code` 的正确反应是原样转达 `message`。
@@ -102,6 +105,7 @@ yunjian rhyme <GROUP> --book <BOOK> [--tone TONE]
 yunjian corpus status
 yunjian corpus fetch
 yunjian mcp
+yunjian mcp install --client <claude|opencode> [--global] [--path PATH] [--dry-run]
 ```
 
 - **`search`** 检索正文或残句。两字查询（「明月」）走辅助 n-gram 候选表而不是 trigram，
@@ -118,7 +122,68 @@ yunjian mcp
   只报告并退出 3，不去落地一份——一条查看状态的命令不该有十分钟的副作用。
 - **`corpus fetch`** 校验、解压并落地语料库，必要时派生检索结构。首启派生实测唐宋规模
   571.8 s，因此进度逐步汇报到 stderr。
-- **`mcp`** 当前是占位。子命令与 `--help` 已就位，服务端见方案 todo 31。
+- **`mcp`** 在 stdio 上承载 MCP 服务器。语料缺失时照样启动并完成握手，工具调用返回结构化的
+  `corpus_missing`——客户端等不了一次语料下载。
+- **`mcp install`** 把 `yunjian mcp` 写进客户端配置，见下节。
+
+## 注册进 MCP 客户端
+
+```bash
+yunjian mcp install --client claude      # 用户级，Claude Desktop
+yunjian mcp install --client opencode    # 当前目录的项目级 opencode.json
+yunjian mcp install --client opencode --global   # 用户级 ~/.config/opencode/opencode.json
+yunjian mcp install --client opencode --dry-run  # 只把结果文件打到 stdout
+```
+
+**两个客户端的形态不通用，`--client` 因此没有默认值。** 顶层键不同，`command` 的类型也不同：
+
+Claude Desktop —— `claude_desktop_config.json`，`command` 是**字符串**，参数另放 `args`：
+
+```json
+{
+  "mcpServers": {
+    "yunjian": { "command": "yunjian", "args": ["mcp"] }
+  }
+}
+```
+
+OpenCode —— `opencode.json`，`command` 是**含参数的数组**，另有 `type` 与 `enabled`：
+
+```json
+{
+  "mcp": {
+    "yunjian": { "type": "local", "command": ["yunjian", "mcp"], "enabled": true }
+  }
+}
+```
+
+把其中一种套到另一种上不会报错，只会让客户端读到一个语法合法而语义为空的条目——它永远连不上。
+
+| 客户端     | 目标文件                                             | 作用域                        |
+| ---------- | ---------------------------------------------------- | ----------------------------- |
+| `claude`   | 平台配置目录下 `Claude/claude_desktop_config.json`   | 只有用户级，`--global` 无效果 |
+| `opencode` | 默认当前目录 `opencode.json`；`--global` 走 XDG 目录 | 项目级与用户级                |
+
+OpenCode 的用户级路径按 **XDG 语义**推导（`$XDG_CONFIG_HOME`，否则 `~/.config`），
+在 macOS 上也是 `~/.config/opencode/opencode.json` 而不是 `~/Library/Application Support`
+——它不跟随平台惯例，按平台惯例去猜会写进一个它永远不读的文件。当前目录已有
+`opencode.jsonc` 时写它而不是新建 `.json`，否则客户端会读到两份配置。
+
+四条行为约定：
+
+- **合并，不覆盖。** 除 `yunjian` 那一段，其余字节逐字保留，注释也留着。用户已有的
+  MCP 服务器条目一个都不动。
+- **注释与扩展名无关。** 实测真实的 `opencode.json` 里就有 `//` 注释，因此注释剥离对所有
+  目标文件一律执行，`.jsonc` 不是开关。
+- **写前备份。** 备份名形如 `opencode.json.bak-<毫秒时间戳>`。带时间戳而不是固定 `.bak`：
+  固定名在第二次安装时会被上一次的结果覆盖，于是原始配置这份最值得留的备份反而最先丢。
+  新建文件与内容无变化时不产生备份。
+- **解析不了就拒绝。** 目标文件不是合法 JSON/JSONC 时退出 2 并逐字节保留原文，不会拿一份
+  干净的新文件替换它——那等于用「安装成功」换掉用户的全部配置。
+
+条目里写裸名 `yunjian` 还是绝对路径，取决于 `yunjian` 在不在 `PATH` 上。在 `PATH` 上时写
+裸名，配置因此在换安装位置或同步到另一台机器后仍然成立；不在时落绝对路径，否则那类安装
+根本起不来。`PATH` 上先命中的是另一个同名二进制时也落绝对路径。
 
 ## 全局参数
 

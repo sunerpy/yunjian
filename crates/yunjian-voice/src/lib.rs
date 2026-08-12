@@ -31,6 +31,10 @@ pub mod augment;
 /// 这一层，于是一台没有麦克风的机器仍然能验证它们；只有真实设备那一小块要 `capture`。
 pub mod audio;
 
+/// 模型的按需下载、许可门禁与本地缓存。**判定层不带特性开关**——许可与拒绝名单的判定、
+/// 摘要校验、原子落地、缺失时的降级信号都在这一层，只有真正的 HTTP 与解压要 `download`。
+pub mod models;
+
 #[cfg(feature = "voice")]
 pub mod asr;
 #[cfg(feature = "voice")]

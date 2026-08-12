@@ -41,9 +41,10 @@
 | 文言字准     | 已实测 | 合成音加增强测得，结论是字准只作参考值，见 [CER 报告](docs/reports/asr-cer.md)                             |
 | 核心检索     | 已实现 | 正文、题目、作者、朝代、首句、尾字、标签、韵部检索与作品详情，统一收在 `Yunjian` 门面后                    |
 | 命令行       | 已实现 | `yunjian search/show/author/rhyme/corpus`，`--json` 稳定信封与 0/1/2/3 退出码，见 [命令行](docs/CLI.zh.md) |
+| MCP 服务器   | 已实现 | `yunjian mcp` 走 stdio，三个只读检索工具；`yunjian mcp install` 写 Claude 与 OpenCode 配置                 |
 
 **尚未实现**（有完整方案，但一行产品代码都还没有）：AI 赏析、背诵训练与 FSRS 复习、
-离线朗读与语音识别、MCP 服务器（`yunjian mcp` 目前只有占位）、Tauri 桌面端、移动端。
+离线朗读与语音识别、Tauri 桌面端、移动端。
 
 ## 为什么是这个设计
 
@@ -105,6 +106,10 @@ cargo run -p xtask -- verify-sources --offline
   覆盖范围外回落到现代普通话读音。
 - **MCP 服务器**。`yunjian mcp` 跑在 stdio 上，让 Claude Desktop、OpenCode 这类客户端
   直接查你的诗库。生成类工具的输出标注「AI 生成，非古人作品」，永远不写回语料。
+  `yunjian mcp install --client <claude|opencode>` 直接写客户端配置——**两者形态不通用**，
+  Claude 写 `mcpServers` 且 `command` 是字符串加独立 `args`，OpenCode 写 `mcp` 且 `command`
+  是含参数的数组加 `type`/`enabled`。合并而不覆盖：别的服务器条目与注释都原样留着，写前
+  备份，配置解析不了就拒绝而不是替换。逐字形态见 [命令行](docs/CLI.zh.md)。
 - **多端**。桌面端 Tauri v2 + React；命令行工具带机器可读输出；移动端框架由真机实测决定。
 
 ## 内容来源与许可

@@ -148,11 +148,11 @@ ci: $(GATE) ## 唯一门禁：pre-push 钩子与 CI 都只跑这一条
 # （检索坏了就不必再看缺陷计数），工件漂移紧跟在生成它的那一步之后。
 corpus-gate: ## 语料门禁：许可、10k 规模黄金查询契约、质量基线、工件漂移、契约单副本
 	@echo "==> 契约在整个仓库里只有一份"
-	@count=$$(find . -name queries.toml | wc -l); \
+	@count=$$(find . -name queries.toml -not -path "./target/*" -not -path "./.git/*" -not -path "./.omo/*" -not -path "./.worktrees/*" | wc -l); \
 	if [ "$$count" -ne 1 ]; then \
 		echo "仓库里有 $$count 份 queries.toml。契约只有一处，六方共同消费；" >&2; \
 		echo "消费方请引用 crates/yunjian-core/tests/queries.toml，不要复制。" >&2; \
-		find . -name queries.toml >&2; \
+		find . -name queries.toml -not -path "./target/*" -not -path "./.git/*" -not -path "./.omo/*" -not -path "./.worktrees/*" >&2; \
 		exit 1; \
 	fi
 	@echo "==> xtask verify-sources --offline（逐资产许可门禁）"

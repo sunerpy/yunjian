@@ -29,6 +29,8 @@ pub mod cli;
 pub mod command;
 pub mod envelope;
 pub mod exit;
+#[cfg(feature = "mcp")]
+pub mod mcp_install;
 pub mod output;
 pub mod present;
 pub mod provision;
@@ -105,24 +107,31 @@ pub fn run() -> i32 {
     );
 
     #[cfg(feature = "mcp")]
-    if matches!(cli.command, cli::Command::Mcp) {
-        return run_mcp(config, cli.global.corpus.as_deref());
+    if let cli::Command::Mcp(args) = &cli.command
+        && args.action.is_none()
+    {
+        return run_mcp(config, cli.global.corpus.as_deref(), args);
     }
 
     let report = command::execute(&cli.command, config, cli.global.corpus.as_deref());
     emit(&report, cli.global.json)
 }
 
+/// 本次运行会不会占住 stdout 当协议流。
+///
+/// **只有起服务那一种形态算**。`yunjian mcp install` 写完文件就退出，它的 stdout 是给人
+/// 或给 `jq` 看的普通结果；给它装上 stdio 专用的日志订阅器会让终端里的输出无端失去颜色，
+/// 而真正需要那份订阅器的是承载协议流的那条路径。
 fn is_mcp(command: &cli::Command) -> bool {
     #[cfg(feature = "mcp")]
-    if matches!(command, cli::Command::Mcp) {
+    if matches!(command, cli::Command::Mcp(args) if args.action.is_none()) {
         return true;
     }
     false
 }
 
 #[cfg(feature = "mcp")]
-fn run_mcp(config: &Config, corpus_override: Option<&std::path::Path>) -> i32 {
+fn run_mcp(config: &Config, corpus_override: Option<&std::path::Path>, args: &cli::McpArgs) -> i32 {
     use yunjian_core::{CORPUS_FILE_NAME, CorpusHandle, Yunjian};
     use yunjian_mcp::YunjianServer;
 
@@ -158,11 +167,66 @@ fn run_mcp(config: &Config, corpus_override: Option<&std::path::Path>) -> i32 {
             return Exit::Usage.code();
         }
     };
+    #[cfg(feature = "mcp-http")]
+    if args.http.http {
+        return runtime.block_on(serve_mcp_http(&args.http, server));
+    }
+    #[cfg(not(feature = "mcp-http"))]
+    let _unused = args;
+
     match runtime.block_on(yunjian_mcp::serve_stdio(server)) {
         Ok(()) => Exit::Success.code(),
         Err(error) => {
             tracing::error!(error = %error, "MCP stdio 服务异常结束");
             Exit::Usage.code()
+        }
+    }
+}
+
+/// 起 Streamable HTTP 传输，并把 Ctrl-C 接到关停用的 cancellation token 上。
+///
+/// **拒绝绑定与服务失败必须是两个不同的日志与两次不同的判断**：前者是用户要改命令（少写了
+/// `--allow-remote`），后者是环境问题（端口被占、token 目录不可写）。两者都返回非零码，
+/// 但把它们合成一句「启动失败」会让第一种情形的用户去查端口。
+#[cfg(feature = "mcp-http")]
+async fn serve_mcp_http(
+    options: &yunjian_mcp::http::HttpOptions,
+    server: yunjian_mcp::YunjianServer,
+) -> i32 {
+    use tokio_util::sync::CancellationToken;
+    use yunjian_mcp::http::{EXIT_HTTP_FAILED, EXIT_REMOTE_BIND_REFUSED, HttpServer};
+
+    if let Err(refusal) = options.check_bind() {
+        tracing::error!(error = %refusal, "拒绝启动 MCP HTTP 服务");
+        return EXIT_REMOTE_BIND_REFUSED;
+    }
+
+    let cancellation = CancellationToken::new();
+    let bound = match HttpServer::bind(options, cancellation.clone()).await {
+        Ok(bound) => bound,
+        Err(error) => {
+            tracing::error!(error = %error, "MCP HTTP 服务启动失败");
+            return EXIT_HTTP_FAILED;
+        }
+    };
+    tracing::info!(
+        endpoint = %bound.endpoint(),
+        "客户端请从 token 文件读取 bearer token；命令行与环境变量都不接受它"
+    );
+
+    let signalled = cancellation.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            tracing::info!("收到中断信号，正在关停 MCP HTTP 服务");
+            signalled.cancel();
+        }
+    });
+
+    match bound.serve(server).await {
+        Ok(()) => Exit::Success.code(),
+        Err(error) => {
+            tracing::error!(error = %error, "MCP HTTP 服务异常结束");
+            EXIT_HTTP_FAILED
         }
     }
 }

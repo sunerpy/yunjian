@@ -149,6 +149,12 @@ pub enum DegradeReason {
     PermissionUndetermined,
     /// 没有可用的输入设备。
     NoInputDevice,
+    /// 语音模型不可用：没下载、下载失败、校验不过，或许可不允许加载。
+    ///
+    /// 与采集类原因分开的理由同 [`Self::DeviceBusy`]：下一步动作不在同一个地方。
+    /// 这一条要联网跑 `yunjian models fetch`，与麦克风、设备、系统版本都无关，
+    /// 归到 [`Self::CaptureFailed`] 会把用户指去检查麦克风。
+    ModelUnavailable,
     /// 设备存在但被其他程序独占。
     ///
     /// 与 [`Self::CaptureFailed`] 分开，因为下一步动作完全不同：这一条是「关掉占用它的
@@ -234,6 +240,9 @@ pub fn explain(reason: DegradeReason, platform: Option<Platform>) -> String {
         DegradeReason::CaptureFailed => format!(
             "麦克风打开失败，已切换到打字练习。可能是设备被其他程序独占；关闭占用程序或在{where_to_go}换一个输入设备后重试。"
         ),
+        DegradeReason::ModelUnavailable => {
+            "语音模型尚未就绪，已切换到打字练习。联网后运行 `yunjian models fetch <模型名>` 下载并校验即可启用；`yunjian models list` 能看到每个模型的许可与缓存状态。".to_owned()
+        }
     }
 }
 
