@@ -2,25 +2,226 @@
 
 # 语料与索引
 
-> **占位文档。** 完整内容由 todo 72 填充。当前记录已经实测定案、后续 todo 必须遵守的结论。
+本文记录语料的来源、许可判定、排除理由、规范化管线、身份模型与缺陷基线。
+**每一条许可与 revision 都取自仓库内的真实清单文件，未决问题如实标为未决。**
 
-## 上游数据源
+## 目录
 
-已核实可用的上游是 **3 个**（不是早期草案里写的 4 个）：`chinese-poetry/chinese-poetry`、
-`Werneror/Poetry`、`charlesix59/chinese_word_rhyme`。逐资产许可判定见
-[`corpus/sources.toml`](../corpus/sources.toml)，拒绝清单与理由见
-[`corpus/DENYLIST.md`](../corpus/DENYLIST.md)。
+- [上游数据源：三个，各带锁定 revision 与许可](#上游数据源三个各带锁定-revision-与许可)
+- [排除清单：十七条，逐条附理由](#排除清单十七条逐条附理由)
+- [为什么现代注释、译文、赏析一概不收](#为什么现代注释译文赏析一概不收)
+- [规范化管线](#规范化管线)
+- [身份模型：为什么 `stable_id` 必须与 `content_hash` 分开](#身份模型为什么-stable_id-必须与-content_hash-分开)
+- [缺陷报告与漂移基线](#缺陷报告与漂移基线)
+- [索引选型（已实测，具有约束力）](#索引选型已实测具有约束力)
+- [随包工件：什么在里面，什么不在（已实测定案）](#随包工件什么在里面什么不在已实测定案)
+- [韵书（已实测定案）](#韵书已实测定案)
+- [历代集评：逐条出处是准入条件](#历代集评逐条出处是准入条件)
 
-判定粒度是**单个文件**：一份仓库级 MIT LICENSE 只能授予该仓库自身整理工作的权利，
-盖不住它抓取或转录来的内容。这条规则落地时在一个 MIT 仓库内部命中了 10 个夹带现代注释、
-赏析或百科式条目的文件，全部扣留、不分发。
+## 上游数据源：三个，各带锁定 revision 与许可
 
-## 身份模型
+已核实可用的上游是 **3 个**（不是早期草案里写的 4 个——原定的第四个 `jkak/pingShuiYun`
+实测在任何 revision 都没有 LICENSE，已拒绝，见下）。逐条取自
+[`corpus/sources.toml`](../corpus/sources.toml)：
 
-`stable_id` 从**与内容无关**的 source locator 铸造，绝不从正文哈希得来——上游数据已知存在
-数千处待修正的错字，内容一变身份就跟着变的方案会连带毁掉赏析缓存与复习历史。注册表是
-append-only 事件日志（`Mint` / `ContentChanged` / `Alias`），位移探测器发现整段 id 平移时
-**让构建失败**而不是静默重新分配。
+| 来源                                                                                  | 锁定 revision                              | 仓库许可 | 随仓 LICENSE 副本                                        | 副本 SHA-256                                                       |
+| ------------------------------------------------------------------------------------- | ------------------------------------------ | -------- | -------------------------------------------------------- | ------------------------------------------------------------------ |
+| [`chinese-poetry/chinese-poetry`](https://github.com/chinese-poetry/chinese-poetry)   | `b8594f81a89752241442f2ce267d6f66f96704ee` | MIT      | `corpus/licenses/chinese-poetry.LICENSE`                 | `c195319aeaa3ffcbe16aa5d26eec19eae5a42f84337dd2b3dc3c9d5ccbbd6507` |
+| [`Werneror/Poetry`](https://github.com/Werneror/Poetry)                               | `4cfe49c06858e00d15f84d192fe5294295f79689` | MIT      | `corpus/licenses/Werneror-Poetry.LICENSE`                | `3c2630eb84efab60868d5195aa656b954f77d3cc1127dc886601e21cfd9fb63b` |
+| [`charlesix59/chinese_word_rhyme`](https://github.com/charlesix59/chinese_word_rhyme) | `ff0e9c13fb037c43e0eaa5dc929c0fe4fa2ffb18` | MIT      | `corpus/licenses/charlesix59-chinese_word_rhyme.LICENSE` | `e1464036d0f0ca738de9ebcb697b8faaf6dc2eafd193dc98555f23b409e87599` |
+
+**锁定的是 revision，不是分支。** 分支名会移动，等于没锁；`xtask verify-sources` 的联网模式
+校验「上游字节 == 随仓字节 == 记录摘要」，`--offline` 只校验后两者。
+
+**判定粒度是单个资产，不是仓库。** 清单里共 68 条 asset 判定，`license_class` 三种取值的分布是
+**42 条 `public_domain`、5 条 `permissive`、21 条 `unverified`**：
+
+- `public_domain`——底本为前现代作品，已过保护期；
+- `permissive`——该仓库自身的整理或计算产物，由其 LICENSE 授权；
+- `unverified`——授权链未核实（现代出版物、抓自商业站点、来源不明的现代散文）。
+
+`shippable = false` 的资产一律不进入分发产物，而 **`unverified` 且 `shippable = true` 是硬失败**。
+
+这条粒度规则不是洁癖，它落地时**立刻在一个 MIT 仓库内部命中 10 个文件**：
+`五代诗词/huajianji/`（50 条里 48 条 `notes` 是现代白话注释）、`五代诗词/nantang/`、
+`水墨唐诗/`（176 条里 152 条 `prologue` 是现代赏析）、以及 `蒙学/` 下 5 个带现代百科式
+`abstract` 的文件。全部标 `unverified` + `shippable = false`。
+
+**反例同样重要，且判据不是字段名。** `幽梦影/youmengying.json` 里 219 条 `comment` 中 209 条是
+清代友人评语（「曹秋岳曰」「庞笔奴曰」），`全唐诗/authors.*.json` 的 `desc` 与
+`御定全唐詩` 的 `biography` 是原书文言小传——都是公有领域，可以上架。判据只能是**文本本身是
+文言原刻还是现代白话**。`御定全唐詩` 的 `notes` 结构上存在但 88 条全是空串，属于「看着危险
+其实是空的」。
+
+## 排除清单：十七条，逐条附理由
+
+完整清单在 [`corpus/DENYLIST.md`](../corpus/DENYLIST.md)，本节逐条复述**因为理由本身就是语料
+站得住脚的记录**——一份没有理由的拒绝清单下一个人只会想删掉它。
+
+| 被拒标识符                          | 理由                                                                                                                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `huajianji`                         | 仓库没有 LICENSE 文件；其 `notes` 字段虽然存在但本来就是空的                                                                                                               |
+| `VMIJUNV`                           | 没有 LICENSE，README 写明「仅限于交流学习」；且仓库缺失唐/宋/明/清，完整数据只放在百度网盘                                                                                 |
+| `xcc3641/chinese-gushiwen`          | 没有 LICENSE；附带的 `audioUrl` 也已失效                                                                                                                                   |
+| `Provinm/chinese-poetry-simplified` | 没有 LICENSE。本项目自行做繁简转换，不需要它                                                                                                                               |
+| `THUNLP-AIPoet`                     | 全部数据集均无 LICENSE，且声明 "released for academic use only"，学术用途授权覆盖不了本项目的分发                                                                          |
+| `THU-CRRD`                          | 同属学术用途限定。它的 `pingshui_amb.pkl` 是**唯一**的多音字韵部歧义消解数据，仍然不能用                                                                                   |
+| `byj233/ChinesePoetryLibrary`       | 声明 MPL-2.0，但 README 又写「商用需授权」，自相矛盾；矛盾未澄清即不可用                                                                                                   |
+| `StewartXiang/poetry_with_labels`   | GPL-3.0，会传染整个应用；内容本身也是 2017 年从古诗文网爬取的                                                                                                              |
+| `sheepzh/poetry`                    | LICENSE 写 MIT，README 写「不得用于任何商业盈利行为」，自相矛盾；且内容是现代诗                                                                                            |
+| `Poetry_CN`                         | OpenDataLab 数据集，平台条款写明「仅用于学术目的，请勿商用」                                                                                                               |
+| `OpenDataLab`                       | 同上，**按整个来源方拒绝**，避免换个数据集名再进来                                                                                                                         |
+| `yht050511/gushiwen`                | 内容爬取自古诗文网（2022-12），原站声明版权由出版者所有、非经许可不准复制                                                                                                  |
+| `Tianyijian/GushiWenSpider`         | 爬虫本体，硬编码古诗文网翻译接口，产出物与上一条同源                                                                                                                       |
+| `MCGA`                              | 朗诵音频语料，CC BY-NC-SA-4.0（NC 条款排除本项目），且仅发布 test split                                                                                                    |
+| `jkak/pingShuiYun`                  | **在锁定 revision 处没有任何 LICENSE 文件**。计划原文列它为 MIT，实测为误：`/license` 返回 404，`LICENSE` 与 `LICENSE.md` 均 0 次提交（全仓 11 次提交），README 无许可声明 |
+| `caoxingyu/chinese-gushiwen`        | 上游已消失（HTTP 404），无法核实许可                                                                                                                                       |
+| `javayhu/poetry`                    | 上游已消失（HTTP 404），无法核实许可                                                                                                                                       |
+
+三条关于这份清单的机制说明：
+
+- **匹配只针对 source 级的 `name` / `url`，绝不针对 asset 的 `path`。** 这是刻意的：被拒的独立
+  仓库 `huajianji` 与 MIT 仓库内的子目录 `五代诗词/huajianji/` 同名，拿标识符去匹配路径会误杀
+  后者——后者走的是逐资产判定，不是拒绝清单。
+- **只维护一份清单不够，删掉一行就能放行。** `verify-sources` 因此额外断言
+  `REQUIRED_DENYLIST` 里的 14 个标识符必须都在 `DENYLIST.md` 出现，删条目直接构建失败。
+  该场景已实测退出 1。
+- **被拒不等于丢能力。** `jkak/pingShuiYun` 原本承担「逐字 → (声调, 韵部)」反向索引，同一能力
+  改由构建期反转 `charlesix59/chinese_word_rhyme` 的 `Pingshui_Rhyme.json` 得到，反而少一个
+  数据源、且索引与实际分发的韵部数据必然自洽。
+
+## 为什么现代注释、译文、赏析一概不收
+
+上游 `chinese-poetry` 维护者在 issue #227 给出的立场与本项目一致：尊重且不收录基于诗词演绎的
+数据成果（赏析、朗读评论、翻译），但作品本身已属公有领域。issue #76 进一步界定 MIT 的范围：
+那份许可只覆盖「衍生整理的工作产物」。
+
+合法的分析内容只有两个来源：前现代**历代诗话辑评**（公有领域，逐条注明出处），以及**标注
+清楚的 AI 赏析**。这就是为什么 AI 功能不是锦上添花——它填的正是版权墙留下的那个洞。
+
+## 规范化管线
+
+管线的形状由实测事实决定，不由方便决定。
+
+**一、转换只在构建期发生，运行期一个转换字典都不带。** 全文索引只建在 `NormalizedRecord::body`
+这一列（简体）。用户输入「國破山河在」能搜到，靠的**不是**运行期再跑一次转换、也**不是**建
+第二个繁体索引列，而是同时产出的 `variant_map`：一张 `(src_char, dst_char)` 表进语料库，
+运行期逐字查表改写查询。两条硬约束由此而来——不建第二个索引列（trigram 本身放大 2.2–2.6 倍，
+再复制一列会让体积预算直接失效）；`yunjian-core` 不依赖任何转换 crate（`ferrous-opencc` 只在
+`yunjian-corpus` 的依赖里）。
+
+**二、原字形逐字保留，因为转换会放大上游的抄录错误。** 上游 issue #261 记录约 4,278 处疑似讹误，
+其中一类是形近误录：「傅」被录成「傳」，转换后成了「传」，错误从此更难辨认。所以
+`NormalizedRecord::body_original` 与输入逐字节相同；凡转换非往返稳定的记录都得到一条
+`conversion_unstable`。
+
+**三、`Script::Mixed` 在全宋诗占约 40%（143882/357448），这不是探测器过敏。** 正文真的混用
+`却/卻`、`烟/煙`、`峰/峯`、`凉/涼`、`里/裏`。任何「全唐诗一律繁体」的假定都是错的。
+
+**四、四个清洗与分类阶段，各有自己的失败模式与 reason code：**
+
+- **修正双重切句语义。** 切句被拆成两个语义明确的函数：`split_rhyme_feet` 只切 `。！？` 与换行，
+  供尾字、韵脚、尾字检索；`split_metrical_lines` 切 `，。！？；` 与换行，**仅**供体裁判定。
+  合并两者会污染韵部投票——《静夜思》含逗号切出 光/霜/月/乡 四个候选，其中「月」是入声，
+  与 光/霜/乡（下平七阳）不同韵部。
+- **占位正文检测。** 上游有 `无正文。` 这类整条占位串，它们**不是空 body**，`empty_body` 抓不到。
+  判据是拼接全文后**整串相等**（不用 substring——「空。」做 substring 会误杀正文含「空」的诗），
+  reason code `placeholder_body`，命中走 quarantine 而非静默丢弃。
+- **粘连句拆分。** 有的记录把多句塞进一个数组元素，会让句数、首句、尾字全部算错。按 `。！？`
+  切分，且句末标点后紧跟的右引号并入该句，reason code `glued_lines`。
+- **结构化体裁判定。** `poem.form` 取值 `wujue` / `qijue` / `wulv` / `qilv` / `yuefu` / `ci` /
+  `irregular` / `unknown`，判定优先级显式可审计。**各句字数不齐即 `irregular`，绝不猜。**
+  乐府标记是附加维度（`is_yuefu` 布尔）而**不覆盖**结构判定：《黄鹤楼》得到
+  `form=qilv, is_yuefu=false`，《将进酒》得到 `form=irregular, is_yuefu=true`，两者都对。
+
+## 身份模型：为什么 `stable_id` 必须与 `content_hash` 分开
+
+`stable_id` 从**与内容无关**的 source locator 铸造（`mint_stable_id(identity_anchor,
+first_seen_corpus_version)`），`content_hash` 由 `(author, dynasty, title, body)` 算出。两者是
+**两个独立字段**，同时存在于规范记录里。
+
+**分开的理由是可验证的事实，不是设计偏好。** 上游数据已知存在数千处待修正的错字
+（issue #261 约 4,278 处），修正**一定会发生**。若身份是内容的函数，那么一次错字修正就会：
+
+- 换掉那首诗的用户可见键；
+- 于是赏析缓存与复习历史（`appreciation_shipped` / `appreciation_cache` / FSRS 记录都键在
+  `stable_id` 上）全部对不上；
+- 而这一切**不会报错**，只表现为「我背过的诗不见了」。
+
+所以硬规则是：**绝不把内容派生的标识符用作用户可见键。** `content_hash` 的用途是相反的——
+检测内容变了，从而在注册表里记一条 `ContentChanged`。
+
+注册表 `corpus/id_registry.jsonl` 是 append-only 事件日志，三种合法事件：
+
+- `Mint { source_locator, stable_id, content_hash, at_corpus_version }`
+- `ContentChanged { stable_id, from_content_hash, to_content_hash, at_corpus_version }`
+- `Alias { stable_id, from_source_locator, to_source_locator, reason, at_corpus_version }`
+
+**位移探测器发现整段 id 平移时让构建失败**，而不是静默重新分配——静默重排是唯一能同时破坏
+所有用户数据且不留痕迹的失败形态。
+
+判重与身份分组是**两套刻意不同的策略**：身份分组保守，判重激进。`work_group`
+（`compute_work_group(body)`，**不含作者**）让双重归属可检测——上游 issue #232 里一首《赤壁》
+同时被归给杜牧与李商隐；`edition_group`（`compute_edition_group(author, body)`）标记异文而
+**不删除**。**刻意不引入单一正文哈希去重**：那会把《赤壁》那类双重归属静默合并掉，而那正是
+需要被看见的数据缺陷。
+
+只有 `全唐诗/poet.*` 与 `strains/json/*` 带上游原生 `id`；`宋词`、`元曲`、`楚辞`、`诗经`、
+`五代诗词` 都没有。所以「优先用上游原生 key」只覆盖一小部分，位移探测器的适用面比计划设想的大。
+
+## 缺陷报告与漂移基线
+
+**两个语义不同的工件，不可互换：**
+
+- [`corpus/reports/defects.json`](../corpus/reports/) ——**一行一个 finding**。一条记录可以合法地
+  产生多个 finding：同一首诗既是重出、又归属冲突、又长度可疑，就是三个。
+- `corpus/reports/dispositions.json` ——**一行一条输入记录**，取值只有 `Shipped` / `Quarantined` /
+  `Excluded` 三种。
+
+**守恒式必须建立在处置台账上，不能建立在 finding 上。** 因为「保留下来的记录也会产生 finding」
+与「一条记录能产生三个 finding」同时成立，`poem_count + defect_count == 输入行数` **在算术上
+就是假的**——左边把一条记录数了三次。正确的不变量是：
+
+```text
+count(shipped) + count(quarantined) + count(excluded) == input_rows
+poem_count == count(shipped)
+```
+
+由 `QualityReport::check_conservation` 强制。拆出 `corpus-audit.db` 后这三条等式逐字保留，
+只是两端分处两个文件，由 `db::verify_conservation_across_files` 同时打开两份核对，并额外要求
+两个文件自称属于同一次构建（`schema_version` / `corpus_version` / `source_manifest_sha256`
+三元组相等）——否则拿一份旧审计库配一份新语料库也可能让等式凑巧成立。
+
+**漂移基线** [`corpus/reports/baseline.json`](../corpus/reports/baseline.json) 是逐 reason code 的
+期望计数加容差，由 `xtask corpus-quality --write-baseline` 生成。当前 `scope = "fixtures"`，
+`input_rows = 67`、`poem_count = 54`，逐 code：
+
+| reason code               | 期望 | 容差   |
+| ------------------------- | ---- | ------ |
+| `lossy_char`              | 3    | 10%    |
+| `conversion_unstable`     | 1    | 10%    |
+| `duplicate_in_group`      | 6    | 10%    |
+| `conflicting_attribution` | 4    | 10%    |
+| `suspect_length`          | 2    | 10%    |
+| `unknown_dynasty`         | 0    | 10%    |
+| `empty_body`              | 1    | 10%    |
+| `placeholder_body`        | 1    | 10%    |
+| `glued_lines`             | 47   | 10%    |
+| `excluded_by_policy`      | 6    | **0%** |
+| `restricted_license`      | 0    | **0%** |
+| `rhyme_unresolved`        | 0    | 10%    |
+
+两处口径必须如实说明：
+
+- **`restricted_license` 与 `excluded_by_policy` 的容差是 0%**，因为它们是许可判定的结果，
+  「多了一点点」在这里没有可接受的含义。
+- **容差按整数下取整，所以小计数在实践中要求精确相等。** 基线的作用是让一次上游 bump
+  不能静默降低数据质量：数字变了就必须有人解释为什么。
+
+一条真实语料形态值得记下，它会让「逐首派生出至少一行」这类断言在真实语料上必然失败而
+fixture 覆盖不到：**唐宋集合里有 176 首的正文就是一个 `。`**（上游空记录，`body` 非空所以过了
+质量门禁）。覆盖判据必须用「有正文字符的首数」，且用 `content_chars` 这同一个折叠器算，
+不要在 SQL 里重写一遍标点集。
 
 ## 索引选型（已实测，具有约束力）
 
@@ -212,6 +413,22 @@ LICENSE 且声明「仅限于交流学习」，因此它只能用作定位原始
 《鹤林玉露》《野客丛书》《岁寒堂诗话》《人间词话》《后山诗话》《沧浪诗话》《六一诗话》
 《藏一话腴》），逐条以维基文库校录本的**固定修订号**为据，可离线逐字复核。
 
-## 待补
+## 尚未具备的部分（如实记录）
 
-构建管线各阶段、繁简规范化与 `variant_map`、应用侧的下载与落地路径（todo 23）。
+- **应用侧的下载与落地路径尚未接线。** `manifest.json` 已备好 `sha256` / `size_bytes` /
+  `min_app_version` / `schema_version`，但目前没有代码消费它们；随包赏析种子的导入路径同样
+  尚未存在。见计划的 todo 23 与 76。
+- **`corpus-release.yml` 的真实发布路径未验证。** 工作流已过 `actionlint`，但「CI 里重建出来的
+  工件与本机逐字节相同」这条**没有验证过**——它依赖构建可复现在不同宿主上也成立。第一次真
+  发布时必须比对摘要。
+- **全量集合（896,127 首）作为可选下载的体积未实测。** 当前 `corpus-build` 只产出唐宋
+  （`SHIPPED_DEFAULT_SCOPE` 是常量、刻意不接受 `--scale`）。`measurements.json` 里 `full`
+  规模只有拆分前形态的行。
+- **首启耗时是参考机上的单次测量。** 571.8 s 测于 32 逻辑核 / NVMe 的构建机，其中 85% 在
+  n-gram。移动端会显著更慢，在真机上量到之前**不要把「约 10 分钟」写进面向用户的文案**。
+
+## 相关文档
+
+- [架构](ARCHITECTURE.zh.md)——分层边界、检索路由、语料解析与原子物化
+- [AI 赏析](AI.zh.md)——版权墙留下的洞由标注清楚的 AI 赏析填补
+- [第三方许可](../LICENSES.md)——逐资产的许可与署名
