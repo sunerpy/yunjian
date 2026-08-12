@@ -64,6 +64,8 @@ pub enum WarningCode {
     FilteredPageEmpty,
     /// 请求的韵书未随包分发，相关标注为空而不是「没有韵部」。
     RhymeBookUnavailable,
+    /// 请求的作用域对该客户端不适用，已按它唯一支持的作用域处理。
+    ClientScopeIgnored,
 }
 
 /// 一条面向用户的警告。
@@ -98,6 +100,10 @@ pub enum ErrorCode {
     CorpusUnavailable,
     /// 子命令尚未实现。
     NotImplemented,
+    /// 目标客户端配置解析失败或结构不符，已拒绝写入。
+    ClientConfigInvalid,
+    /// 目标客户端配置写入失败。
+    ClientConfigWriteFailed,
 }
 
 /// 一次失败的完整描述。
@@ -295,6 +301,7 @@ mod tests {
             WarningCode::DegradedPlan,
             WarningCode::FilteredPageEmpty,
             WarningCode::RhymeBookUnavailable,
+            WarningCode::ClientScopeIgnored,
         ] {
             let rendered = serde_json::to_string(&code).expect("序列化 warning code");
             assert!(
@@ -307,6 +314,8 @@ mod tests {
             ErrorCode::RhymeBookUnavailable,
             ErrorCode::CorpusUnavailable,
             ErrorCode::NotImplemented,
+            ErrorCode::ClientConfigInvalid,
+            ErrorCode::ClientConfigWriteFailed,
         ] {
             let rendered = serde_json::to_string(&code).expect("序列化 error code");
             assert!(

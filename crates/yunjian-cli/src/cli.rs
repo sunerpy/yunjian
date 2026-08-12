@@ -114,6 +114,21 @@ pub struct McpArgs {
     #[cfg(feature = "mcp-http")]
     #[command(flatten)]
     pub http: yunjian_mcp::http::HttpOptions,
+    /// 维护动作。缺省即承载服务器本身。
+    #[command(subcommand)]
+    pub action: Option<McpAction>,
+}
+
+/// `mcp` 的维护动作。
+///
+/// 只有一个变体也用枚举而不是布尔开关：`yunjian mcp install` 与 `yunjian mcp` 是两件
+/// 完全不同的事（一个写文件后退出，一个占住 stdio 直到对端关闭），把它们编码成同一个
+/// 命令的两种参数组合，会让「起服务时误带上 install 的参数」变成一个能解析通过的调用。
+#[cfg(feature = "mcp")]
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum McpAction {
+    /// 把 `yunjian mcp` 写进 MCP 客户端的配置文件。
+    Install(crate::mcp_install::InstallArgs),
 }
 
 impl Command {
@@ -132,7 +147,12 @@ impl Command {
                 action: CorpusAction::Fetch,
             } => "corpus.fetch",
             #[cfg(feature = "mcp")]
-            Self::Mcp(_) => "mcp",
+            Self::Mcp(McpArgs { action: None, .. }) => "mcp",
+            #[cfg(feature = "mcp")]
+            Self::Mcp(McpArgs {
+                action: Some(McpAction::Install(_)),
+                ..
+            }) => "mcp.install",
         }
     }
 }
@@ -240,11 +260,18 @@ impl From<Tone> for ToneFilter {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "mcp")]
-    use super::McpArgs;
     use super::{Book, Cli, Command, CorpusAction, LogLevel, Tone};
+    #[cfg(feature = "mcp")]
+    use super::{McpAction, McpArgs};
     use clap::{CommandFactory, Parser};
     use yunjian_core::{RhymeBook, RhymeTone, ToneFilter};
+
+    /// 解析一条命令行，取出子命令。
+    fn parse_command(argv: &[&str]) -> Command {
+        Cli::try_parse_from(argv)
+            .unwrap_or_else(|error| panic!("解析 {argv:?} 失败：{error}"))
+            .command
+    }
 
     #[test]
     fn the_command_definition_itself_is_valid() {
@@ -338,8 +365,45 @@ mod tests {
             Cli::try_parse_from(["yunjian", "mcp"])
                 .expect("解析 mcp")
                 .command,
-            Command::Mcp(_)
+            Command::Mcp(McpArgs { action: None, .. })
         ));
+    }
+
+    #[test]
+    fn install_requires_an_explicit_client_because_the_two_shapes_are_not_interchangeable() {
+        // 猜错客户端写出的是一份语法合法、语义为空的条目：客户端不报错，只是永远连不上。
+        Cli::try_parse_from(["yunjian", "mcp", "install"]).expect_err("缺 --client 必须报错");
+        Cli::try_parse_from(["yunjian", "mcp", "install", "--client", "vscode"])
+            .expect_err("未支持的客户端必须报错");
+        for (argument, expected) in [
+            ("claude", crate::mcp_install::Client::Claude),
+            ("opencode", crate::mcp_install::Client::OpenCode),
+        ] {
+            let cli = Cli::try_parse_from(["yunjian", "mcp", "install", "--client", argument])
+                .expect("解析 install");
+            let Command::Mcp(McpArgs {
+                action: Some(McpAction::Install(args)),
+                ..
+            }) = cli.command
+            else {
+                panic!("应解析为 mcp install");
+            };
+            assert_eq!(args.client, expected);
+            assert!(!args.global && !args.dry_run && args.path.is_none());
+        }
+    }
+
+    #[test]
+    fn serving_and_installing_are_two_different_envelope_names() {
+        // 两者一个写文件后退出、一个占住 stdio，混成一个名字会让调用方分不清日志属于哪次运行。
+        // 从 argv 解析而不是手工构造 `McpArgs`：`mcp-http` 特性会给它加一个字段，于是
+        // 结构体字面量在开启时编译不过、`..default()` 在关闭时又是空更新。解析同时也走了
+        // 真实路径。
+        assert_eq!(parse_command(&["yunjian", "mcp"]).name(), "mcp");
+        assert_eq!(
+            parse_command(&["yunjian", "mcp", "install", "--client", "claude"]).name(),
+            "mcp.install"
+        );
     }
 
     #[test]
@@ -377,7 +441,8 @@ mod tests {
                 action: CorpusAction::Fetch,
             }
             .name(),
-            Command::Mcp(McpArgs::default()).name(),
+            parse_command(&["yunjian", "mcp"]).name(),
+            parse_command(&["yunjian", "mcp", "install", "--client", "opencode"]).name(),
         ];
         for name in names {
             assert!(

@@ -36,6 +36,9 @@ voice = ["yunjian-voice/voice"]
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+# `mcp install` 要按平台推导客户端配置目录。三个平台三套惯例，手写会漏掉
+# macOS 的 `~/Library/Application Support` 与 Windows 不读 `%APPDATA%` 这两件事。
+dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
