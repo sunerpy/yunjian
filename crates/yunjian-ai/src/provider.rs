@@ -126,6 +126,7 @@ impl PromptTemplate {
 pub struct AppreciationRequest {
     poem: PoemDetail,
     model: String,
+    style: Option<String>,
     temperature: f32,
     template: PromptTemplate,
     grounding: String,
@@ -151,11 +152,22 @@ impl AppreciationRequest {
         Self {
             poem,
             model: model.into(),
+            style: None,
             temperature: DEFAULT_TEMPERATURE,
             template,
             grounding,
             grounding_digest,
         }
+    }
+
+    /// 增加面向模型的赏析风格约束。
+    #[must_use]
+    pub fn with_style(mut self, style: Option<String>) -> Self {
+        self.style = style.and_then(|value| {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_owned())
+        });
+        self
     }
 
     /// 返回被赏析的完整作品详情。
@@ -168,6 +180,12 @@ impl AppreciationRequest {
     #[must_use]
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// 返回可选的赏析风格约束。
+    #[must_use]
+    pub fn style(&self) -> Option<&str> {
+        self.style.as_deref()
     }
 
     /// 返回确定性生成温度。
@@ -197,9 +215,13 @@ impl AppreciationRequest {
     /// 将 grounding 填入版本化模板。
     #[must_use]
     pub fn render_prompt(&self) -> String {
-        self.template
+        let prompt = self
+            .template
             .source()
-            .replace("{{grounding}}", self.grounding())
+            .replace("{{grounding}}", self.grounding());
+        self.style().map_or(prompt.clone(), |style| {
+            format!("{prompt}\n\n输出风格要求：{style}")
+        })
     }
 
     /// 构造包含模板版本与 grounding 摘要的稳定缓存键。
@@ -209,6 +231,7 @@ impl AppreciationRequest {
         for component in [
             provider.as_str(),
             self.model(),
+            self.style().unwrap_or(""),
             self.template.name(),
             self.template_version(),
             self.grounding_digest(),
@@ -251,6 +274,66 @@ pub struct TokenUsage {
     pub total_tokens: u32,
 }
 
+/// 一次不带持久化能力的诗词生成请求。
+#[derive(Debug, Clone)]
+pub struct PoemGenerationRequest {
+    prompt: String,
+    model: String,
+    temperature: f32,
+}
+
+impl PoemGenerationRequest {
+    /// 构造诗词生成请求。
+    #[must_use]
+    pub fn new(prompt: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            prompt: prompt.into(),
+            model: model.into(),
+            temperature: 0.7,
+        }
+    }
+
+    /// 覆盖采样温度。
+    #[must_use]
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = temperature.clamp(0.0, 2.0);
+        self
+    }
+
+    /// 返回提交给模型的完整提示词。
+    #[must_use]
+    pub fn prompt(&self) -> &str {
+        &self.prompt
+    }
+
+    /// 返回模型标识。
+    #[must_use]
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// 返回采样温度。
+    #[must_use]
+    pub const fn temperature(&self) -> f32 {
+        self.temperature
+    }
+}
+
+/// 模型生成的诗词文本及调用溯源。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeneratedPoem {
+    /// 模型返回的文本。
+    pub text: String,
+    /// 实际使用的模型标识。
+    pub model: String,
+    /// 实际使用的供应商。
+    pub provider: ProviderId,
+    /// 生成完成时的 Unix 时间戳（秒）。
+    pub generated_at: u64,
+    /// 供应商返回的 token 用量；供应商未报告时为空。
+    pub usage: Option<TokenUsage>,
+}
+
 /// 流式赏析的可合并进度快照。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppreciationProgress {
@@ -283,6 +366,18 @@ pub trait AppreciationProvider: Send + Sync {
     /// 返回稳定供应商标识。
     fn id(&self) -> ProviderId;
 }
+
+/// 不提供任何写入入口的诗词生成供应商边界。
+#[async_trait]
+pub trait PoemGenerationProvider: Send + Sync {
+    /// 生成一首诗词；调用方负责验证格式与格律。
+    async fn generate_poem(&self, request: PoemGenerationRequest) -> Result<GeneratedPoem>;
+}
+
+/// 同时支持赏析与作诗的 AI 供应商。
+pub trait AiProvider: AppreciationProvider + PoemGenerationProvider {}
+
+impl<T> AiProvider for T where T: AppreciationProvider + PoemGenerationProvider {}
 
 /// 未配置密钥时仍可安装的空供应商。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -320,6 +415,13 @@ impl AppreciationProvider for NullProvider {
 
     fn id(&self) -> ProviderId {
         self.provider.clone()
+    }
+}
+
+#[async_trait]
+impl PoemGenerationProvider for NullProvider {
+    async fn generate_poem(&self, _request: PoemGenerationRequest) -> Result<GeneratedPoem> {
+        Err(self.no_key())
     }
 }
 

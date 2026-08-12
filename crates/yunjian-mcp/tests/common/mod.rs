@@ -145,8 +145,22 @@ impl Sandbox {
         sandbox
     }
 
-    fn corpus(&self) -> PathBuf {
+    pub fn corpus(&self) -> PathBuf {
         self.dir.join("corpus.db")
+    }
+
+    #[allow(dead_code)]
+    pub fn app_data_dir(&self) -> PathBuf {
+        self.dir.join("app-data")
+    }
+
+    #[allow(dead_code)]
+    pub fn corpus_row_count(&self) -> usize {
+        let connection = Connection::open(self.corpus()).expect("打开 fixture 语料统计行数");
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM poem", [], |row| row.get(0))
+            .expect("统计 fixture 作品行数");
+        usize::try_from(count).expect("fixture 作品行数应为非负整数")
     }
 
     /// 打开这份 fixture 语料并交回核心客户端。

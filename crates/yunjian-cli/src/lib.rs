@@ -143,19 +143,23 @@ fn run_mcp(config: &Config, corpus_override: Option<&std::path::Path>, args: &cl
         .path
         .clone()
         .unwrap_or_else(|| corpus.data_dir.join(CORPUS_FILE_NAME));
-    let server = if path.is_file() {
+    let (server, corpus_version) = if path.is_file() {
         corpus.path = Some(path);
         match CorpusHandle::open(&corpus) {
-            Ok(handle) => YunjianServer::new(Yunjian::new(handle)),
+            Ok(handle) => {
+                let corpus_version = handle.meta().corpus_version.clone();
+                (YunjianServer::new(Yunjian::new(handle)), corpus_version)
+            }
             Err(error) => {
                 tracing::warn!(error = %error, "语料库不可用，MCP 将以缺语料模式启动");
-                YunjianServer::without_corpus()
+                (YunjianServer::without_corpus(), "unavailable".to_owned())
             }
         }
     } else {
         tracing::warn!(corpus = %path.display(), "未找到语料库，MCP 将以缺语料模式启动");
-        YunjianServer::without_corpus()
+        (YunjianServer::without_corpus(), "unavailable".to_owned())
     };
+    let server = configure_mcp_ai(server, config, &corpus_version);
 
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -181,6 +185,81 @@ fn run_mcp(config: &Config, corpus_override: Option<&std::path::Path>, args: &cl
             Exit::Usage.code()
         }
     }
+}
+
+#[cfg(feature = "mcp")]
+fn configure_mcp_ai(
+    server: yunjian_mcp::YunjianServer,
+    config: &Config,
+    corpus_version: &str,
+) -> yunjian_mcp::YunjianServer {
+    use std::sync::Arc;
+    use yunjian_ai::{
+        AiProvider, AppreciationCache, DEFAULT_APPRECIATION_CACHE_CAPACITY, GenAiProvider,
+        GenAiProviderConfig, KeyStore, KeyStoreConfig, NullProvider, ProviderKind,
+    };
+    use yunjian_core::config::PROVIDER_NONE;
+
+    let cache = AppreciationCache::open(
+        &config.app.data_dir,
+        corpus_version,
+        DEFAULT_APPRECIATION_CACHE_CAPACITY,
+    )
+    .map(Arc::new)
+    .map_err(|error| {
+        tracing::warn!(error = %error, "赏析缓存不可用，MCP AI 赏析将不缓存");
+    })
+    .ok();
+
+    let without_provider = |server: yunjian_mcp::YunjianServer, model: String| {
+        let provider: Arc<dyn AiProvider> = Arc::new(
+            NullProvider::new("unconfigured")
+                .unwrap_or_else(|_| unreachable!("内置供应商标识恒为合法 ASCII")),
+        );
+        server.with_ai(provider, cache.clone(), model)
+    };
+
+    if config.ai.provider == PROVIDER_NONE {
+        return without_provider(server, String::new());
+    }
+    let kind = match ProviderKind::parse(&config.ai.provider) {
+        Ok(kind) => kind,
+        Err(error) => {
+            tracing::warn!(error = %error, "AI 服务商配置无效，MCP AI 工具将提示重新配置");
+            return without_provider(server, String::new());
+        }
+    };
+    let model = config
+        .ai
+        .model
+        .clone()
+        .unwrap_or_else(|| kind.default_model().to_owned());
+    let mut provider_config = GenAiProviderConfig::new(kind);
+    if let Some(endpoint) = &config.ai.endpoint {
+        provider_config = provider_config.with_base_url(endpoint.clone());
+    }
+    if config.ai.model.is_some() {
+        provider_config = provider_config.with_model_override(model.clone());
+    }
+    let store = match KeyStore::open(KeyStoreConfig::default()) {
+        Ok(store) => store,
+        Err(error) => {
+            tracing::warn!(error = %error, "钥匙串不可用，MCP AI 工具将提示配置密钥");
+            return without_provider(server, model);
+        }
+    };
+    let provider = match GenAiProvider::from_keystore(provider_config, &store) {
+        Ok(provider) => provider,
+        Err(yunjian_core::Error::AiKeyNotConfigured { .. }) => {
+            return without_provider(server, model);
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "AI 服务商初始化失败，MCP AI 工具将提示重新配置");
+            return without_provider(server, model);
+        }
+    };
+    let provider: Arc<dyn AiProvider> = Arc::new(provider);
+    server.with_ai(provider, cache, model)
 }
 
 /// 起 Streamable HTTP 传输，并把 Ctrl-C 接到关停用的 cancellation token 上。

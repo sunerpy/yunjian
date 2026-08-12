@@ -9,12 +9,14 @@
 //! 强制每个请求带 bearer token、校验 `Origin`；这些不是加固项，而是把 stdio 从操作系统那里
 //! 免费得到的隔离手工补回来。
 //!
-//! # 三个工具都是只读、离线、无 key
+//! # 五个工具都只读，AI 工具额外声明开放世界
 //!
 //! `search_poem` / `explain_poem` / `find_similar_poem` 只读本地语料库，不联网、不需要
 //! API key、不写任何数据。每个工具都**显式**声明 `read_only_hint = true` 与
 //! `open_world_hint = false`——MCP 的 annotation 默认值是最坏情况（`destructiveHint`
 //! 默认真、`openWorldHint` 默认真），省略它们会让客户端在每次调用前都弹一次确认。
+//! `appreciate_poem` / `generate_poem` 同样不写数据，但可能调用外部模型，故显式声明
+//! `open_world_hint = true`；缺少服务商或密钥时返回普通结构化结果，不把配置问题升级为协议错误。
 //!
 //! # 结果同时带 `structuredContent` 和一个 text block
 //!
@@ -35,19 +37,27 @@ use rmcp::{
     tool, tool_handler, tool_router, transport::stdio,
 };
 use schema::{
+    AI_SETTINGS_PATH, AI_UNREVIEWED_DISCLOSURE, AppreciatePoemInput, AppreciatePoemOutput,
     AttributionConflictFacts, AttributionFacts, AuthorFacts, CommentaryCitationFacts,
     CommentaryFacts, ExplainPoemInput, ExplainPoemOutput, FindSimilarPoemInput,
-    FindSimilarPoemOutput, OFFLINE_FACTS_DISCLOSURE, PoemFacts, ProvenanceFacts, RhymeGroupFacts,
-    SearchPoemHighlight, SearchPoemHit, SearchPoemInput, SearchPoemOutput, SimilarPoem,
-    SimilarityAxis, ToneCellFacts, ToneFacts, ToneLineFacts,
+    FindSimilarPoemOutput, GeneratePoemInput, GeneratePoemOutput, GeneratedPoemForm,
+    OFFLINE_FACTS_DISCLOSURE, PoemFacts, ProvenanceFacts, RhymeGroupFacts, SearchPoemHighlight,
+    SearchPoemHit, SearchPoemInput, SearchPoemOutput, SimilarPoem, SimilarityAxis, ToneCellFacts,
+    ToneFacts, ToneLineFacts,
 };
 use similarity::Profile;
 use std::collections::BTreeSet;
+use std::fmt;
 use std::sync::{Arc, OnceLock};
+use yunjian_ai::{
+    AiProvider, AppreciationCache, AppreciationRequest, CacheHit, CacheSource,
+    PoemGenerationRequest, ProviderId,
+};
 use yunjian_core::{
-    Attribution, AuthorSearchRequest, DynastyBrowseRequest, Error, PoemDetail, PoemDetailRequest,
-    PoemFeatures, RhymeGroupSearchRequest, TagBrowseRequest, TextSearchRequest, TitleSearchRequest,
-    ToneFilter, Yunjian,
+    Attribution, AuthorSearchRequest, CharacterRhymesRequest, DynastyBrowseRequest, Error,
+    PoemDetail, PoemDetailRequest, PoemFeatures, RhymeBook, RhymeGroupSearchRequest,
+    TagBrowseRequest, TextSearchRequest, TitleSearchRequest, ToneFilter, Yunjian, content_chars,
+    split_metrical_lines,
 };
 
 /// `search_poem` 的缺省单页上限。
@@ -72,6 +82,9 @@ pub const SIMILAR_RESULT_CAP: usize = 20;
 /// 结果只有 20 条，十倍的候选足以让排序稳定，而 200 次点查在实测上是毫秒级。
 pub const SIMILAR_CANDIDATE_POOL_CAP: usize = 200;
 
+/// 生成诗词在所有 MCP 结果中的固定身份标签。
+pub const GENERATED_POEM_LABEL: &str = "AI 生成，非古人作品";
+
 #[derive(Debug, Clone)]
 enum CoreClient {
     Ready(Yunjian),
@@ -79,11 +92,26 @@ enum CoreClient {
 }
 
 /// 通过 MCP 暴露云笺核心能力的服务端。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct YunjianServer {
     core: CoreClient,
+    ai: Option<Arc<dyn AiProvider>>,
+    appreciation_cache: Option<Arc<AppreciationCache>>,
+    ai_model: String,
     stopwords: Arc<OnceLock<BTreeSet<char>>>,
     tool_router: ToolRouter<Self>,
+}
+
+impl fmt::Debug for YunjianServer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("YunjianServer")
+            .field("core", &self.core)
+            .field("ai_configured", &self.ai.is_some())
+            .field("appreciation_cache", &self.appreciation_cache)
+            .field("ai_model", &self.ai_model)
+            .finish_non_exhaustive()
+    }
 }
 
 #[tool_router(router = tool_router)]
@@ -93,6 +121,9 @@ impl YunjianServer {
     pub fn new(core: Yunjian) -> Self {
         Self {
             core: CoreClient::Ready(core),
+            ai: None,
+            appreciation_cache: None,
+            ai_model: String::new(),
             stopwords: Arc::new(OnceLock::new()),
             tool_router: Self::tool_router(),
         }
@@ -103,9 +134,26 @@ impl YunjianServer {
     pub fn without_corpus() -> Self {
         Self {
             core: CoreClient::Missing,
+            ai: None,
+            appreciation_cache: None,
+            ai_model: String::new(),
             stopwords: Arc::new(OnceLock::new()),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// 注入 AI 供应商、可选赏析缓存与模型名。
+    #[must_use]
+    pub fn with_ai(
+        mut self,
+        ai: Arc<dyn AiProvider>,
+        appreciation_cache: Option<Arc<AppreciationCache>>,
+        model: impl Into<String>,
+    ) -> Self {
+        self.ai = Some(ai);
+        self.appreciation_cache = appreciation_cache;
+        self.ai_model = model.into();
+        self
     }
 
     #[tool(
@@ -313,6 +361,385 @@ impl YunjianServer {
             disclosure: OFFLINE_FACTS_DISCLOSURE.to_owned(),
         }))
     }
+
+    #[tool(
+        name = "appreciate_poem",
+        description = "为语料库中的一首作品取得明确标注的 AI 赏析。先查用户本地缓存，再查随包预生成层，只有未命中时才调用外部模型；返回 source、model 与 template_version。可选 style 用来约束表达风格。未配置服务商或密钥时返回带设置路径的普通结果。",
+        annotations(
+            title = "AI 赏析",
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn appreciate_poem(
+        &self,
+        Parameters(input): Parameters<AppreciatePoemInput>,
+    ) -> Result<Json<AppreciatePoemOutput>, CallToolResult> {
+        let core = self.ready()?;
+        let detail = core
+            .poem_detail(PoemDetailRequest {
+                poem_id: input.poem_id.clone(),
+            })
+            .map_err(|error| explain_error(&input.poem_id, &error))?;
+        let request =
+            AppreciationRequest::new(detail, self.ai_model.clone()).with_style(input.style.clone());
+        let provider_id = self
+            .ai
+            .as_ref()
+            .map(|provider| provider.id())
+            .unwrap_or_else(unconfigured_provider_id);
+
+        if let Some(cache) = &self.appreciation_cache {
+            let cached = cache.lookup(&request, &provider_id).map_err(|error| {
+                tool_error("appreciation_cache_failed", &error.to_string(), None)
+            })?;
+            if let Some(hit) = cached {
+                return Ok(Json(appreciation_output(input.poem_id, hit)));
+            }
+        }
+
+        let Some(provider) = &self.ai else {
+            return Ok(Json(appreciation_configuration_required(input.poem_id)));
+        };
+        let appreciation = match provider.appreciate(request.clone()).await {
+            Ok(appreciation) => appreciation,
+            Err(Error::AiKeyNotConfigured { .. }) => {
+                return Ok(Json(appreciation_configuration_required(input.poem_id)));
+            }
+            Err(error) => {
+                return Err(tool_error("appreciation_failed", &error.to_string(), None));
+            }
+        };
+        if let Some(cache) = &self.appreciation_cache {
+            cache
+                .store_completed(&request, &appreciation)
+                .map_err(|error| {
+                    tool_error("appreciation_cache_failed", &error.to_string(), None)
+                })?;
+        }
+        Ok(Json(appreciation_output(
+            input.poem_id,
+            CacheHit {
+                appreciation,
+                source: CacheSource::Generated,
+            },
+        )))
+    }
+
+    #[tool(
+        name = "generate_poem",
+        description = "按主题生成五言绝句、七言绝句、五言律诗、七言律诗或词。可约束词牌及韵书韵部；固定句式会校验句数、字数和偶数句韵脚。结果始终标注“AI 生成，非古人作品”，只在内存中返回，绝不写入语料或赏析缓存。未配置服务商或密钥时返回带设置路径的普通结果。",
+        annotations(
+            title = "AI 作诗",
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn generate_poem(
+        &self,
+        Parameters(input): Parameters<GeneratePoemInput>,
+    ) -> Result<Json<GeneratePoemOutput>, CallToolResult> {
+        let core = self.ready()?;
+        let constraint = generation_constraint(&input)?;
+        let Some(provider) = &self.ai else {
+            return Ok(Json(generation_configuration_required(&input)));
+        };
+        let request = PoemGenerationRequest::new(
+            generation_prompt(&input, constraint.as_ref()),
+            self.ai_model.clone(),
+        );
+        let generated = match provider.generate_poem(request).await {
+            Ok(generated) => generated,
+            Err(Error::AiKeyNotConfigured { .. }) => {
+                return Ok(Json(generation_configuration_required(&input)));
+            }
+            Err(error) => return Err(tool_error("generation_failed", &error.to_string(), None)),
+        };
+        let validated =
+            validate_generated_poem(core, &input, constraint.as_ref(), &generated.text)?;
+        Ok(Json(GeneratePoemOutput {
+            status: "ready".to_owned(),
+            form: input.form.display_name().to_owned(),
+            theme: input.theme,
+            label: GENERATED_POEM_LABEL.to_owned(),
+            text: Some(generated.text),
+            lines: validated.lines,
+            rhyme_book: constraint
+                .as_ref()
+                .map(|value| value.book.as_key().to_owned()),
+            rhyme_group: constraint.map(|value| value.group),
+            rhyme_feet: validated.rhyme_feet,
+            model: Some(generated.model),
+            message: "生成结果已通过请求中的句式与韵部约束校验，未写入任何数据。".to_owned(),
+            settings_path: None,
+            disclosure: AI_UNREVIEWED_DISCLOSURE.to_owned(),
+        }))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct GenerationConstraint {
+    book: RhymeBook,
+    group: String,
+}
+
+#[derive(Debug, Clone)]
+struct ValidatedPoem {
+    lines: Vec<String>,
+    rhyme_feet: Vec<String>,
+}
+
+fn unconfigured_provider_id() -> ProviderId {
+    ProviderId::new("unconfigured").unwrap_or_else(|_| unreachable!("内置供应商标识恒为合法 ASCII"))
+}
+
+fn appreciation_configuration_required(poem_id: String) -> AppreciatePoemOutput {
+    AppreciatePoemOutput {
+        status: "configuration_required".to_owned(),
+        poem_id,
+        text: None,
+        source: None,
+        model: None,
+        template_version: None,
+        message: "没有可用的随包赏析，且 AI 服务商或密钥尚未配置。".to_owned(),
+        settings_path: Some(AI_SETTINGS_PATH.to_owned()),
+        disclosure: AI_UNREVIEWED_DISCLOSURE.to_owned(),
+    }
+}
+
+fn appreciation_output(poem_id: String, hit: CacheHit) -> AppreciatePoemOutput {
+    let source = match hit.source {
+        CacheSource::Shipped => "shipped",
+        CacheSource::Local => "cache",
+        CacheSource::Generated => "generated",
+    };
+    AppreciatePoemOutput {
+        status: "ready".to_owned(),
+        poem_id,
+        text: Some(hit.appreciation.text),
+        source: Some(source.to_owned()),
+        model: Some(hit.appreciation.model),
+        template_version: Some(hit.appreciation.template_version),
+        message: "AI 赏析已返回；请结合原文、格律事实与有出处的历代集评独立核验。".to_owned(),
+        settings_path: None,
+        disclosure: AI_UNREVIEWED_DISCLOSURE.to_owned(),
+    }
+}
+
+fn generation_configuration_required(input: &GeneratePoemInput) -> GeneratePoemOutput {
+    GeneratePoemOutput {
+        status: "configuration_required".to_owned(),
+        form: input.form.display_name().to_owned(),
+        theme: input.theme.clone(),
+        label: GENERATED_POEM_LABEL.to_owned(),
+        text: None,
+        lines: Vec::new(),
+        rhyme_book: input.rhyme_book.clone(),
+        rhyme_group: input.rhyme_group.clone(),
+        rhyme_feet: Vec::new(),
+        model: None,
+        message: "生成诗词需要先配置 AI 服务商与密钥。".to_owned(),
+        settings_path: Some(AI_SETTINGS_PATH.to_owned()),
+        disclosure: AI_UNREVIEWED_DISCLOSURE.to_owned(),
+    }
+}
+
+fn generation_constraint(
+    input: &GeneratePoemInput,
+) -> Result<Option<GenerationConstraint>, CallToolResult> {
+    if input.theme.trim().is_empty() {
+        return Err(tool_error(
+            "invalid_generation_request",
+            "主题不能为空",
+            None,
+        ));
+    }
+    match input.form {
+        GeneratedPoemForm::Ci
+            if input
+                .ci_tune
+                .as_deref()
+                .is_none_or(|tune| tune.trim().is_empty()) =>
+        {
+            return Err(tool_error(
+                "invalid_generation_request",
+                "生成词时必须提供 ci_tune",
+                None,
+            ));
+        }
+        GeneratedPoemForm::Ci => {}
+        _ if input.ci_tune.is_some() => {
+            return Err(tool_error(
+                "invalid_generation_request",
+                "只有 form=词 时可以提供 ci_tune",
+                None,
+            ));
+        }
+        _ => {}
+    }
+
+    let inferred_book = match input.form {
+        GeneratedPoemForm::Ci => RhymeBook::Cilin,
+        _ => RhymeBook::Pingshui,
+    };
+    match (&input.rhyme_book, &input.rhyme_group) {
+        (None, None) => Ok(None),
+        (book, Some(group)) => {
+            let book = match book.as_deref() {
+                Some(key) => RhymeBook::from_key(key).ok_or_else(|| {
+                    tool_error(
+                        "invalid_generation_request",
+                        &format!("未知韵书 `{key}`；可用值为 pingshui 或 cilin"),
+                        None,
+                    )
+                })?,
+                None => inferred_book,
+            };
+            book.ensure_available().map_err(|error| {
+                tool_error("invalid_generation_request", &error.to_string(), None)
+            })?;
+            let group = group.trim();
+            if group.is_empty() {
+                return Err(tool_error(
+                    "invalid_generation_request",
+                    "韵部名不能为空",
+                    None,
+                ));
+            }
+            Ok(Some(GenerationConstraint {
+                book,
+                group: group.to_owned(),
+            }))
+        }
+        (Some(_), None) => Err(tool_error(
+            "invalid_generation_request",
+            "提供 rhyme_book 时必须同时提供 rhyme_group",
+            None,
+        )),
+    }
+}
+
+fn generation_prompt(
+    input: &GeneratePoemInput,
+    constraint: Option<&GenerationConstraint>,
+) -> String {
+    let mut requirements = vec![
+        format!("体式：{}", input.form.display_name()),
+        format!("主题：{}", input.theme.trim()),
+        "只输出正文，每句单独一行，不要标题、序号、注释或 Markdown。".to_owned(),
+    ];
+    if let Some((line_count, characters_per_line)) = input.form.fixed_shape() {
+        requirements.push(format!(
+            "必须恰好 {line_count} 句，每句恰好 {characters_per_line} 个汉字；偶数句押韵。"
+        ));
+    }
+    if let Some(tune) = input.ci_tune.as_deref() {
+        requirements.push(format!("词牌：{}", tune.trim()));
+    }
+    if let Some(constraint) = constraint {
+        requirements.push(format!(
+            "韵书约束：按{}押{}，所有指定韵脚必须属于该韵部。",
+            constraint.book.display_name(),
+            constraint.group
+        ));
+    }
+    requirements.push(format!(
+        "不得署古人姓名；产品会另行附加“{GENERATED_POEM_LABEL}”标签。"
+    ));
+    requirements.join("\n")
+}
+
+fn validate_generated_poem(
+    core: &Yunjian,
+    input: &GeneratePoemInput,
+    constraint: Option<&GenerationConstraint>,
+    text: &str,
+) -> Result<ValidatedPoem, CallToolResult> {
+    let lines = split_metrical_lines(text)
+        .map(|line| content_chars(line).collect::<String>())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return Err(tool_error(
+            "generation_invalid",
+            "模型返回了空诗词正文",
+            Some("请重试；无效生成不会写入任何数据"),
+        ));
+    }
+    if let Some((expected_lines, expected_characters)) = input.form.fixed_shape() {
+        if lines.len() != expected_lines {
+            return Err(tool_error(
+                "generation_invalid",
+                &format!(
+                    "{}必须为 {expected_lines} 句，模型返回了 {} 句",
+                    input.form.display_name(),
+                    lines.len()
+                ),
+                Some("请重试；无效生成不会写入任何数据"),
+            ));
+        }
+        if let Some((index, actual)) = lines
+            .iter()
+            .enumerate()
+            .map(|(index, line)| (index, line.chars().count()))
+            .find(|(_, count)| *count != expected_characters)
+        {
+            return Err(tool_error(
+                "generation_invalid",
+                &format!(
+                    "{}第 {} 句应为 {expected_characters} 字，实为 {actual} 字",
+                    input.form.display_name(),
+                    index + 1
+                ),
+                Some("请重试；无效生成不会写入任何数据"),
+            ));
+        }
+    }
+
+    let foot_indexes = if input.form.fixed_shape().is_some() {
+        (1..lines.len()).step_by(2).collect::<Vec<_>>()
+    } else {
+        (0..lines.len()).collect::<Vec<_>>()
+    };
+    let rhyme_feet = foot_indexes
+        .iter()
+        .filter_map(|index| lines[*index].chars().last())
+        .collect::<Vec<_>>();
+    if let Some(constraint) = constraint {
+        for foot in &rhyme_feet {
+            let groups = core
+                .rhyme_groups_of(CharacterRhymesRequest {
+                    character: *foot,
+                    book: constraint.book,
+                })
+                .map_err(|error| {
+                    tool_error("generation_validation_failed", &error.to_string(), None)
+                })?;
+            if !groups
+                .iter()
+                .any(|group| group.rhyme_group == constraint.group)
+            {
+                return Err(tool_error(
+                    "generation_invalid",
+                    &format!(
+                        "韵脚「{foot}」不属于{}的{}",
+                        constraint.book.display_name(),
+                        constraint.group
+                    ),
+                    Some("请重试；无效生成不会写入任何数据"),
+                ));
+            }
+        }
+    }
+    Ok(ValidatedPoem {
+        lines,
+        rhyme_feet: rhyme_feet
+            .into_iter()
+            .map(|foot| foot.to_string())
+            .collect(),
+    })
 }
 
 impl YunjianServer {

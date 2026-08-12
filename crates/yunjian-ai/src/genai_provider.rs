@@ -29,7 +29,8 @@ use crate::AppreciationCacheWriter;
 use crate::keystore::{KeyStore, Lookup};
 use crate::provider::{
     Appreciation, AppreciationProgress, AppreciationProvider, AppreciationRequest,
-    AppreciationStreamItem, ProviderId, TokenUsage,
+    AppreciationStreamItem, GeneratedPoem, PoemGenerationProvider, PoemGenerationRequest,
+    ProviderId, TokenUsage,
 };
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -171,6 +172,21 @@ impl ProviderKind {
     #[must_use]
     pub const fn requires_key(self) -> bool {
         !matches!(self, Self::Ollama)
+    }
+
+    /// 配置未显式指定模型时采用的稳定默认值。
+    #[must_use]
+    pub const fn default_model(self) -> &'static str {
+        match self {
+            Self::DeepSeek => "deepseek-chat",
+            Self::Kimi | Self::Moonshot => "moonshot-v1-8k",
+            Self::Qwen => "qwen-plus",
+            Self::Zai | Self::BigModel => "glm-4-flash",
+            Self::OpenRouter => "openai/gpt-4o-mini",
+            Self::Ollama => "qwen2.5:7b",
+            Self::OpenAI => "gpt-4o-mini",
+            Self::Anthropic => "claude-3-5-haiku-latest",
+        }
     }
 
     /// 稳定供应商标识。
@@ -636,6 +652,36 @@ impl AppreciationProvider for GenAiProvider {
 
     fn id(&self) -> ProviderId {
         self.provider.clone()
+    }
+}
+
+#[async_trait]
+impl PoemGenerationProvider for GenAiProvider {
+    async fn generate_poem(&self, request: PoemGenerationRequest) -> Result<GeneratedPoem> {
+        let chat_request =
+            ChatRequest::default().append_message(ChatMessage::user(request.prompt()));
+        let options = ChatOptions::default()
+            .with_temperature(f64::from(request.temperature()))
+            .with_capture_usage(true);
+        let response = self
+            .client
+            .exec_chat(request.model(), chat_request, Some(&options))
+            .await
+            .map_err(|error| self.wrap_error(error))?;
+        let usage = normalize_usage(response.usage.clone());
+        let text = response.into_first_text().ok_or_else(|| {
+            Error::ai(
+                self.provider.as_str(),
+                format!("模型 {} 返回了空诗词", self.config.kind),
+            )
+        })?;
+        Ok(GeneratedPoem {
+            text,
+            model: request.model().to_owned(),
+            provider: self.provider.clone(),
+            generated_at: unix_seconds(),
+            usage,
+        })
     }
 }
 

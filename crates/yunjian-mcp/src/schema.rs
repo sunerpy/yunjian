@@ -20,6 +20,13 @@ use serde::{Deserialize, Serialize};
 pub const OFFLINE_FACTS_DISCLOSURE: &str =
     "本结果全部来自本地语料库的结构化事实与公有领域历代集评，不含 AI 生成内容，且未写入任何数据。";
 
+/// 每个 AI 工具结果都携带的准确性声明。
+pub const AI_UNREVIEWED_DISCLOSURE: &str =
+    "本结果包含 AI 生成内容，未经人工审校，可能存在事实、典故或格律错误，请独立核验。";
+
+/// AI 凭据的产品内设置路径。
+pub const AI_SETTINGS_PATH: &str = "云笺 → 设置 → AI 服务商与密钥";
+
 // ---------------------------------------------------------------- search_poem
 
 /// `search_poem` 的入参。
@@ -424,5 +431,149 @@ pub struct FindSimilarPoemOutput {
     /// 打分方法的一句话说明。
     pub method: String,
     /// 结果性质声明，恒为 [`OFFLINE_FACTS_DISCLOSURE`]。
+    pub disclosure: String,
+}
+
+// ---------------------------------------------------------------- appreciate_poem
+
+/// `appreciate_poem` 的入参。
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AppreciatePoemInput {
+    /// 作品稳定标识，来自 `search_poem` 的 `poem_id`。
+    pub poem_id: String,
+    /// 可选的赏析风格，例如「简明」「学术」或「面向初学者」。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
+}
+
+/// `appreciate_poem` 的返回。
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct AppreciatePoemOutput {
+    /// `ready` 表示已有赏析；`configuration_required` 表示需要配置服务商或密钥。
+    pub status: String,
+    /// 请求的作品稳定标识。
+    pub poem_id: String,
+    /// 赏析正文；需要配置时为空。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// 结果来源：`shipped`、`cache` 或 `generated`；需要配置时为空。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// 生成模型；需要配置时为空。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// 提示词模板版本；需要配置时为空。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_version: Option<String>,
+    /// 面向用户的状态说明。
+    pub message: String,
+    /// 需要配置时给出的产品内路径。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings_path: Option<String>,
+    /// AI 内容准确性声明，恒为 [`AI_UNREVIEWED_DISCLOSURE`]。
+    pub disclosure: String,
+}
+
+// ---------------------------------------------------------------- generate_poem
+
+/// MCP 支持生成的诗词体式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub enum GeneratedPoemForm {
+    /// 五言绝句，四句、每句五字。
+    #[serde(rename = "五言绝句")]
+    FiveCharacterQuatrain,
+    /// 七言绝句，四句、每句七字。
+    #[serde(rename = "七言绝句")]
+    SevenCharacterQuatrain,
+    /// 五言律诗，八句、每句五字。
+    #[serde(rename = "五言律诗")]
+    FiveCharacterRegulatedVerse,
+    /// 七言律诗，八句、每句七字。
+    #[serde(rename = "七言律诗")]
+    SevenCharacterRegulatedVerse,
+    /// 词；必须同时给出 `ci_tune`。
+    #[serde(rename = "词")]
+    Ci,
+}
+
+impl GeneratedPoemForm {
+    /// 与 JSON 表示一致的中文体式名。
+    #[must_use]
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::FiveCharacterQuatrain => "五言绝句",
+            Self::SevenCharacterQuatrain => "七言绝句",
+            Self::FiveCharacterRegulatedVerse => "五言律诗",
+            Self::SevenCharacterRegulatedVerse => "七言律诗",
+            Self::Ci => "词",
+        }
+    }
+
+    /// 固定句式的 `(句数, 每句字数)`；词没有固定值。
+    #[must_use]
+    pub const fn fixed_shape(self) -> Option<(usize, usize)> {
+        match self {
+            Self::FiveCharacterQuatrain => Some((4, 5)),
+            Self::SevenCharacterQuatrain => Some((4, 7)),
+            Self::FiveCharacterRegulatedVerse => Some((8, 5)),
+            Self::SevenCharacterRegulatedVerse => Some((8, 7)),
+            Self::Ci => None,
+        }
+    }
+}
+
+/// `generate_poem` 的入参。
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GeneratePoemInput {
+    /// 目标体式。
+    pub form: GeneratedPoemForm,
+    /// 创作主题。
+    pub theme: String,
+    /// 词牌；`form=词` 时必填，其余体式不得填写。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci_tune: Option<String>,
+    /// 韵书稳定键：诗用 `pingshui`，词用 `cilin`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rhyme_book: Option<String>,
+    /// 目标韵部名，例如平水韵「七阳」。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rhyme_group: Option<String>,
+}
+
+/// `generate_poem` 的返回。
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct GeneratePoemOutput {
+    /// `ready` 表示生成并校验成功；`configuration_required` 表示需要配置服务商或密钥。
+    pub status: String,
+    /// 请求的中文体式名。
+    pub form: String,
+    /// 请求主题。
+    pub theme: String,
+    /// 生成结果的强制身份标签。
+    pub label: String,
+    /// 生成正文；需要配置时为空。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// 去除标点后的逐句正文；需要配置时为空。
+    pub lines: Vec<String>,
+    /// 本次校验使用的韵书稳定键。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rhyme_book: Option<String>,
+    /// 本次约束的韵部名。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rhyme_group: Option<String>,
+    /// 参与押韵校验的句末字。
+    pub rhyme_feet: Vec<String>,
+    /// 生成模型；需要配置时为空。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// 面向用户的状态说明。
+    pub message: String,
+    /// 需要配置时给出的产品内路径。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings_path: Option<String>,
+    /// AI 内容准确性声明，恒为 [`AI_UNREVIEWED_DISCLOSURE`]。
     pub disclosure: String,
 }

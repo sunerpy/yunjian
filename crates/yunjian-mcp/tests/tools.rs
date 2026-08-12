@@ -5,8 +5,8 @@
 //! `limit` 封住。会话跑在内存双工上的真实 `rmcp` 客户端与真实服务端之间，所以序列化、
 //! schema 生成与参数反序列化全都走完整路径。
 //!
-//! 工具名单来自 `common::EXPECTED_TOOLS_OFFLINE`，且**只断言子集**——todo 42 会往
-//! `tools/list` 里加两个 AI 工具，任何精确条数断言都会被它打红。
+//! 工具名单来自 `common` 的两个规范子集；todo 42 已补齐 AI 工具，因此这里同时守住
+//! `tools/list` 恰好等于五工具全集，防止漏注册或意外暴露额外工具。
 
 mod common;
 
@@ -24,16 +24,16 @@ async fn session() -> (Sandbox, Session) {
 }
 
 #[tokio::test]
-async fn the_offline_tools_are_a_subset_of_the_advertised_list() {
+async fn the_advertised_list_is_exactly_the_canonical_five_tool_set() {
     let (_sandbox, session) = session().await;
     let tools = session.tools().await;
-    let advertised: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
-    for expected in EXPECTED_TOOLS_OFFLINE {
-        assert!(
-            advertised.contains(&expected),
-            "{expected} 应出现在 tools/list 里；现有：{advertised:?}"
-        );
-    }
+    let mut advertised: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+    advertised.sort_unstable();
+    assert_eq!(
+        advertised,
+        expected_tools_all(),
+        "tools/list 必须恰好暴露规范五工具全集"
+    );
     session.shutdown().await;
 }
 
