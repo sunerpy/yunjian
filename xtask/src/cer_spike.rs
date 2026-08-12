@@ -8,9 +8,10 @@
 //!
 //! 这样得到的 CER 是真人 CER 的**乐观上界**，报告里必须原样写明。乐观上界的用途是
 //! 单向的：它足以证伪（上界都超过 10%，真人只会更差，语音评分必须退到
-//! `completeness_only`），但不足以证成（上界达标不代表真人达标），所以即便通过，
-//! 逐字准确率在语音路径上也永远只是 advisory。裁决因此只在 `advisory_accuracy` 与
-//! `completeness_only` 之间选，**永远没有 `full`**。
+//! `guided_practice`），但不足以证成（上界达标不代表真人达标）。2026-08-11 的裁决进一步
+//! 判定：CER 77.01% 下送进对齐的文本本身是噪声，**完整度并不比字准更可信**，所以早先的
+//! `completeness_only` 取值也被废掉了。裁决只在 `guided_practice` 与 `coverage_advisory`
+//! 之间选，**永远没有 `full`，也不再有 `completeness_only`**。
 //!
 //! ## fixture 从哪来
 //!
@@ -39,7 +40,7 @@ const REPORT_MD: &str = "docs/reports/asr-cer.md";
 const SELFCHECK_JSON: &str = "docs/reports/asr-cer.selfcheck.json";
 const SELFCHECK_MD: &str = "docs/reports/asr-cer.selfcheck.md";
 
-/// 事先声明的分叉阈值。增强集上的总 CER 超过它，语音评分退到 `completeness_only`。
+/// 事先声明的分叉阈值。增强集上的总 CER 超过它，语音练习退到 `guided_practice`。
 /// 看到数字之后不得重新协商。
 pub const CER_THRESHOLD: f64 = 0.10;
 
@@ -408,7 +409,7 @@ pub struct Report {
     pub schema_version: u32,
     pub measured: bool,
     pub measured_at: Option<String>,
-    /// `advisory_accuracy` | `completeness_only`。**永远不会是 `full`。**
+    /// `guided_practice` | `coverage_advisory`。**永远不会是 `full` 或 `completeness_only`。**
     pub scoring_mode: String,
     pub cer_threshold: f64,
     pub fixture: FixtureSummary,
@@ -473,14 +474,24 @@ pub struct ModelRow {
     pub cer: f64,
 }
 
-/// 裁决只有两个取值。`full` 不在其中，且这不是「暂时如此」——合成上界说明不了真实
-/// 说话人的情况，所以语音路径上字准永远是 advisory。
+/// 裁决只有两个取值，`full` 与 `completeness_only` 都不在其中。
+///
+/// # 为什么 `completeness_only` 也被排除了
+///
+/// 它是本函数早先的一个取值，2026-08-11 的裁决把它废掉了：它假设开放转写至少还能支撑
+/// 「完整度」，但实测 CER 77.01% 意味着送进对齐的文本本身就是噪声，**完整度并不比字准
+/// 更可信**。一个读它的下游会去实现一个不可靠的完整度指标，那比不给指标更糟。
+///
+/// 于是 v1 落在 `guided_practice`：跟读形态，只报「是否开口 / 停顿 / 相对节奏」这类可直接
+/// 观测的事实，FSRS 等级由用户自己选。`coverage_advisory` 需要先通过一个独立的 KWS spike
+/// （门槛事先冻结、参数禁止逐诗调参、holdout 音色冻结）才允许开放。
 #[must_use]
 pub fn verdict(overall_cer: Option<f64>) -> &'static str {
     match overall_cer {
-        Some(c) if c <= CER_THRESHOLD => "advisory_accuracy",
-        // 未实测时按最保守的一侧落地：没有证据支持「字准可以当参考」，就不给它这个身份。
-        _ => "completeness_only",
+        // 即便 CER 低于阈值也只到 `coverage_advisory`：合成上界说明不了真实说话人的情况。
+        Some(c) if c <= CER_THRESHOLD => "coverage_advisory",
+        // 未实测或超阈值都落最保守的一侧。
+        _ => "guided_practice",
     }
 }
 
@@ -523,16 +534,16 @@ pub fn render_markdown(report: &Report) -> String {
 
     let _ = writeln!(
         md,
-        "`scoring_mode` 的取值域**只有** `advisory_accuracy` 与 `completeness_only` 两个，\
+        "`scoring_mode` 的取值域**只有** `guided_practice` 与 `coverage_advisory` 两个，\
          **永远不会是 `full`**。todo 48、51、56、57 读的就是这个字段。\n"
     );
     let _ = writeln!(
         md,
-        "- `advisory_accuracy`：完整度与流畅度作为分数呈现；逐字准确率标注为「ASR 估计值 / 仅供参考」，不计入分数。"
+        "- `coverage_advisory`：仅在 KWS spike 通过冻结门槛后开放，报「检测到 N/M 句」这类覆盖度，不报逐字准确率。"
     );
     let _ = writeln!(
         md,
-        "- `completeness_only`：连 advisory 的字准都不展示，只给完整度与流畅度。"
+        "- `guided_practice`：v1 契约。跟读形态，只报是否开口／停顿／相对节奏这类可观测事实，FSRS 等级由用户自选。"
     );
     let _ = writeln!(
         md,
@@ -1246,20 +1257,20 @@ mod tests {
         assert!(cer("", "").abs() < f64::EPSILON);
     }
 
-    /// 事先声明的分叉：阈值两侧各测一次，且**永远不出现 `full`**。
+    /// 事先声明的分叉：阈值两侧各测一次，且**永远不出现 `full` 或 `completeness_only`**。
     #[test]
     fn verdict_has_exactly_two_possible_values() {
-        assert_eq!(verdict(Some(0.0)), "advisory_accuracy");
-        assert_eq!(verdict(Some(CER_THRESHOLD)), "advisory_accuracy");
-        assert_eq!(verdict(Some(CER_THRESHOLD + 1e-9)), "completeness_only");
-        assert_eq!(verdict(Some(0.5)), "completeness_only");
+        assert_eq!(verdict(Some(0.0)), "coverage_advisory");
+        assert_eq!(verdict(Some(CER_THRESHOLD)), "coverage_advisory");
+        assert_eq!(verdict(Some(CER_THRESHOLD + 1e-9)), "guided_practice");
+        assert_eq!(verdict(Some(0.5)), "guided_practice");
         // 未实测时落到最保守的一侧。
-        assert_eq!(verdict(None), "completeness_only");
+        assert_eq!(verdict(None), "guided_practice");
 
         for c in [None, Some(0.0), Some(0.09), Some(0.11), Some(1.0)] {
             let v = verdict(c);
             assert!(
-                v == "advisory_accuracy" || v == "completeness_only",
+                v == "coverage_advisory" || v == "guided_practice",
                 "出现了第三个取值 `{v}`"
             );
             assert_ne!(v, "full", "字准永远不得升为正式评分");
@@ -1274,8 +1285,7 @@ mod tests {
         let text = std::fs::read_to_string(root.join(REPORT_JSON)).expect("报告应存在");
         let report: Report = serde_json::from_str(&text).expect("报告可解析");
         assert!(
-            report.scoring_mode == "advisory_accuracy"
-                || report.scoring_mode == "completeness_only",
+            report.scoring_mode == "coverage_advisory" || report.scoring_mode == "guided_practice",
             "落盘报告里出现了非法的 scoring_mode `{}`",
             report.scoring_mode
         );
@@ -1423,7 +1433,7 @@ mod tests {
             per_model: Vec::new(),
         };
         let md = render_markdown(&report);
-        assert!(md.contains("completeness_only"), "{md}");
+        assert!(md.contains("guided_practice"), "{md}");
         assert!(md.contains("乐观上界"), "{md}");
         assert!(md.contains("NOT MEASURED"), "{md}");
         assert!(md.contains("永远不会是 `full`"), "{md}");
