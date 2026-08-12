@@ -17,6 +17,7 @@
 pub mod genai_provider;
 pub mod keystore;
 pub mod provider;
+mod stream;
 
 pub use genai_provider::{GenAiProvider, GenAiProviderConfig, ProviderKind};
 pub use keystore::{
@@ -26,5 +27,6 @@ pub use keystore::{
 pub use provider::{
     APPRECIATION_TEMPLATE, APPRECIATION_TEMPLATE_FILE, APPRECIATION_TEMPLATE_VERSION, Appreciation,
     AppreciationProgress, AppreciationProvider, AppreciationRequest, AppreciationStreamItem,
-    NullProvider, PromptTemplate, ProviderId,
+    NullProvider, PromptTemplate, ProviderId, TokenUsage,
 };
+pub use stream::AppreciationCacheWriter;

@@ -236,6 +236,19 @@ pub struct Appreciation {
     pub template_version: String,
     /// 生成时使用的 grounding 摘要。
     pub grounding_digest: String,
+    /// 供应商返回的 token 用量；供应商未报告时为空。
+    pub usage: Option<TokenUsage>,
+}
+
+/// 一次生成由供应商报告的标准化 token 用量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUsage {
+    /// 输入 prompt 消耗的 token 数。
+    pub input_tokens: u32,
+    /// 输出 completion 消耗的 token 数。
+    pub output_tokens: u32,
+    /// 供应商报告或由输入输出相加得到的 token 总数。
+    pub total_tokens: u32,
 }
 
 /// 流式赏析的可合并进度快照。
@@ -587,6 +600,7 @@ pub(crate) mod tests {
                 generated_at: 1,
                 template_version: request.template_version().to_owned(),
                 grounding_digest: request.grounding_digest().to_owned(),
+                usage: None,
             })
         }
 
