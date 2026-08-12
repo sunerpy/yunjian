@@ -149,7 +149,13 @@ pub enum DegradeReason {
     PermissionUndetermined,
     /// 没有可用的输入设备。
     NoInputDevice,
-    /// 采集本身失败。
+    /// 设备存在但被其他程序独占。
+    ///
+    /// 与 [`Self::CaptureFailed`] 分开，因为下一步动作完全不同：这一条是「关掉占用它的
+    /// 程序」，而 `CaptureFailed` 是「原因未知，换个设备试试」。把两者合并会让界面在
+    /// 一半的情形下给出错误的引导。
+    DeviceBusy,
+    /// 采集本身失败，且原因不在上面任何一条里。
     CaptureFailed,
 }
 
@@ -221,6 +227,9 @@ pub fn explain(reason: DegradeReason, platform: Option<Platform>) -> String {
         }
         DegradeReason::NoInputDevice => format!(
             "没有检测到可用的麦克风，已切换到打字练习。接入麦克风或在{where_to_go}选择输入设备后可重试。"
+        ),
+        DegradeReason::DeviceBusy => format!(
+            "麦克风正被其他程序占用，已切换到打字练习。关闭正在录音或通话的程序后重试，也可以在{where_to_go}换一个输入设备。"
         ),
         DegradeReason::CaptureFailed => format!(
             "麦克风打开失败，已切换到打字练习。可能是设备被其他程序独占；关闭占用程序或在{where_to_go}换一个输入设备后重试。"
@@ -393,6 +402,7 @@ mod tests {
             DegradeReason::PermissionRestricted,
             DegradeReason::PermissionUndetermined,
             DegradeReason::NoInputDevice,
+            DegradeReason::DeviceBusy,
             DegradeReason::CaptureFailed,
         ];
         for reason in reasons {
@@ -420,6 +430,20 @@ mod tests {
         assert!(text.contains("26"), "Android 的解释要给出 API 26：{text}");
         let text = explain(DegradeReason::SystemTooOld, Some(Platform::MacOs));
         assert!(text.contains("14.2"), "macOS 的解释要给出 14.2：{text}");
+    }
+
+    #[test]
+    fn device_busy_and_capture_failed_give_different_instructions() {
+        let busy = explain(DegradeReason::DeviceBusy, Some(Platform::Linux));
+        let failed = explain(DegradeReason::CaptureFailed, Some(Platform::Linux));
+        assert_ne!(
+            busy, failed,
+            "「被占用」与「原因未知」的下一步动作不同，合并成一条会让界面给出错误引导"
+        );
+        assert!(
+            busy.contains("占用"),
+            "被占用的解释必须点名占用这件事：{busy}"
+        );
     }
 
     #[test]

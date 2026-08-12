@@ -20,11 +20,9 @@ use rodio::source::UniformSourceIterator;
 
 use crate::error::VoiceError;
 
-/// 识别器要求的采样率。`sherpa_rs::read_audio_file` 对此硬断言，因此这不是偏好而是约束。
-pub const TARGET_SAMPLE_RATE: u32 = 16_000;
-
-/// 识别器要求的声道数。
-pub const TARGET_CHANNELS: u16 = 1;
+// 目标格式与完成度判定挪到了 [`crate::audio`]：那个模块不带特性开关，于是同一份判定
+// 逻辑在**不开 `capture` 的默认构建**里也会被编译并测到，而 `make ci` 跑的正是默认构建。
+pub use crate::audio::{MIN_COMPLETION, TARGET_CHANNELS, TARGET_SAMPLE_RATE, meets_completion};
 
 /// 一次采集的结果。
 #[derive(Debug, Clone)]
@@ -80,27 +78,6 @@ pub fn capture_default(duration: Duration) -> Result<Capture, VoiceError> {
 /// 用名字**包含** `name` 的第一个输入设备采集。名字来自 [`list_inputs`]。
 pub fn capture_from(name: &str, duration: Duration) -> Result<Capture, VoiceError> {
     capture_inner(Some(name.to_owned()), duration)
-}
-
-/// 可接受的最低完成度。低于此比例即判定采集被截断。
-///
-/// 0.95 的依据是两个实测数字之间有一个数量级的空隙：重采样器边界少给 64 个样本
-/// （15936/16000 = 0.996），而真实截断只拿到 7744/16000 = 0.484。任何落在 0.95 以下的
-/// 缺口都不可能是取整造成的。
-pub const MIN_COMPLETION: f64 = 0.95;
-
-/// 样本数是否达到可接受的完成度。
-#[must_use]
-pub fn meets_completion(got: usize, wanted: usize) -> bool {
-    if wanted == 0 {
-        return true;
-    }
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "样本数远小于 f64 的精确整数范围，比例判定不受影响"
-    )]
-    let ratio = got as f64 / wanted as f64;
-    ratio >= MIN_COMPLETION
 }
 
 /// 采集线程停摆的判定余量：目标时长的三倍再加两秒。
