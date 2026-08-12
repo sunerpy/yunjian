@@ -1,0 +1,99 @@
+/*
+ * 自绘标题栏的样式。
+ *
+ * 三条与本组件正确性直接相关的约定：
+ *
+ * 1. **绝不使用 Electron 那个「窗口拖动区」CSS 属性**（`-webkit-` 前缀版与无前缀版都算）。
+ *    前缀版是 Electron 的 Chromium 分支属性，WebKitGTK 与 WKWebView 完全没实现；
+ *    无前缀版在 Windows WebView2 里确实生效，但它把整块区域都当标题栏，于是**吞掉区域内
+ *    每一个按钮的点击**——这正是 Tauri 在 2.0.0-beta.22 撤掉默认注入的原因。
+ *    拖动一律靠 `data-tauri-drag-region`，触摸与手写笔靠 `startDragging()`。
+ *
+ *    这段刻意**不写出那个属性名**：`__tests__/contracts.test.ts` 有一条禁令扫描它的
+ *    字面量，写出来会让禁令的解释把禁令本身判成违规。todo 59 已在 Tauri 官方日志插件
+ *    那条禁令上踩过同一个坑，绕了两轮才清干净。
+ * 2. 高度取 `--titlebar-height`，与其下方内容区共用同一个令牌。两处各写一个数会得到
+ *    一条缝或一段重叠，而这种偏差只在截图上才看得见。
+ * 3. macOS 的左侧让位量 `--titlebar-macos-inset` 与 `tauri.macos.conf.json` 的
+ *    `trafficLightPosition` 是**一对耦合值**：红绿灯从 x=12 起、约 70px 宽，
+ *    让位不足会让标题压在按钮上。改一处必须改另一处。
+ */
+
+.titlebar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+  height: var(--titlebar-height);
+  background: var(--color-titlebar-bg);
+  border-bottom: 1px solid var(--color-border);
+  /* 标题栏是窗口外框而不是页面内容：整条不可选中，否则拖窗时会顺手刷出一片高亮。 */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.titlebar__drag {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-inline: var(--space-3);
+}
+
+/* macOS 上系统在左上角画红绿灯，标题必须让位。 */
+.titlebar[data-platform="macos"] .titlebar__drag {
+  padding-inline-start: var(--titlebar-macos-inset);
+}
+
+.titlebar__title {
+  font-family: var(--font-serif);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.titlebar__controls {
+  display: flex;
+  align-items: stretch;
+}
+
+.titlebar__button {
+  display: grid;
+  place-items: center;
+  width: 2.875rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: default;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.titlebar__button:hover {
+  background: var(--color-titlebar-hover);
+  color: var(--color-text);
+}
+
+/* 键盘可达性：这三个按钮是窗口的唯一关闭途径之一，焦点环不能被 `outline: none` 抹掉。 */
+.titlebar__button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.titlebar__button--close:hover {
+  background: var(--color-titlebar-close-hover);
+  color: var(--color-titlebar-close-fg);
+}
+
+/* 1.5px 的描边在 100% 与 150% 缩放下都不会糊成两像素。 */
+.titlebar__glyph {
+  width: 0.625rem;
+  height: 0.625rem;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+}

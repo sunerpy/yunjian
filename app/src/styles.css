@@ -57,9 +57,18 @@
   --color-text-muted: #6b7280;
   --color-accent: #1a364a;
   --color-titlebar-bg: #efece6;
+  --color-titlebar-hover: #e3ded5;
+  /* 关闭按钮的悬停色刻意与语义色系分开：它是窗口外框的约定色（各平台都用红），
+     不是应用内的「错误」语义，混用会让将来的错误提示色被这里牵着走。 */
+  --color-titlebar-close-hover: #c4342b;
+  --color-titlebar-close-fg: #ffffff;
 
   /* 自绘标题栏高度。标题栏与其下的内容区共用这一个值。 */
   --titlebar-height: 2.5rem;
+  /* macOS 上给系统红绿灯让出的左侧空间。与 `tauri.macos.conf.json` 的
+     `trafficLightPosition`（x = 12）是一对耦合值：红绿灯约 70px 宽，12 + 70 = 82，
+     取 5rem = 80px 再靠 `--space-3` 的内边距补足。改一处必须改另一处。 */
+  --titlebar-macos-inset: 5rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -72,6 +81,9 @@
     --color-text-muted: #9aa3ad;
     --color-accent: #8fb8d4;
     --color-titlebar-bg: #101316;
+    --color-titlebar-hover: #1d2227;
+    --color-titlebar-close-hover: #c4342b;
+    --color-titlebar-close-fg: #ffffff;
   }
 }
 
