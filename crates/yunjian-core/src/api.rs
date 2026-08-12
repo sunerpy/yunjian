@@ -1,11 +1,12 @@
 //! 稳定、可序列化且与宿主外壳无关的核心 API 门面。
 
 use crate::{
-    Attribution, AuthorDetail, CorpusHandle, MetaPage, PoemDetail, Result, RhymeAnswer, RhymeBook,
-    RhymeGroupMatches, RhymeGroupRef, SearchPage, TagSummary, TextSearchRequest, ToneFilter,
-    author_detail, browse_by_dynasty, browse_by_tag, do_these_rhyme, find_by_author,
-    find_by_first_line, find_by_last_char, find_by_rhyme_group, find_by_title,
-    find_work_group_attributions, list_tags, poem_detail, rhyme_groups_of,
+    Attribution, AuthorDetail, CorpusHandle, MetaPage, PoemDetail, PoemFeatures, Result,
+    RhymeAnswer, RhymeBook, RhymeGroupMatches, RhymeGroupRef, SearchPage, TagSummary,
+    TextSearchRequest, ToneFilter, author_detail, browse_by_dynasty, browse_by_tag, do_these_rhyme,
+    find_by_author, find_by_first_line, find_by_last_char, find_by_rhyme_group, find_by_title,
+    find_work_group_attributions, frequent_content_chars, list_tags, poem_detail, poem_features,
+    rhyme_groups_of,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -219,6 +220,16 @@ impl Yunjian {
     /// 列出全部策展标签及作品数。
     pub fn list_tags(&self) -> Result<Vec<TagSummary>> {
         list_tags(&self.inner.corpus)
+    }
+
+    /// 按文档频率降序取前 `limit` 个正文字，供字面重叠计算排除常用字。
+    pub fn frequent_content_chars(&self, limit: usize) -> Result<Vec<char>> {
+        frequent_content_chars(&self.inner.corpus, limit)
+    }
+
+    /// 批量读取若干作品的本体、标签与韵部归属，供相关作品排序比对属性。
+    pub fn poem_features(&self, poem_ids: &[&str]) -> Result<Vec<PoemFeatures>> {
+        poem_features(&self.inner.corpus, poem_ids)
     }
 
     /// 按策展标签浏览作品。
