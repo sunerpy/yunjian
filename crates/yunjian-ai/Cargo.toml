@@ -12,9 +12,11 @@ authors.workspace = true
 async-trait = { workspace = true }
 blake3 = { workspace = true }
 dirs.workspace = true
+genai.workspace = true
 keyring-core.workspace = true
 secrecy.workspace = true
 serde = { workspace = true }
+serde_json.workspace = true
 toml.workspace = true
 tracing.workspace = true
 yunjian-core = { path = "../yunjian-core" }
@@ -41,7 +43,7 @@ windows-native-keyring-store.workspace = true
 android-native-keyring-store.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

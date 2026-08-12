@@ -378,7 +378,7 @@ fn render_grounding(detail: &PoemDetail) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{
         APPRECIATION_TEMPLATE, APPRECIATION_TEMPLATE_FILE, APPRECIATION_TEMPLATE_VERSION,
         Appreciation, AppreciationProgress, AppreciationProvider, AppreciationRequest,
@@ -394,7 +394,7 @@ mod tests {
         ToneAnnotation, ToneCell, ToneLine,
     };
 
-    fn fixture_detail() -> PoemDetail {
+    pub(crate) fn fixture_detail() -> PoemDetail {
         let dynasty = DynastyLabel {
             canonical: "宋".to_owned(),
             raw: "北宋".to_owned(),
