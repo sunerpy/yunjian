@@ -7,10 +7,12 @@
 
 pub mod align;
 pub mod modes;
+pub mod schedule;
 pub mod score;
 
 pub use align::{AlignOp, Alignment, align};
 pub use modes::{ClozeOptions, MASK_CHARACTER, MaskStage, PracticeMode, PracticeSession};
+pub use schedule::{FSRS6_PARAMETERS, FsrsGrade, ReviewState, Scheduler, grade_typed};
 pub use score::{
     BiasedHyp, OpsSummary, Poem, RelativeRhythm, TypedAttempt, TypedScore, VoicePracticeFeedback,
     score_typed,

@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+ --> tests/ui/voice_feedback_cannot_be_graded.rs:5:17
+  |
+5 |     grade_typed(feedback, true, grading)
+  |     ----------- ^^^^^^^^ expected `&TypedScore`, found `&VoicePracticeFeedback`
+  |     |
+  |     arguments to this function are incorrect
+  |
+  = note: expected reference `&TypedScore`
+             found reference `&VoicePracticeFeedback`
+note: function defined here
+ --> src/schedule.rs
+  |
+  | pub fn grade_typed(score: &TypedScore, first_attempt: bool, grading: &GradingConfig) -> FsrsGrade {
+  |        ^^^^^^^^^^^
