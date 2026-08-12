@@ -251,8 +251,10 @@ jobs:
         with:
           ndk-version: r26d
 
-      # 链接器写死 android26：cpal 0.18 的 Android 后端要求 API 26，比 Tauri 文档
-      # 写的 24 高。这一条是 todo 46 记录的产品要求。
+      # 链接器和 C 编译器写死 android26：cpal 0.18 的 Android 后端要求 API 26，比
+      # Tauri 文档写的 24 高。这一条是 todo 46 记录的产品要求。只设置 Cargo linker
+      # 不够：ring 等含 C 代码的 crate 通过 cc-rs 读取 CC_<target>，否则会回落查找
+      # PATH 中不存在的 aarch64-linux-android-clang。
       # BINDGEN_EXTRA_CLANG_ARGS 里的 --sysroot 是必需的：sherpa-rs-sys 会把 rust 三元组
       # 映射成 clang 三元组，但不传 sysroot，于是 clang 回落到宿主机 /usr/include，
       # 报 `bits/libc-header-start.h file not found`。实测如此。

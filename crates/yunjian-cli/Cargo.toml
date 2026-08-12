@@ -44,6 +44,7 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true, optional = true }
 tokio-util = { workspace = true, optional = true }
+yunjian-ai = { path = "../yunjian-ai" }
 yunjian-core = { path = "../yunjian-core" }
 yunjian-mcp = { path = "../yunjian-mcp", optional = true }
 yunjian-voice = { path = "../yunjian-voice" }

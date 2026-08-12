@@ -4,12 +4,14 @@
 //! 的稳定表面，绕过它就等于让 CLI 与核心内部结构耦合，而桌面端、MCP 与 FFI 三个外壳都
 //! 依赖这层稳定性。
 
-use crate::cli::{Book, Command, CorpusAction, ModelsAction};
+use crate::cli::{
+    AiAction, AiCacheAction, AiCachePurgeArgs, Book, Command, CorpusAction, ModelsAction,
+};
 use crate::envelope::{ErrorCode, Failure, Status, Warning, WarningCode};
 use crate::exit::{Exit, corpus_failure, describe, describe_model};
 use crate::output::{
-    CorpusOut, ModelFetchOut, ModelListOut, ModelRemoveOut, ModelRow, NotFound, Renderable,
-    SearchFilters, SearchHit, SearchOut,
+    AiCachePurgeOut, CorpusOut, ModelFetchOut, ModelListOut, ModelRemoveOut, ModelRow, NotFound,
+    Renderable, SearchFilters, SearchHit, SearchOut,
 };
 use crate::provision::{Provisioned, degradation, provision};
 use serde::Serialize;
@@ -179,6 +181,12 @@ fn run(
         // 模型命令刻意**不打开语料库**：它维护的是语音权重，与诗库无关，而打开语料在
         // 首启时是十分钟级的副作用。一条查模型许可的命令不该触发那件事。
         Command::Models { action } => models(action),
+        Command::Ai {
+            action:
+                AiAction::Cache {
+                    action: AiCacheAction::Purge(args),
+                },
+        } => ai_cache_purge(config, args),
         Command::Search {
             query,
             limit,
@@ -217,6 +225,41 @@ fn run(
                 .map_err(Failed::from)
         }
     }
+}
+
+fn ai_cache_purge(
+    config: &Config,
+    args: &AiCachePurgeArgs,
+) -> std::result::Result<Produced, Failed> {
+    use yunjian_ai::{AppreciationCache, DEFAULT_APPRECIATION_CACHE_CAPACITY, PurgeScope};
+
+    let (scope, label) = match (&args.template, &args.poem, args.all) {
+        (Some(version), None, false) => (
+            PurgeScope::Template(version.clone()),
+            format!("template:{version}"),
+        ),
+        (None, Some(poem_id), false) => {
+            (PurgeScope::Poem(poem_id.clone()), format!("poem:{poem_id}"))
+        }
+        (None, None, true) => (PurgeScope::All, "all".to_owned()),
+        _ => unreachable!("clap 保证清理范围恰好一个"),
+    };
+    let cache = AppreciationCache::open(
+        &config.app.data_dir,
+        "",
+        DEFAULT_APPRECIATION_CACHE_CAPACITY,
+    )
+    .map_err(Failed::from)?;
+    let removed = cache.purge(scope).map_err(Failed::from)?;
+    Produced::new(
+        &AiCachePurgeOut {
+            scope: label,
+            removed,
+            database: cache.path().display().to_string(),
+        },
+        false,
+    )
+    .map_err(Failed::from)
 }
 
 /// 组装本次运行实际使用的语料配置。
@@ -588,9 +631,10 @@ fn log_fetch_progress(event: FetchProgress) {
 
 #[cfg(test)]
 mod tests {
-    use super::{corpus_config, resolved_corpus_file, run};
-    use crate::cli::{Command, CorpusAction};
+    use super::{Body, corpus_config, resolved_corpus_file, run};
+    use crate::cli::{AiAction, AiCacheAction, AiCachePurgeArgs, Command, CorpusAction};
     use crate::exit::Exit;
+    use rusqlite::{Connection, params};
     use std::path::{Path, PathBuf};
     use yunjian_core::{Config, CorpusConfig};
 
@@ -669,5 +713,74 @@ mod tests {
             "status 不该创建 {}",
             directory.display()
         );
+    }
+
+    #[test]
+    fn ai_cache_purge_uses_app_data_and_preserves_shipped_rows() {
+        let directory = std::env::temp_dir().join(format!(
+            "yunjian-cli-ai-cache-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        let mut config = Config::default();
+        config.app.data_dir = directory.clone();
+        let cache = yunjian_ai::AppreciationCache::open(&directory, "corpus-v1", 8)
+            .expect("初始化赏析缓存");
+        let connection = Connection::open(cache.path()).expect("打开缓存数据库");
+        connection
+            .execute(
+                "INSERT INTO appreciation_shipped (stable_id, template_version, model, model_license, grounding_digest, text, generated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params!["poem-shipped", "1.0.0", "open-model", "MIT", "digest", "内置", 1],
+            )
+            .expect("写随包测试行");
+        connection
+            .execute(
+                "INSERT INTO appreciation_cache (key, stable_id, provider, model, template_version, corpus_version, grounding_digest, text, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![&[1_u8; 32], "poem-local", "openai", "user-model", "1.0.0", "corpus-v1", "digest", "本地", 1],
+            )
+            .expect("写本地测试行");
+
+        let produced = match run(
+            &Command::Ai {
+                action: AiAction::Cache {
+                    action: AiCacheAction::Purge(AiCachePurgeArgs {
+                        template: None,
+                        poem: None,
+                        all: true,
+                    }),
+                },
+            },
+            &config,
+            None,
+        ) {
+            Ok(produced) => produced,
+            Err(_) => panic!("执行缓存清理失败"),
+        };
+
+        let Body::Ok(_) = super::execute(
+            &Command::Ai {
+                action: AiAction::Cache {
+                    action: AiCacheAction::Purge(AiCachePurgeArgs {
+                        template: None,
+                        poem: None,
+                        all: true,
+                    }),
+                },
+            },
+            &config,
+            None,
+        )
+        .body
+        else {
+            panic!("CLI 清理应返回成功载荷");
+        };
+        assert_eq!(produced.data["removed"], serde_json::json!(1));
+        let counts = cache.counts().expect("读取清理后统计");
+        assert_eq!(counts.local, 0);
+        assert_eq!(counts.shipped, 1);
+        drop(connection);
+        drop(cache);
+        let _ = std::fs::remove_dir_all(directory);
     }
 }
