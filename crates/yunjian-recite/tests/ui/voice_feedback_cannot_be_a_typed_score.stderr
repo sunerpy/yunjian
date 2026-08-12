@@ -1,0 +1,7 @@
+error[E0277]: the trait bound `TypedScore: From<VoicePracticeFeedback>` is not satisfied
+ --> tests/ui/voice_feedback_cannot_be_a_typed_score.rs:4:14
+  |
+4 |     feedback.into()
+  |              ^^^^ the trait `From<VoicePracticeFeedback>` is not implemented for `TypedScore`
+  |
+  = note: required for `VoicePracticeFeedback` to implement `Into<TypedScore>`
