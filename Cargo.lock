@@ -2702,6 +2702,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "inputx-phonetic-edit"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9dfa4089a30299d98e0391958a4e1dc654ea9cbd4430fafe0b0e511ada0b6c0"
+
+[[package]]
 name = "ipnet"
 version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3829,6 +3835,12 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "pinyin"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e225f595052d9c46045755be4b8d7950b6d9f3c33e0c0b74ba58f11bbfa8c64b"
 
 [[package]]
 name = "piper"
@@ -7437,6 +7449,8 @@ dependencies = [
 name = "yunjian-recite"
 version = "0.1.0"
 dependencies = [
+ "inputx-phonetic-edit",
+ "pinyin",
  "rusqlite",
  "trybuild",
  "yunjian-core",
