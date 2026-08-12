@@ -27,6 +27,10 @@ pub mod capture;
 /// 音频增强。纯信号处理，不依赖 `voice` 特性，因此默认构建也能编译与自测。
 pub mod augment;
 
+/// 音频采集与播放。**判定层不带特性开关**——重采样正确性与四种失败各自降级成什么都在
+/// 这一层，于是一台没有麦克风的机器仍然能验证它们；只有真实设备那一小块要 `capture`。
+pub mod audio;
+
 #[cfg(feature = "voice")]
 pub mod asr;
 #[cfg(feature = "voice")]

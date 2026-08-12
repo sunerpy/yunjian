@@ -6,5 +6,10 @@
 #![warn(missing_docs)]
 
 pub mod align;
+pub mod score;
 
 pub use align::{AlignOp, Alignment, align};
+pub use score::{
+    BiasedHyp, OpsSummary, Poem, RelativeRhythm, TypedAttempt, TypedScore, VoicePracticeFeedback,
+    score_typed,
+};

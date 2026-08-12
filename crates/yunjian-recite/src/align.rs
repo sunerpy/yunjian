@@ -76,17 +76,31 @@ pub struct Alignment {
 pub fn align(handle: &CorpusHandle, reference: &str, attempt: &str) -> Result<Alignment> {
     let reference = normalize(handle, reference)?;
     let attempt = normalize(handle, attempt)?;
-    let raw_ops = edit_script(&reference, &attempt);
-    let ops = detect_rerecitations(raw_ops, &reference);
+    Ok(align_chars(&reference, &attempt))
+}
+
+pub(crate) fn normalize_text(handle: &CorpusHandle, text: &str) -> Result<String> {
+    Ok(normalize(handle, text)?.into_iter().collect())
+}
+
+pub(crate) fn align_normalized(reference: &str, attempt: &str) -> Alignment {
+    let reference = reference.chars().collect::<Vec<_>>();
+    let attempt = attempt.chars().collect::<Vec<_>>();
+    align_chars(&reference, &attempt)
+}
+
+fn align_chars(reference: &[char], attempt: &[char]) -> Alignment {
+    let raw_ops = edit_script(reference, attempt);
+    let ops = detect_rerecitations(raw_ops, reference);
     let matched_len = ops
         .iter()
         .filter(|op| matches!(op, AlignOp::Normal { .. }))
         .count();
-    Ok(Alignment {
+    Alignment {
         ops,
         matched_len,
         reference_len: reference.len(),
-    })
+    }
 }
 
 fn normalize(handle: &CorpusHandle, text: &str) -> Result<Vec<char>> {

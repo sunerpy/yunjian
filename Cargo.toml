@@ -138,6 +138,8 @@ clap = { version = "4", features = ["derive"] }
 # 刻意不开 `color`（它不是默认特性）：失败诊断要被 `tee` 进证据日志，ANSI 转义序列
 # 会让那份日志变成乱码。
 assert_cmd = "2.2"
+# 仅用于编译期 API 边界测试：证明语音派生类型不能进入打字评分。
+trybuild = "=1.0.120"
 # 上游 LICENSE 摘要。清单里的字段名是 `license_sha256`，必须真的是 SHA-256：
 # 换成 blake3 就无法与 `sha256sum`、GitHub 侧的摘要互相核对。
 sha2 = "0.11"
