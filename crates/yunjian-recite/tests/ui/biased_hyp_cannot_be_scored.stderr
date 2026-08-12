@@ -1,0 +1,13 @@
+error[E0308]: mismatched types
+ --> tests/ui/biased_hyp_cannot_be_scored.rs:4:36
+  |
+4 |     let _ = score_typed(reference, biased);
+  |             -----------            ^^^^^^ expected `&TypedAttempt`, found `BiasedHyp`
+  |             |
+  |             arguments to this function are incorrect
+  |
+note: function defined here
+ --> src/score.rs
+  |
+  | pub fn score_typed(reference: &Poem, attempt: &TypedAttempt) -> TypedScore {
+  |        ^^^^^^^^^^^

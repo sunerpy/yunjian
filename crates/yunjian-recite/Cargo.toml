@@ -13,6 +13,7 @@ yunjian-core = { path = "../yunjian-core" }
 
 [dev-dependencies]
 rusqlite.workspace = true
+trybuild.workspace = true
 
 [lints]
 workspace = true
