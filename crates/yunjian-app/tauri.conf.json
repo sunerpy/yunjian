@@ -30,7 +30,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
     "publisher": "sunerpy",
     "homepage": "https://github.com/sunerpy/yunjian",
     "shortDescription": "云笺：古典诗词检索与背诵",

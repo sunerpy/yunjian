@@ -243,6 +243,43 @@ fn crate_opts_into_the_workspace_lint_gate() {
 }
 
 #[test]
+fn both_icon_formats_exist_because_two_different_code_paths_require_them() {
+    // 这两条不是重复。它们由**不同的** crate 在**不同的目标**上强制，而其中一条只在
+    // Windows 上生效——于是在 Linux 上开发时它是一条静默缺口，Windows CI 第一次跑才红
+    // （已实测：`icons/icon.ico` not found; required for generating a Windows Resource
+    // file during tauri-build）。放在这里是为了让它在本机就变红。
+    let icons = crate_dir().join("icons");
+
+    assert!(
+        icons.join("icon.png").is_file(),
+        "缺少 icons/icon.png。`tauri-codegen` 的 context.rs 在 Unix 目标上无条件要求它\
+         （find_icon 回落到该路径），缺失即编译失败。"
+    );
+    assert!(
+        icons.join("icon.ico").is_file(),
+        "缺少 icons/icon.ico。`tauri-build` 的 lib.rs:618 在 **Windows 目标**上从 bundle.icon\
+         里找 `.ico`，找不到则回落该路径，文件不存在时直接让构建失败（lib.rs:672）。\
+         **这条路径没有 PNG 回落**，所以它与上一条不是重复——它是一条只在 Windows 上\
+         出现的编译失败。"
+    );
+
+    let declared = base_config()
+        .get("bundle")
+        .and_then(|bundle| bundle.get("icon"))
+        .and_then(Value::as_array)
+        .expect("缺少 bundle.icon")
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    assert!(
+        declared.iter().any(|path| path.ends_with(".ico")),
+        "bundle.icon 必须显式列出 `.ico`：`tauri-build` 是先在这个数组里找的，\
+         回落到默认路径只是它的兜底，写清楚才不会在改动图标路径时静默失效。实际为 {declared:?}"
+    );
+}
+
+#[test]
 fn frontend_dist_points_at_the_react_app() {
     let base = base_config();
     let build = base.get("build").expect("缺少 build 段");
