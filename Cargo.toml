@@ -54,7 +54,25 @@ windows-native-keyring-store = "1.1"
 # 默认特性即新的命名 store（`by_store`）；`legacy`（`by_service`）刻意不开：上游标记
 # 其为 deprecated，且它删完凭据后仍留下密钥。
 android-native-keyring-store = { version = "1.0", default-features = false }
-genai = "0.6"
+# 多供应商 LLM 客户端。**只锁 0.6.x**：0.7 仍是 beta。刻意不引入 `rig-core`
+# （agent 框架，为一次 chat 调用背一整套编排）与 `llm-chain`（2023 年起停更）。
+#
+# `default-features = false` + 显式 `rustls-tls` 是刻意的：genai 自己的 `lib.rs` 有一条
+# `compile_error!` 守卫——`native-tls` 与 `rustls-tls` 互斥，而 `rustls-tls` 在默认特性集
+# 里。写死 rustls 一方面免掉 OpenSSL 这个 C 依赖，另一方面把「将来谁想换 native-tls」
+# 逼成一次显式改动而不是静默的特性合并。
+genai = { version = "0.6", default-features = false, features = ["rustls-tls"] }
+# 异步运行时。genai 内部即依赖它（`rt-multi-thread` + `macros`），此处显式声明是因为
+# `yunjian-ai` 的测试要自己驱动 `exec_chat` 的 future，并在同一个 reactor 上跑本地
+# mock HTTP 端点——间接依赖不会把 `#[tokio::test]` 宏带进来。
+#
+# 库代码本身不需要运行时：`AppreciationProvider` 只是 `async fn`，长任务走
+# `yunjian-core::operation` 的 OS 线程。因此它只出现在 `[dev-dependencies]`。
+tokio = { version = "1", default-features = false, features = [
+  "rt-multi-thread",
+  "macros",
+  "time",
+] }
 # 麦克风采集。`default-features = false` 是刻意的：默认特性会拖进 symphonia 的整套
 # 解码器（flac/mp3/mp4/vorbis），而采集路径一个都不需要。`recording` 提供
 # `rodio::microphone`，`playback` 提供 `rodio::cpal` 重导出——两者都要，因为设备

@@ -8,12 +8,17 @@
 //!
 //! 凭据存储见 [`keystore`]：它只暴露 [`StorageReport`] 这类非机密描述，密钥本身一律
 //! 包在 [`secrecy::SecretString`] 里，不进配置文件、不进日志、不进 `Debug` 输出。
+//!
+//! 实际调用模型的实现见 [`genai_provider`]：它把钥匙串里的密钥以 resolver 注入
+//! `genai`，`AuthData::FromEnv` 在本 crate 中不出现，密钥不进进程环境。
 
 #![warn(missing_docs)]
 
+pub mod genai_provider;
 pub mod keystore;
 pub mod provider;
 
+pub use genai_provider::{GenAiProvider, GenAiProviderConfig, ProviderKind};
 pub use keystore::{
     Backend, KeyStore, KeyStoreConfig, Lookup, OsKeychain, Persistence, Protection, StorageReport,
     default_plaintext_path, install_default_store,
