@@ -4,10 +4,13 @@
 //! 的稳定表面，绕过它就等于让 CLI 与核心内部结构耦合，而桌面端、MCP 与 FFI 三个外壳都
 //! 依赖这层稳定性。
 
-use crate::cli::{Book, Command, CorpusAction};
+use crate::cli::{Book, Command, CorpusAction, ModelsAction};
 use crate::envelope::{ErrorCode, Failure, Status, Warning, WarningCode};
-use crate::exit::{Exit, corpus_failure, describe};
-use crate::output::{CorpusOut, NotFound, Renderable, SearchFilters, SearchHit, SearchOut};
+use crate::exit::{Exit, corpus_failure, describe, describe_model};
+use crate::output::{
+    CorpusOut, ModelFetchOut, ModelListOut, ModelRemoveOut, ModelRow, NotFound, Renderable,
+    SearchFilters, SearchHit, SearchOut,
+};
 use crate::provision::{Provisioned, degradation, provision};
 use serde::Serialize;
 use serde_json::Value;
@@ -17,6 +20,7 @@ use yunjian_core::{
     RhymeGroupMembership, RhymeGroupSearchRequest, TEXT_SEARCH_HARD_CAP, TextSearchRequest,
     Yunjian,
 };
+use yunjian_voice::models::{FetchProgress, ModelCache, ModelError};
 
 /// 一次子命令执行的全部产出。
 #[derive(Debug)]
@@ -135,6 +139,15 @@ impl Failed {
             warnings: Vec::new(),
         }
     }
+
+    fn from_model(error: ModelError) -> Self {
+        let (exit, failure) = describe_model(&error);
+        Self {
+            exit,
+            failure,
+            warnings: Vec::new(),
+        }
+    }
 }
 
 impl From<Error> for Failed {
@@ -163,6 +176,9 @@ fn run(
         Command::Corpus {
             action: CorpusAction::Fetch,
         } => corpus_fetch(&corpus),
+        // 模型命令刻意**不打开语料库**：它维护的是语音权重，与诗库无关，而打开语料在
+        // 首启时是十分钟级的副作用。一条查模型许可的命令不该触发那件事。
+        Command::Models { action } => models(action),
         Command::Search {
             query,
             limit,
@@ -454,6 +470,120 @@ fn resolved_corpus_file(corpus: &CorpusConfig) -> PathBuf {
 
 fn to_value<T: Serialize>(value: &T) -> Result<Value> {
     serde_json::to_value(value).map_err(|error| Error::Search(format!("结果序列化失败：{error}")))
+}
+
+fn models(action: &ModelsAction) -> std::result::Result<Produced, Failed> {
+    let cache = ModelCache::discover();
+    match action {
+        ModelsAction::List => model_rows("list", &cache, None),
+        ModelsAction::Verify { name } => model_rows("verify", &cache, Some(name.as_deref())),
+        ModelsAction::Fetch { name } => model_fetch(&cache, name),
+        ModelsAction::Remove { name } => model_remove(&cache, name),
+    }
+}
+
+/// `list` 与 `verify` 共用一条实现，差别只在要不要真的核对摘要。
+///
+/// `scope` 为 `None` 是 `list`；`Some(None)` 是核对全部；`Some(Some(name))` 是核对一个。
+fn model_rows(
+    action: &'static str,
+    cache: &ModelCache,
+    scope: Option<Option<&str>>,
+) -> std::result::Result<Produced, Failed> {
+    let statuses = cache.statuses().map_err(Failed::from_model)?;
+    let mut rows = Vec::with_capacity(statuses.len());
+    for status in statuses {
+        if let Some(Some(wanted)) = scope
+            && status.name != wanted
+        {
+            continue;
+        }
+        let verified_sha256 = match scope {
+            None => None,
+            Some(_) => cache
+                .verify_archive(&status.name)
+                .map_err(Failed::from_model)?,
+        };
+        rows.push(ModelRow {
+            name: status.name,
+            kind: status.kind.as_str(),
+            role: status.role.as_str(),
+            license: status.license,
+            size_bytes: status.size_bytes,
+            unpacked: status.unpacked,
+            archived: status.archived,
+            attribution: status.attribution,
+            refused: status.refused,
+            verified_sha256,
+        });
+    }
+
+    if let Some(Some(wanted)) = scope
+        && rows.is_empty()
+    {
+        // 名字打错时报 `Unknown`，而不是「核对了 0 个，成功」——后者会让脚本以为校验过了。
+        return Err(Failed::from_model(
+            yunjian_voice::models::Registry::shipped()
+                .and_then(|registry| registry.find(wanted).map(|_| ()))
+                .expect_err("名字能在清单里找到就不会走到这里"),
+        ));
+    }
+
+    let empty = rows.is_empty();
+    let out = ModelListOut {
+        action,
+        cache_root: cache.root().display().to_string(),
+        models: rows,
+    };
+    Produced::new(&out, empty).map_err(Failed::from)
+}
+
+fn model_fetch(cache: &ModelCache, name: &str) -> std::result::Result<Produced, Failed> {
+    let entry_license_and_attribution = yunjian_voice::models::Registry::shipped()
+        .and_then(|registry| {
+            registry
+                .admit(name)
+                .map(|entry| (entry.license.clone(), entry.attribution_file()))
+        })
+        .map_err(Failed::from_model)?;
+
+    // 下载是长任务，进度按工作区约定走 `tracing` 到 stderr——stdout 属于结果与 MCP
+    // 协议流，进度条写到那里会毁掉 `--json | jq`。
+    let path = cache
+        .ensure(name, &mut log_fetch_progress)
+        .map_err(Failed::from_model)?;
+
+    let (license, attribution) = entry_license_and_attribution;
+    let out = ModelFetchOut {
+        name: name.to_owned(),
+        path: path.display().to_string(),
+        license,
+        attribution,
+    };
+    Produced::new(&out, false).map_err(Failed::from)
+}
+
+fn model_remove(cache: &ModelCache, name: &str) -> std::result::Result<Produced, Failed> {
+    let removed = cache.remove(name).map_err(Failed::from_model)?;
+    let out = ModelRemoveOut {
+        name: name.to_owned(),
+        removed_dir: removed.dir,
+        removed_archive: removed.archive,
+    };
+    // 什么都没删不是失败，但也不是「有结果」——退出 1 让脚本能区分。
+    Produced::new(&out, removed.is_empty()).map_err(Failed::from)
+}
+
+fn log_fetch_progress(event: FetchProgress) {
+    match event {
+        FetchProgress::Downloading {
+            bytes_done,
+            bytes_total,
+        } => tracing::info!(bytes_done, bytes_total, "正在下载模型"),
+        FetchProgress::Verifying { bytes } => tracing::info!(bytes, "正在核对模型归档摘要"),
+        FetchProgress::Verified => tracing::info!("模型归档摘要已核对"),
+        FetchProgress::Unpacking => tracing::info!("正在解包模型"),
+    }
 }
 
 #[cfg(test)]

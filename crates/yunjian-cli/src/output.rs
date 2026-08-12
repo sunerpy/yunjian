@@ -620,3 +620,132 @@ mod tests {
         assert!(out.render().join("\n").contains("就绪"));
     }
 }
+
+/// `models list` 与 `models verify` 的载荷。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModelListOut {
+    /// 本次动作名，`list` 或 `verify`。
+    pub action: &'static str,
+    /// 模型缓存根目录。
+    pub cache_root: String,
+    /// 清单里的每个模型。
+    pub models: Vec<ModelRow>,
+}
+
+/// 清单里一个模型的状态。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModelRow {
+    /// 发布包名。
+    pub name: String,
+    /// `asr` 或 `tts`。
+    pub kind: &'static str,
+    /// `production` 或 `smoke`。
+    pub role: &'static str,
+    /// SPDX。
+    pub license: String,
+    /// 归档字节数。
+    pub size_bytes: u64,
+    /// 解包后的模型目录是否就位。
+    pub unpacked: bool,
+    /// 已校验归档是否还在本地。
+    pub archived: bool,
+    /// 随仓许可原文的文件名，在 `licenses/` 下。
+    pub attribution: String,
+    /// 许可门禁的拒绝原因；通过时不出现在 JSON 里。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refused: Option<String>,
+    /// `verify` 实测通过的摘要；`list` 或本地无归档时不出现。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified_sha256: Option<String>,
+}
+
+impl Renderable for ModelListOut {
+    fn render(&self) -> Vec<String> {
+        let mut lines = vec![format!("模型缓存：{}", self.cache_root)];
+        for model in &self.models {
+            let state = match (model.unpacked, model.archived) {
+                (true, _) => "已就位",
+                (false, true) => "仅有归档",
+                (false, false) => "未下载",
+            };
+            lines.push(format!(
+                "{}  {}/{}  {}  {:.1} MiB  {state}",
+                model.name,
+                model.kind,
+                model.role,
+                model.license,
+                bytes_to_mib(model.size_bytes),
+            ));
+            if let Some(sha) = &model.verified_sha256 {
+                lines.push(format!("  摘要已核对：{sha}"));
+            }
+            if let Some(refused) = &model.refused {
+                lines.push(format!("  已拒绝加载：{refused}"));
+            }
+        }
+        lines.push(
+            "许可原文见 licenses/；权重不随安装包分发，只接受 MIT 与 Apache-2.0。".to_owned(),
+        );
+        lines
+    }
+}
+
+/// `models fetch` 的载荷。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModelFetchOut {
+    /// 发布包名。
+    pub name: String,
+    /// 就位后的模型目录。
+    pub path: String,
+    /// SPDX。
+    pub license: String,
+    /// 随仓许可原文的文件名。
+    pub attribution: String,
+}
+
+impl Renderable for ModelFetchOut {
+    fn render(&self) -> Vec<String> {
+        vec![
+            format!("模型 {} 已就位：{}", self.name, self.path),
+            format!(
+                "许可 {}，原文见 licenses/{}",
+                self.license, self.attribution
+            ),
+        ]
+    }
+}
+
+/// `models remove` 的载荷。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ModelRemoveOut {
+    /// 发布包名。
+    pub name: String,
+    /// 解包目录被删了。
+    pub removed_dir: bool,
+    /// 归档被删了。
+    pub removed_archive: bool,
+}
+
+impl Renderable for ModelRemoveOut {
+    fn render(&self) -> Vec<String> {
+        if !self.removed_dir && !self.removed_archive {
+            return vec![format!("模型 {} 本地没有缓存，无需删除", self.name)];
+        }
+        let mut what = Vec::new();
+        if self.removed_dir {
+            what.push("模型目录");
+        }
+        if self.removed_archive {
+            what.push("归档");
+        }
+        vec![format!("已删除 {} 的{}", self.name, what.join("与"))]
+    }
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "只用于给人看的体积，MiB 的小数位精度足够"
+)]
+fn bytes_to_mib(bytes: u64) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0)
+}

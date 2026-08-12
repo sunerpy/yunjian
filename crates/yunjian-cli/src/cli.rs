@@ -96,6 +96,12 @@ pub enum Command {
         #[command(subcommand)]
         action: CorpusAction,
     },
+    /// 语音模型维护。权重不随安装包分发，按需下载并逐个校验许可与摘要。
+    Models {
+        /// 具体动作。
+        #[command(subcommand)]
+        action: ModelsAction,
+    },
     /// 承载 MCP 服务器。默认 stdio。
     #[cfg(feature = "mcp")]
     Mcp(McpArgs),
@@ -146,6 +152,7 @@ impl Command {
             Self::Corpus {
                 action: CorpusAction::Fetch,
             } => "corpus.fetch",
+            Self::Models { action } => action.envelope_name(),
             #[cfg(feature = "mcp")]
             Self::Mcp(McpArgs { action: None, .. }) => "mcp",
             #[cfg(feature = "mcp")]
@@ -153,6 +160,47 @@ impl Command {
                 action: Some(McpAction::Install(_)),
                 ..
             }) => "mcp.install",
+        }
+    }
+}
+
+/// `models` 的动作。
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum ModelsAction {
+    /// 列出清单里的每个模型：用途、许可、体积与本地缓存状态。
+    ///
+    /// 只读本地状态，不联网。
+    List,
+    /// 下载、校验并解包一个模型。
+    ///
+    /// 已就位时直接返回，不发起任何网络请求。摘要不符时中止且不留下任何文件。
+    Fetch {
+        /// 模型名，取自 `models list`。
+        name: String,
+    },
+    /// 核对本地已下载归档的摘要。
+    ///
+    /// 不给模型名时核对全部；本地没有归档的条目跳过而不算失败。
+    Verify {
+        /// 模型名；省略则核对全部。
+        name: Option<String>,
+    },
+    /// 删掉一个模型的本地缓存（解包目录与归档）。
+    Remove {
+        /// 模型名。
+        name: String,
+    },
+}
+
+impl ModelsAction {
+    /// 信封里的命令名。
+    #[must_use]
+    pub const fn envelope_name(&self) -> &'static str {
+        match self {
+            Self::List => "models.list",
+            Self::Fetch { .. } => "models.fetch",
+            Self::Verify { .. } => "models.verify",
+            Self::Remove { .. } => "models.remove",
         }
     }
 }

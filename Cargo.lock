@@ -7589,12 +7589,18 @@ dependencies = [
 name = "yunjian-voice"
 version = "0.1.0"
 dependencies = [
+ "bzip2",
  "hound",
  "rodio",
+ "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sherpa-rs",
+ "tar",
  "thiserror 2.0.20",
+ "toml 0.8.23",
  "tracing",
+ "ureq 3.4.0",
 ]
 
 [[package]]

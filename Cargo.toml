@@ -155,8 +155,14 @@ trybuild = "=1.0.120"
 # 上游 LICENSE 摘要。清单里的字段名是 `license_sha256`，必须真的是 SHA-256：
 # 换成 blake3 就无法与 `sha256sum`、GitHub 侧的摘要互相核对。
 sha2 = "0.11"
-# 仅 `xtask` 使用（`publish = false`，永不进入产物）：按锁定 revision 抓取上游 LICENSE。
+# HTTP 客户端。`xtask` 用它按锁定 revision 抓上游 LICENSE；`yunjian-voice` 的 `download`
+# 特性用它按需下载权重。**刻意不引入 `reqwest`**：那会为一次带进度的 GET 拖进整个
+# tokio 生态，而权重下载跑在 `yunjian_core::operation` 的 OS 线程上，同步客户端正合适。
 ureq = "3"
+# 权重发布包是 `.tar.bz2`。版本跟着 `sherpa-rs-sys` 的构建脚本已经解析出的那一份走
+# （实测 tar 0.4.46 / bzip2 0.4.4），避免同一个原生 libbz2 在依赖图里出现两份。
+tar = "0.4"
+bzip2 = "0.4"
 # 随包语料工件以 gzip 分发（todo 21）。`corpus-measure` 必须用与打包**同一个**压缩
 # 实现来量压缩后体积，否则量出来的数不是将来真正发出去的那个数；调用系统 `gzip`
 # 会把这个数变成宿主机工具版本的函数。
