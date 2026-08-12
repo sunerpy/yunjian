@@ -21,6 +21,7 @@ mod corpus_measure;
 mod corpus_package;
 mod corpus_quality;
 mod index_spike;
+mod pregenerate;
 mod verify_models;
 mod verify_sources;
 
@@ -164,6 +165,41 @@ enum Commands {
         out_dir: Option<std::path::PathBuf>,
     },
 
+    /// 用**开放权重模型**预生成随包赏析数据集，写出 `dataset/appreciations.json`、
+    /// 它的 `sha256` 旁文件与清单。
+    ///
+    /// 覆盖范围**显式声明**为四个选本（唐诗三百首、宋词三百首、千家诗、古诗文名篇），
+    /// 不尝试全语料。闭源 API 供应商一律中止：随包数据集必须由可下载权重生成，
+    /// 下载的权重不附带限制输出再分发的 API 条款。
+    ///
+    /// 不给 `--endpoint` 时**不执行推理**，只跑管道、门禁与溯源字段，清单如实标
+    /// `generation_executed=false`，绝不编造正文。
+    Pregenerate {
+        /// 只读源语料库。源库一个字节都不会被改动。
+        #[arg(long, default_value = "corpus/build/release/corpus.db")]
+        corpus_db: std::path::PathBuf,
+        /// 只生成前 N 首。试运行用。
+        #[arg(long, value_name = "N")]
+        limit: Option<usize>,
+        /// 输出目录。默认仓库根下的 `dataset`。
+        #[arg(long)]
+        out_dir: Option<std::path::PathBuf>,
+        /// 权重标识。
+        #[arg(long, default_value = pregenerate::DEFAULT_MODEL)]
+        model: String,
+        /// 权重许可（SPDX）。**仅用于验证门禁是真的**（设成非白名单值应当让本命令中止）；
+        /// 正式产物一律用默认值。
+        #[arg(long, default_value = pregenerate::DEFAULT_MODEL_LICENSE)]
+        model_license: String,
+        /// 本地运行时。**仅用于验证门禁是真的**（设成闭源 API 供应商应当让本命令中止）；
+        /// 正式产物一律用默认值。
+        #[arg(long, default_value = pregenerate::DEFAULT_PROVIDER)]
+        provider: String,
+        /// 本地开放权重运行时的 base URL。给了才真的调模型；不给则如实标未执行。
+        #[arg(long, value_name = "URL")]
+        endpoint: Option<String>,
+    },
+
     /// 校验 `models.toml`：SPDX 允许列表（只认 MIT 与 Apache-2.0）、锁定 revision 的
     /// 许可证据摘要、证据文件里真的写着那个许可、`models/DENYLIST.md` 的拒绝清单，
     /// 以及夹带产物的分发影响声明。最后写出 `models.lock.json` 供 `jq` 断言。
@@ -244,6 +280,23 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::CorpusPackage { corpus_db, out_dir }) => {
             corpus_package::run(corpus_db, out_dir)
         }
+        Some(Commands::Pregenerate {
+            corpus_db,
+            limit,
+            out_dir,
+            model,
+            model_license,
+            provider,
+            endpoint,
+        }) => pregenerate::run(
+            corpus_db,
+            limit,
+            out_dir,
+            model,
+            model_license,
+            provider,
+            endpoint,
+        ),
         Some(Commands::VerifyModels { offline }) => verify_models::run(offline),
         Some(Commands::CerSpike {
             refresh_fixtures,

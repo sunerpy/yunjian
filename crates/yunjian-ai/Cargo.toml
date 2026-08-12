@@ -19,6 +19,9 @@ rusqlite.workspace = true
 secrecy.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
+# 随包数据集的旁文件摘要。刻意是 SHA-256 而不是 blake3：它要能被 `sha256sum` 与
+# GitHub 侧的摘要互相核对，与语料工件、模型权重的旁文件同一口径。
+sha2 = { workspace = true }
 toml.workspace = true
 tracing.workspace = true
 tokio.workspace = true

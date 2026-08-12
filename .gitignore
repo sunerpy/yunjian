@@ -40,3 +40,15 @@ Thumbs.db
 # 编排工具的本地状态：计划、笔记、会话记录与验收日志，不属于产品代码，
 # 且仓库为公开仓库，不应外泄内部过程记录
 /.omo/
+
+# 预生成的随包赏析数据集。由 `cargo run -p xtask -- pregenerate` 从公有领域语料 +
+# 开放权重模型重新生成，与 `corpus/build/` 同理归生成方持有，不入库。
+#
+# **刻意不入库还有第二个理由：** 未提供 `--endpoint` 时产物每条正文都是显式的
+# 「未生成」标记（清单里 `generation_executed=false`）。把那种形态提交进仓库，
+# 迟早会有人把它当成真实赏析读。真实产物作为 release 资产随语料工件一同发布。
+# 人工维护的 `dataset/README.md`（披露文件）不在此列，它必须入库。
+/dataset/appreciations.json
+/dataset/appreciations.json.sha256
+/dataset/appreciations.manifest.json
+/dataset/.work/
