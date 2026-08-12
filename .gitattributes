@@ -18,5 +18,11 @@
 # 就是工作树里的字节」，即使某个上游 LICENSE 本身含 CRLF 也不会被悄悄改写。
 corpus/licenses/** -text
 
+# 同理，权重许可的证据与分发署名副本。两处必须逐字节相同（由
+# `cargo test -p yunjian-voice models` 断言），而 `models/licenses/` 的摘要还由
+# `xtask verify-models` 校验，所以任何行尾改写都会让门禁在 Windows 上必然误报。
+models/licenses/** -text
+licenses/** -text
+
 # 音频 fixture：git 已按内容判定为二进制，这里显式写出，防止将来某条规则误伤。
 *.wav binary

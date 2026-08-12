@@ -7,7 +7,7 @@
 //! | 0  | 成功       | 命令执行完成且有结果                                                 |
 //! | 1  | 无结果     | 命令执行完成但结果集为空（含 `show` 指到不存在的作品）                |
 //! | 2  | 用法错误   | 参数解析失败、请求本身不成立、请求了未随包的韵书                     |
-//! | 3  | 语料不可用 | 语料库缺失、损坏、schema 不兼容，或读取语料时的底层 I/O 与数据库故障 |
+//! | 3  | 数据不可用 | 语料库缺失、损坏、schema 不兼容、底层 I/O 与数据库故障，或语音模型未就位 |
 //!
 //! 1 与 3 的区别是产品语义上的：**1 说「我查过了，没有」，3 说「我没法查」**。把「语料
 //! 缺失」压成 0 条结果是这条边界上最容易犯、也最贵的错——脚本会把它当成「诗库里没有
@@ -23,9 +23,13 @@
 
 use crate::envelope::{ErrorCode, Failure};
 use yunjian_core::Error;
+use yunjian_voice::models::ModelError;
 
 /// 取语料失败时的下一步。四个退出码里只有 3 会带它。
 pub const FETCH_HINT: &str = "运行 `yunjian corpus fetch` 获取或修复语料库";
+
+/// 取模型失败时的下一步。**刻意与 [`FETCH_HINT`] 不同**：把用户指去取语料是错的引导。
+pub const MODEL_FETCH_HINT: &str = "联网后运行 `yunjian models fetch <模型名>` 下载并校验";
 
 /// 进程退出码。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +94,43 @@ pub fn describe(error: &Error) -> (Exit, Failure) {
 #[must_use]
 pub fn corpus_failure(message: impl Into<String>) -> Failure {
     Failure::new(ErrorCode::CorpusUnavailable, message).with_hint(FETCH_HINT)
+}
+
+/// 把模型侧的失败翻译成退出码与信封里的失败描述。
+///
+/// 与 [`describe`] 分开而不是塞进 [`Error`]：模型错误不经过 `yunjian_core::Error`，
+/// 把它硬转成 `Error::Voice(String)` 会把「命中拒绝名单」与「磁盘满」压成同一个字符串，
+/// 于是退出码只能一律归 3——而**被许可门禁拒绝是用法错误**，重试永远不会成功。
+///
+/// `match` 刻意穷举：[`ModelError`] 新增变体时这里应当编译失败，逼出一次
+/// 「它算用法错误还是数据不可用」的判断。
+#[must_use]
+pub fn describe_model(error: &ModelError) -> (Exit, Failure) {
+    match error {
+        // 名字打错了，是用法错误；但它不是「拒绝」，报错里已经列出可用的名字。
+        ModelError::Unknown { .. } => (
+            Exit::Usage,
+            Failure::new(ErrorCode::Usage, error.to_string())
+                .with_hint("运行 `yunjian models list` 看清单里实际有哪些模型"),
+        ),
+        // 拒绝名单与许可判定都不是「本机状态不对」，重试与下载都不会让它通过。
+        ModelError::Denied { .. } | ModelError::LicenseRefused { .. } => (
+            Exit::Usage,
+            Failure::new(ErrorCode::ModelRefused, error.to_string())
+                .with_hint("只接受 MIT 与 Apache-2.0 的权重；被拒条目与理由见 models/DENYLIST.md"),
+        ),
+        ModelError::Absent { .. }
+        | ModelError::ChecksumMismatch { .. }
+        | ModelError::SizeMismatch { .. }
+        | ModelError::Download { .. }
+        | ModelError::Unpack { .. }
+        | ModelError::Io { .. }
+        | ModelError::Manifest { .. } => (
+            Exit::CorpusUnavailable,
+            Failure::new(ErrorCode::ModelUnavailable, error.to_string())
+                .with_hint(MODEL_FETCH_HINT),
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -183,5 +224,72 @@ mod tests {
         let failure = corpus_failure("语料库损坏");
         assert_eq!(failure.code, ErrorCode::CorpusUnavailable);
         assert!(failure.hint.is_some(), "退出 3 必须给出下一步");
+    }
+}
+
+#[cfg(test)]
+mod model_tests {
+    use super::{Exit, describe_model};
+    use crate::envelope::ErrorCode;
+    use yunjian_voice::models::{ModelError, Registry};
+
+    /// 被许可门禁拒绝是**用法错误**，不是「本机数据不对」。
+    ///
+    /// 这条边界值钱：判成 3 会让脚本以为「再取一次就好」，而拒绝名单命中永远不会通过。
+    #[test]
+    fn a_refused_license_is_two_and_never_suggests_downloading_again() {
+        for error in [
+            ModelError::Denied {
+                name: "x".to_owned(),
+                matched: "matcha-icefall-zh-baker".to_owned(),
+                reason: "训练数据集非商用".to_owned(),
+            },
+            ModelError::LicenseRefused {
+                name: "x".to_owned(),
+                license: "GPL-3.0".to_owned(),
+            },
+        ] {
+            let (exit, failure) = describe_model(&error);
+            assert_eq!(exit, Exit::Usage, "{error}");
+            assert_eq!(failure.code, ErrorCode::ModelRefused, "{error}");
+            let hint = failure.hint.clone().expect("被拒也要给下一步");
+            assert!(
+                !hint.contains("models fetch"),
+                "重试不会让它通过，不该建议再下载一次：{hint}"
+            );
+            assert!(hint.contains("DENYLIST"), "要指向拒绝名单以便核对：{hint}");
+        }
+    }
+
+    #[test]
+    fn a_missing_model_is_three_and_points_at_models_fetch_not_the_corpus() {
+        let (exit, failure) = describe_model(&ModelError::Absent {
+            name: "x".to_owned(),
+            dir: std::path::PathBuf::from("/nope"),
+            next: "下一步".to_owned(),
+        });
+        assert_eq!(exit, Exit::CorpusUnavailable);
+        assert_eq!(failure.code, ErrorCode::ModelUnavailable);
+        let rendered = failure.render();
+        assert!(rendered.contains("models fetch"), "{rendered}");
+        assert!(
+            !rendered.contains("corpus fetch"),
+            "模型的问题不该建议去取语料：{rendered}"
+        );
+    }
+
+    #[test]
+    fn an_unknown_name_is_two_and_sends_the_caller_to_the_list_command() {
+        let error = Registry::shipped()
+            .expect("清单可解析")
+            .admit("no-such-model")
+            .expect_err("未知名字");
+        let (exit, failure) = describe_model(&error);
+        assert_eq!(exit, Exit::Usage);
+        assert_eq!(failure.code, ErrorCode::Usage);
+        assert!(
+            failure.hint.expect("要给下一步").contains("models list"),
+            "名字打错该去看清单"
+        );
     }
 }

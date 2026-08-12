@@ -175,24 +175,14 @@ fn whisper_prefix(model_dir: &Path) -> Result<String, VoiceError> {
     }
 }
 
-/// 模型根目录。`YUNJIAN_MODEL_DIR` 覆盖，默认为仓库内 `models/cache`——`.gitignore`
-/// 已排除该路径，权重因此不会被误提交。
+/// 模型根目录。[`crate::models::cache_root`] 的别名。
 ///
-/// 默认值在编译期由 `CARGO_MANIFEST_DIR` 推出绝对路径，而不是写相对路径：
-/// `cargo test -p yunjian-voice` 的工作目录是 crate 目录而非工作区根，相对路径会找错地方。
-/// 按需下载与配置驱动的模型目录是 todo 53 的事，这里只保证 spike 可复现。
+/// **刻意只是转发，不再自己解析一遍。** 按需下载会把权重放进
+/// [`crate::models::model_dir`]，识别器必须从同一个地方找它们；两份各自算路径的实现
+/// 迟早会漂移，而漂移的症状是「下载说成功了但识别器报模型缺失」。
 #[must_use]
 pub fn model_root() -> PathBuf {
-    std::env::var_os("YUNJIAN_MODEL_DIR").map_or_else(
-        || {
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("..")
-                .join("models")
-                .join("cache")
-        },
-        PathBuf::from,
-    )
+    crate::models::cache_root()
 }
 
 #[cfg(test)]
