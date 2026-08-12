@@ -6,16 +6,16 @@
 
 | 项 | 值 |
 | --- | --- |
-| `scoring_mode` | **`completeness_only`** |
+| `scoring_mode` | **`guided_practice`** |
 | 是否实测 | 是 |
 | 总 CER | 77.01% |
 | 阈值 | 10% |
 | 实测句数 | 1800 / 1800 |
 
-`scoring_mode` 的取值域**只有** `advisory_accuracy` 与 `completeness_only` 两个，**永远不会是 `full`**。todo 48、51、56、57 读的就是这个字段。
+`scoring_mode` 的取值域**只有** `guided_practice` 与 `coverage_advisory` 两个，**永远不会是 `full`**。todo 48、51、56、57 读的就是这个字段。
 
-- `advisory_accuracy`：完整度与流畅度作为分数呈现；逐字准确率标注为「ASR 估计值 / 仅供参考」，不计入分数。
-- `completeness_only`：连 advisory 的字准都不展示，只给完整度与流畅度。
+- `coverage_advisory`：仅在 KWS spike 通过冻结门槛后开放，报「检测到 N/M 句」这类覆盖度，不报逐字准确率。
+- `guided_practice`：v1 契约。跟读形态，只报是否开口／停顿／相对节奏这类可观测事实，FSRS 等级由用户自选。
 - 打字路径是确定性比对，字准照常作为分数，不受本裁决影响。
 
 ## 这个数字是乐观上界
