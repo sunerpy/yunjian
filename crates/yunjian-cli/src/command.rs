@@ -151,7 +151,12 @@ fn run(
     let corpus = corpus_config(config, corpus_override);
     match command {
         #[cfg(feature = "mcp")]
-        Command::Mcp(_) => unreachable!("mcp 子命令由 MCP 专用入口执行"),
+        Command::Mcp(crate::cli::McpArgs {
+            action: Some(crate::cli::McpAction::Install(args)),
+            ..
+        }) => mcp_install(args),
+        #[cfg(feature = "mcp")]
+        Command::Mcp(_) => unreachable!("起 MCP 服务由 MCP 专用入口执行"),
         Command::Corpus {
             action: CorpusAction::Status,
         } => corpus_status(&corpus),
@@ -357,6 +362,46 @@ fn rhyme(
     // 未消歧的候选不算命中：`hits` 空而 `unresolved` 非空时结果依然是「没有肯定的命中」。
     let empty = matches.hits.is_empty();
     Produced::new(&matches, empty)
+}
+
+/// 把 `yunjian mcp` 写进客户端配置。
+///
+/// 不碰语料库：一台还没取语料的机器同样应该能先把服务器注册好，让客户端在语料到位后
+/// 直接可用。把注册与语料耦在一起只会多出一条「先取 211 MiB 才能改一行 JSON」的要求。
+#[cfg(feature = "mcp")]
+fn mcp_install(args: &crate::mcp_install::InstallArgs) -> std::result::Result<Produced, Failed> {
+    use crate::mcp_install::{Dirs, InstallOut, install};
+
+    let dirs = Dirs::discover().map_err(|error| Failed {
+        exit: Exit::Usage,
+        failure: Failure::new(
+            ErrorCode::ClientConfigInvalid,
+            format!("取不到当前目录：{error}"),
+        )
+        .with_hint("用 `--path` 显式指定配置文件"),
+        warnings: Vec::new(),
+    })?;
+    let outcome = install(args, &dirs).map_err(|refusal| {
+        let (exit, failure) = refusal.describe();
+        Failed {
+            exit,
+            failure,
+            warnings: Vec::new(),
+        }
+    })?;
+
+    let mut warnings = Vec::new();
+    // `--global` 对没有项目级配置的客户端无意义。静默接受会让用户以为自己控制了作用域。
+    if args.global && !args.client.has_project_scope() && args.path.is_none() {
+        warnings.push(Warning::new(
+            WarningCode::ClientScopeIgnored,
+            format!(
+                "{} 只有用户级配置，`--global` 未改变目标文件",
+                args.client.as_key()
+            ),
+        ));
+    }
+    Ok(Produced::new(&InstallOut::new(&outcome), false)?.warn(warnings))
 }
 
 fn corpus_status(corpus: &CorpusConfig) -> std::result::Result<Produced, Failed> {

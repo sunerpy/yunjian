@@ -29,6 +29,8 @@ pub mod cli;
 pub mod command;
 pub mod envelope;
 pub mod exit;
+#[cfg(feature = "mcp")]
+pub mod mcp_install;
 pub mod output;
 pub mod present;
 pub mod provision;
@@ -105,7 +107,9 @@ pub fn run() -> i32 {
     );
 
     #[cfg(feature = "mcp")]
-    if let cli::Command::Mcp(args) = &cli.command {
+    if let cli::Command::Mcp(args) = &cli.command
+        && args.action.is_none()
+    {
         return run_mcp(config, cli.global.corpus.as_deref(), args);
     }
 
@@ -113,9 +117,14 @@ pub fn run() -> i32 {
     emit(&report, cli.global.json)
 }
 
+/// 本次运行会不会占住 stdout 当协议流。
+///
+/// **只有起服务那一种形态算**。`yunjian mcp install` 写完文件就退出，它的 stdout 是给人
+/// 或给 `jq` 看的普通结果；给它装上 stdio 专用的日志订阅器会让终端里的输出无端失去颜色，
+/// 而真正需要那份订阅器的是承载协议流的那条路径。
 fn is_mcp(command: &cli::Command) -> bool {
     #[cfg(feature = "mcp")]
-    if matches!(command, cli::Command::Mcp(_)) {
+    if matches!(command, cli::Command::Mcp(args) if args.action.is_none()) {
         return true;
     }
     false
