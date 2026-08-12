@@ -42,7 +42,7 @@ pub const PROVIDER_NONE: &str = "none";
 
 const APP_DIR: &str = "yunjian";
 
-/// 顶层配置。五张子表全部可省略，空文件是合法配置。
+/// 顶层配置。六张子表全部可省略，空文件是合法配置。
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -56,6 +56,8 @@ pub struct Config {
     pub ai: AiConfig,
     /// 语音模型目录与运行参数配置。
     pub voice: VoiceConfig,
+    /// 背诵评级与复习排程配置。
+    pub recite: ReciteConfig,
 }
 
 /// `[app]`
@@ -214,6 +216,42 @@ impl Default for VoiceProsodyConfig {
         Self {
             foot_pause_ms: 120,
             line_pause_ms: 400,
+        }
+    }
+}
+
+/// `[recite]`
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ReciteConfig {
+    /// 打字分数到 FSRS 等级的阈值。
+    pub grading: GradingConfig,
+}
+
+/// `[recite.grading]`
+///
+/// 四个阈值按 [`GradingConfig`] 的字段名落盘；评级规则本身在背诵 crate 中按严格优先级
+/// 求值。拒绝信号来自评分内核，不是评级阈值。
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GradingConfig {
+    /// 完整度低于该值时评为 Again。
+    pub again_completeness_below: f32,
+    /// 宽松准确率低于该值时评为 Hard。
+    pub hard_accuracy_lenient_below: f32,
+    /// 回读次数高于该值时评为 Hard，并禁止评为 Easy。
+    pub hard_rerecitation_above: usize,
+    /// 首次作答的严格准确率达到该值时才可评为 Easy。
+    pub easy_accuracy_strict_at_least: f32,
+}
+
+impl Default for GradingConfig {
+    fn default() -> Self {
+        Self {
+            again_completeness_below: 0.6,
+            hard_accuracy_lenient_below: 0.85,
+            hard_rerecitation_above: 0,
+            easy_accuracy_strict_at_least: 0.97,
         }
     }
 }
@@ -419,6 +457,14 @@ model_dir = {voice_model_dir}
 # 是否允许按需下载模型；关闭后缺模型将直接降级为键入练习。
 allow_download = {voice_allow_download}
 
+[recite.grading]
+# 按以下严格优先级评级：拒绝或完整度不足 -> Again；宽松准确率不足或存在回读 -> Hard；
+# 首次作答且严格准确率达标、无回读 -> Easy；其余 -> Good。
+again_completeness_below = {again_completeness_below:?}
+hard_accuracy_lenient_below = {hard_accuracy_lenient_below:?}
+hard_rerecitation_above = {hard_rerecitation_above}
+easy_accuracy_strict_at_least = {easy_accuracy_strict_at_least:?}
+
 [voice.prosody]
 # 朗读时音步之间与行之间插入的静音，毫秒。引擎既无 SSML、其静音参数也已报损，节奏由
 # 逐音步合成加 Rust 侧插静音得到，这两个值就是那两段静音的时长。
@@ -443,6 +489,10 @@ line_pause_ms = {voice_line_pause_ms}
         ai_template_version = quote(&config.ai.prompt_template_version),
         voice_model_dir = quote_path(&config.voice.model_dir),
         voice_allow_download = config.voice.allow_download,
+        again_completeness_below = config.recite.grading.again_completeness_below,
+        hard_accuracy_lenient_below = config.recite.grading.hard_accuracy_lenient_below,
+        hard_rerecitation_above = config.recite.grading.hard_rerecitation_above,
+        easy_accuracy_strict_at_least = config.recite.grading.easy_accuracy_strict_at_least,
         voice_foot_pause_ms = config.voice.prosody.foot_pause_ms,
         voice_line_pause_ms = config.voice.prosody.line_pause_ms,
     )
@@ -539,6 +589,12 @@ tts_model = "vits-melo-tts-zh_en"
 asr_model = "sherpa-onnx-streaming-zipformer-zh"
 allow_download = false
 
+[recite.grading]
+again_completeness_below = 0.7
+hard_accuracy_lenient_below = 0.9
+hard_rerecitation_above = 1
+easy_accuracy_strict_at_least = 0.99
+
 [voice.prosody]
 foot_pause_ms = 150
 line_pause_ms = 500
@@ -578,6 +634,14 @@ line_pause_ms = 500
                 prosody: VoiceProsodyConfig {
                     foot_pause_ms: 90,
                     line_pause_ms: 333,
+                },
+            },
+            recite: ReciteConfig {
+                grading: GradingConfig {
+                    again_completeness_below: 0.7,
+                    hard_accuracy_lenient_below: 0.9,
+                    hard_rerecitation_above: 1,
+                    easy_accuracy_strict_at_least: 0.99,
                 },
             },
         }
@@ -626,6 +690,10 @@ line_pause_ms = 500
             Some("sherpa-onnx-streaming-zipformer-zh")
         );
         assert!(!config.voice.allow_download);
+        assert_eq!(config.recite.grading.again_completeness_below, 0.7);
+        assert_eq!(config.recite.grading.hard_accuracy_lenient_below, 0.9);
+        assert_eq!(config.recite.grading.hard_rerecitation_above, 1);
+        assert_eq!(config.recite.grading.easy_accuracy_strict_at_least, 0.99);
         assert_eq!(config.voice.prosody.foot_pause_ms, 150);
         assert_eq!(config.voice.prosody.line_pause_ms, 500);
     }
@@ -645,6 +713,7 @@ line_pause_ms = 500
         assert_eq!(partial.logger, LoggerConfig::default());
         assert_eq!(partial.ai, AiConfig::default());
         assert_eq!(partial.voice, VoiceConfig::default());
+        assert_eq!(partial.recite, ReciteConfig::default());
     }
 
     #[test]
@@ -657,6 +726,7 @@ line_pause_ms = 500
         assert!((config.ai.temperature - 0.0).abs() < f64::EPSILON);
         assert!(config.voice.allow_download);
         assert_eq!(config.corpus.path, None);
+        assert_eq!(config.recite.grading, GradingConfig::default());
     }
 
     #[test]
@@ -1026,6 +1096,7 @@ line_pause_ms = 500
         assert_eq!(config.app, baseline.app);
         assert_eq!(config.logger, baseline.logger);
         assert_eq!(config.ai, baseline.ai);
+        assert_eq!(config.recite, baseline.recite);
         assert_eq!(config.corpus.data_dir, baseline.corpus.data_dir);
         assert_eq!(config.corpus.archive, baseline.corpus.archive);
 
