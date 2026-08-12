@@ -3921,6 +3921,10 @@ version = "0.1.0"
 [[package]]
 name = "yunjian-recite"
 version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "yunjian-core",
+]
 
 [[package]]
 name = "yunjian-voice"
