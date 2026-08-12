@@ -151,7 +151,7 @@ fn run(
     let corpus = corpus_config(config, corpus_override);
     match command {
         #[cfg(feature = "mcp")]
-        Command::Mcp => unreachable!("mcp 子命令由 stdio 专用入口执行"),
+        Command::Mcp(_) => unreachable!("mcp 子命令由 MCP 专用入口执行"),
         Command::Corpus {
             action: CorpusAction::Status,
         } => corpus_status(&corpus),

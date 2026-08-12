@@ -8,8 +8,34 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+# `http` **默认关闭**，且这条默认值本身是安全要求而不是取舍：stdio 传输没有监听端口，
+# 谁能读写那两个管道由操作系统的进程关系决定；HTTP 传输一开就有一个任何本机进程（以及
+# 任何一张浏览器页面）都能连上的 socket。默认构建里不存在这个 socket。
+[features]
+http = [
+  "dep:axum",
+  "dep:clap",
+  "dep:dirs",
+  "dep:getrandom",
+  "dep:tokio-util",
+  "dep:tracing",
+  "blake3",
+  "rmcp/transport-streamable-http-server",
+  "tokio/net",
+  "tokio/rt-multi-thread",
+]
+
 [dependencies]
 anyhow = { workspace = true }
+axum = { workspace = true, optional = true }
+# `http` 下用于两件事：token 文件的不可逆指纹，以及 bearer 比对。
+# **比对走 `blake3::Hash` 的 `PartialEq` 而不是 `String` 的**——上游把该实现标注为
+# 「This implementation is constant-time」（内部走 `constant_time_eq_32`），而 `str` 的
+# `==` 在首个不等字节处短路，会把「你猜对了几位前缀」变成可测量的时间差。
+blake3 = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+dirs = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
 # rmcp is pinned because its release cadence produced a major version within one month;
 # upgrades are scheduled compatibility work rather than routine dependency refreshes.
 rmcp = { workspace = true, features = ["transport-io"] }
@@ -17,14 +43,19 @@ schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["io-std"] }
+tokio-util = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
 yunjian-core = { path = "../yunjian-core" }
 
 [dev-dependencies]
-rmcp = { workspace = true, features = ["client"] }
+clap = { workspace = true }
+reqwest = { version = "0.13", default-features = false }
+rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest"] }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "process", "sync"] }
+tokio = { workspace = true, features = ["io-util", "net", "process", "sync"] }
+tokio-util = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -32,6 +63,13 @@ tracing-subscriber = { workspace = true }
 [[test]]
 name = "stdio"
 harness = false
+
+# **保留 libtest harness**，与 `stdio.rs` 相反。那个测试要逐字节审计子进程 stdout，libtest
+# 自己的 `running N tests` 就会污染被审计流；本测试审计的是**子进程的两条流里不得出现
+# token 值**，libtest 的统计行不含 token，因此不构成干扰，而逐条打印用例名对九条验收更有用。
+[[test]]
+name = "http"
+required-features = ["http"]
 
 [lints]
 workspace = true
