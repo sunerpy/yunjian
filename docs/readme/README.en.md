@@ -18,6 +18,7 @@ recitation practice, and an MCP server that lets an AI assistant query your poet
 - [Project status](#project-status)
 - [Why it is built this way](#why-it-is-built-this-way)
 - [Quick start](#quick-start)
+- [Using with an LLM](#using-with-an-llm)
 - [Feature overview](#feature-overview)
 - [Content provenance and licensing](#content-provenance-and-licensing)
 - [Documentation](#documentation)
@@ -64,30 +65,138 @@ leaves behind.
 
 ## Quick start
 
-> Only a source build is possible today, and the resulting binary has no usable subcommands yet.
-> This section is currently a **developer** quick start.
-
-Requires Rust 1.88+ (`rust-toolchain.toml` is checked in, so `rustup` installs the right version):
+Three steps: install, fetch the corpus, search a line.
 
 ```bash
-git clone https://github.com/sunerpy/yunjian.git
-cd yunjian
-cargo build --workspace
+# 1. Install (Linux / macOS)
+curl -fsSL https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.sh | sh
+
+# 2. Fetch the corpus (~211 MiB; search structures are derived locally on first launch)
+yunjian corpus fetch
+
+# 3. Search
+yunjian search 明月
 ```
 
-Run the same gate CI runs (format check + clippy + tests):
+On Windows, use PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.ps1 | iex
+```
+
+Both scripts detect the OS and CPU architecture, resolve the matching release asset, and
+**verify its SHA-256 before anything lands on disk** — a checksum failure installs nothing.
+
+| Variable              | Default            | Effect                                          |
+| --------------------- | ------------------ | ----------------------------------------------- |
+| `YUNJIAN_VERSION`     | latest release     | Install a specific version; `v0.1.0` or `0.1.0` |
+| `YUNJIAN_INSTALL_DIR` | `$HOME/.local/bin` | Install directory                               |
+
+> [!NOTE]
+> The first tagged release (`v0.1.0`) has not been cut yet, so the commands above are waiting on
+> it. Until then, build from source: `cargo build --workspace --release -p yunjian-cli` puts the
+> binary at `target/release/yunjian`. See [Development](#development).
+
+## Using with an LLM
+
+Results go to stdout, logs go to stderr, and success is decided by the exit code alone. The block
+below can be handed to an AI assistant as-is.
+
+<details>
+<summary>Commands, output contract, and MCP client configuration</summary>
+
+### Key commands
 
 ```bash
-make ci
+yunjian corpus fetch                    # download, verify and materialize the corpus
+yunjian corpus status                   # corpus location, version, size, derived-structure state
+yunjian search 明月 --limit 10 --json   # full-text and partial-line search
+yunjian show <poem-id> --json           # text, tone pattern, rhyme, provenance, cited commentary
+yunjian author 李白 --json              # author detail and work list
+yunjian rhyme 七阳 --book pingshui      # rhyme-group search; --book is required, no implicit default
+yunjian recite <poem-id> --mode cloze   # one typed round; the answer is read from stdin
+yunjian recite due                      # items due today; does not read the corpus
+yunjian models list                     # voice model registry and local cache state; offline
+yunjian mcp                             # host the MCP server on stdio
 ```
 
-Verify upstream corpus licences and digests (offline, no network):
+### stdout / stderr / exit codes
+
+**stdout carries results only** (human-readable text, or with `--json` exactly one line of JSON);
+**stderr carries logs only**, even under `RUST_LOG=trace`. There are exactly four exit codes, and
+machine callers should branch on them alone:
+
+| Code | Meaning              | Correct response                                    |
+| ---- | -------------------- | --------------------------------------------------- |
+| 0    | success, has results | read `data`                                         |
+| 1    | empty result set     | "I looked, there is none" — not an error            |
+| 2    | usage error          | change the command (includes unshipped rhyme books) |
+| 3    | data unavailable     | supply data, usually `yunjian corpus fetch`         |
+
+**Never conflate 1 and 3**: reading a missing corpus as "there is no 李白 in the library" is the
+most expensive mistake on this boundary.
+
+The `--json` envelope has a fixed shape:
+
+```json
+{
+  "schema_version": 1,
+  "command": "search",
+  "status": "ok",
+  "warnings": [],
+  "data": {}
+}
+```
+
+`status` is `ok` / `empty` / `error`, mapping one-to-one onto the exit codes. When
+`status == "error"`, `data` is replaced by `error` carrying a stable `code`, a message, and an
+actionable `hint`. Every entry in `warnings` carries a stable `code` (such as `voice_fallback`); the
+correct response to an unrecognised `code` is to relay the message verbatim.
+
+### Registering with an MCP client
+
+One command does it:
 
 ```bash
-cargo run -p xtask -- verify-sources --offline
+yunjian mcp install --client claude     # or --client opencode
 ```
 
-A per-asset licence verdict for every source plus exit code 0 means the environment is correct.
+Writing it by hand also works. **The two client shapes are not interchangeable** — the top-level key
+differs, and so does the type of `command`:
+
+Claude Desktop (`claude_desktop_config.json`): `command` is a **string**, arguments go in `args`.
+
+```json
+{
+  "mcpServers": {
+    "yunjian": {
+      "command": "yunjian",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+OpenCode (`opencode.json`): `command` is an **array including the argument**, plus `type` and
+`enabled`.
+
+```json
+{
+  "mcp": {
+    "yunjian": {
+      "type": "local",
+      "command": ["yunjian", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Applying one shape to the other client yields an entry that is syntactically valid and semantically
+empty: nothing errors, it simply never connects. If `yunjian` is not on `PATH`, replace `"yunjian"`
+with an absolute path.
+
+</details>
 
 ## Feature overview
 
@@ -109,11 +218,7 @@ This is the **intended** shape. Actual progress is always [Project status](#proj
 - **MCP server.** `yunjian mcp` speaks stdio so clients like Claude Desktop and OpenCode can query
   your library directly. Generated output is labelled as AI-written and is never written back into
   the corpus. `yunjian mcp install --client <claude|opencode>` writes the client config for you —
-  **the two shapes are not interchangeable**: Claude uses `mcpServers` with a string `command` plus a
-  separate `args`, OpenCode uses `mcp` with an array `command` that includes the argument plus
-  `type`/`enabled`. It merges rather than overwrites: other server entries and comments are kept
-  verbatim, the file is backed up first, and a config that fails to parse is refused rather than
-  replaced. Exact shapes in [CLI](../CLI.zh.md).
+  config shapes and `mcp install` are covered in [Using with an LLM](#using-with-an-llm).
 - **Multiple surfaces.** Tauri v2 + React on the desktop; a CLI with machine-readable output; the
   mobile framework is chosen by real-device measurement.
 
@@ -162,10 +267,16 @@ Apache-2.0 licence.
 
 ## Development
 
+Requires Rust 1.88+ (`rust-toolchain.toml` is checked in, so `rustup` installs the right version):
+
 ```bash
 make hooks   # install pre-commit (format on commit) and pre-push (run make ci) hooks
+make ci      # the only gate: format check + clippy + tests + MCP conformance + frontend tests
 make help    # list every target
 ```
+
+`cargo run -p xtask -- verify-sources --offline` checks upstream corpus licences and digests
+offline; exit code 0 means the environment is correct.
 
 Conventions:
 
