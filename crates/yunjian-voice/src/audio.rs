@@ -518,7 +518,8 @@ pub fn classify_capture_error(error: &crate::VoiceError, listed_devices: usize) 
         | V::ModelMissing { .. }
         | V::AudioRead { .. }
         | V::AudioWrite { .. }
-        | V::Backend(_) => AudioError::Failed {
+        | V::Backend(_)
+        | V::RecognizerConfig { .. } => AudioError::Failed {
             stage: "调用",
             detail: error.to_string(),
         },

@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+ --> tests/ui/unbiased_hyp_cannot_be_scored.rs:6:36
+  |
+6 |     let _ = score_typed(reference, &unbiased);
+  |             -----------            ^^^^^^^^^ expected `&TypedAttempt`, found `&UnbiasedAsrHyp`
+  |             |
+  |             arguments to this function are incorrect
+  |
+  = note: expected reference `&TypedAttempt`
+             found reference `&UnbiasedAsrHyp`
+note: function defined here
+ --> $WORKSPACE/crates/yunjian-recite/src/score.rs
+  |
+  | pub fn score_typed(reference: &Poem, attempt: &TypedAttempt) -> TypedScore {
+  |        ^^^^^^^^^^^

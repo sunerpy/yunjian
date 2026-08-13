@@ -14,6 +14,9 @@ use std::path::{Path, PathBuf};
 
 use sherpa_rs::whisper::{WhisperConfig, WhisperRecognizer};
 
+/// 双路流式解码。判定层在 [`crate::recognize`]，这里只有直调 C API 的那一小块。
+pub mod streaming;
+
 use crate::VoiceError;
 
 /// 权重精度。int8 量化版与 fp32 版在同一个发布包里并存，前者体积约为三分之一、

@@ -7699,7 +7699,10 @@ dependencies = [
  "thiserror 2.0.20",
  "toml 0.8.23",
  "tracing",
+ "trybuild",
  "ureq 3.4.0",
+ "yunjian-core",
+ "yunjian-recite",
 ]
 
 [[package]]
