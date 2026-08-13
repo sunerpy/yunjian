@@ -30,7 +30,10 @@ import type {
 } from "../contracts/recite";
 import { DEFAULT_CLOZE_RATIO } from "../contracts/recite";
 import type { RecitePorts } from "../data/recitePorts";
+import type { VoicePort } from "../data/voicePorts";
+import type { TypedFallback } from "../contracts/voice";
 import ModeSelector from "./ModeSelector";
+import VoicePanel from "./VoicePanel";
 import ResultView from "./ResultView";
 import ReviewQueue from "./ReviewQueue";
 import TypingPanel from "./TypingPanel";
@@ -38,6 +41,14 @@ import "./recite.css";
 
 export interface ReciteScreenProps {
   ports: RecitePorts;
+  /**
+   * 语音端口。
+   *
+   * 与 `ports` 分开传而不是塞进 `RecitePorts`：语音是**另一条产品路径**，它的产出与打字
+   * 评分刻意不可互换（`VoicePracticeFeedback` 与 `TypedScore` 是两个不兼容的类型）。
+   * 合成一个端口对象会让「语音结果能不能当打字分数用」这个问题在类型上失去答案。
+   */
+  voicePort: VoicePort;
   /**
    * 默认要练的作品标识。
    *
@@ -52,6 +63,7 @@ const INITIAL_MAX_MASKED_LINES = 4;
 
 export default function ReciteScreen({
   ports,
+  voicePort,
   defaultPoemId = "sample-jingyesi",
 }: ReciteScreenProps) {
   const [poemId, setPoemId] = useState(defaultPoemId);
@@ -65,6 +77,7 @@ export default function ReciteScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [voiceFallback, setVoiceFallback] = useState<TypedFallback | null>(null);
 
   const request = { poem_id: poemId, mode, ratio, masked_lines: maskedLines };
 
@@ -137,6 +150,13 @@ export default function ReciteScreen({
     setAttempt(null);
     setCommit(null);
     setAnswer("");
+    setVoiceFallback(null);
+  }, []);
+
+  // 语音走不通时**不替用户改形态**，只把原因记下来并在打字面板旁边说清楚。自动跳回挖空
+  // 会让「我明明选了语音」变成一个没有解释的静默改写，而五种失败各自的下一步动作完全不同。
+  const onVoiceDegrade = useCallback((fallback: TypedFallback) => {
+    setVoiceFallback(fallback);
   }, []);
 
   return (
@@ -190,6 +210,25 @@ export default function ReciteScreen({
       {error !== null && (
         <p className="recite-fallback" role="alert" data-testid="recite-error">
           {error}
+        </p>
+      )}
+
+      {mode === "voice" && session !== null && (
+        <VoicePanel
+          port={voicePort}
+          poemId={poemId}
+          // 刻意传空：背诵端点的提示文本在语音形态下是**退化后的挖空**，里面带着 `＿`。
+          // 拿它当诗句会让界面显示「床前明光」（亲手 QA 实测），所以让语音面板从合成结果
+          // 反推行文本——那与高亮时刻同源。
+          lines={[]}
+          onDegrade={onVoiceDegrade}
+        />
+      )}
+
+      {voiceFallback !== null && (
+        <p className="recite-section__note" data-testid="voice-typed-handoff">
+          语音这一路走不通，下面这局挖空打字练习照常计入排程；评分内核与语音路径无关，
+          打字路径的字准是确定性比对。
         </p>
       )}
 

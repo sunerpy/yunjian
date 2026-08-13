@@ -43,6 +43,7 @@
 use yunjian_core::{Config, LoggerConfig, init_config, init_logger};
 
 mod ipc;
+pub mod voice_ipc;
 
 /// 配置发现与用户配置目录使用的应用名。与命令行共用同一个名字，
 /// 两个入口因此读同一份 `config.toml`。

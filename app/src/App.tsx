@@ -29,6 +29,7 @@ import { SAMPLE_MODE_NOTICE, createSamplePorts } from "./data/samplePorts";
 import { createTauriPorts } from "./data/tauriPorts";
 import { createSampleSettingsPorts, createTauriSettingsPorts } from "./data/sampleSettingsPorts";
 import { createSampleRecitePorts, createTauriRecitePorts } from "./data/sampleRecitePorts";
+import { createSampleVoicePort, createTauriVoicePort } from "./data/sampleVoicePorts";
 
 type View =
   | { kind: "search" }
@@ -91,6 +92,10 @@ export default function App() {
   // 背诵端口同理：复习队列的 effect 以 port 为依赖，每帧重建会变成一个每帧重跑的
   // `due` + `stats`，而那两个在真实路径上要开 SQLite。
   const recitePorts = useMemo(() => createTauriRecitePorts() ?? createSampleRecitePorts(), []);
+
+  // 语音端口同理：`VoicePanel` 的可用性探测 effect 以 port 为依赖，每帧重建会变成一个每帧
+  // 重跑的 `voice_availability`，而那一条在真实路径上要枚举音频设备。
+  const voicePort = useMemo(() => createTauriVoicePort() ?? createSampleVoicePort(), []);
 
   return (
     <div
@@ -177,7 +182,7 @@ export default function App() {
             }}
           />
         )}
-        {view.kind === "recite" && <ReciteScreen ports={recitePorts} />}
+        {view.kind === "recite" && <ReciteScreen ports={recitePorts} voicePort={voicePort} />}
         {view.kind === "settings" && <SettingsScreen ports={settingsPorts} />}
       </main>
     </div>
