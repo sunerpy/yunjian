@@ -5,15 +5,16 @@
 //! 依赖这层稳定性。
 
 use crate::cli::{
-    AiAction, AiCacheAction, AiCachePurgeArgs, Book, Command, CorpusAction, Mode, ModelsAction,
-    ReciteAction, ReciteArgs,
+    AiAction, AiCacheAction, AiCachePurgeArgs, AssetsAction, Book, Command, CorpusAction, Mode,
+    ModelsAction, ReciteAction, ReciteArgs,
 };
 use crate::envelope::{ErrorCode, Failure, Status, Warning, WarningCode};
 use crate::exit::{Exit, corpus_failure, describe, describe_model};
 use crate::output::{
-    AiCachePurgeOut, CorpusOut, GradeCountsOut, ModelFetchOut, ModelListOut, ModelRemoveOut,
-    ModelRow, NotFound, OpOut, RECITE_DATABASE_FILE, ReciteDueOut, ReciteOut, ReciteStatsOut,
-    Renderable, ReviewItemOut, ScoreOut, SearchFilters, SearchHit, SearchOut, grade_key,
+    AiCachePurgeOut, AssetsOut, CorpusOut, GradeCountsOut, ModelFetchOut, ModelListOut,
+    ModelRemoveOut, ModelRow, NotFound, OpOut, RECITE_DATABASE_FILE, ReciteDueOut, ReciteOut,
+    ReciteStatsOut, Renderable, ReviewItemOut, ScoreOut, SearchFilters, SearchHit, SearchOut,
+    grade_key,
 };
 use crate::provision::{Provisioned, degradation, provision};
 use serde::Serialize;
@@ -183,7 +184,13 @@ fn run(
         } => corpus_status(&corpus),
         Command::Corpus {
             action: CorpusAction::Fetch,
-        } => corpus_fetch(&corpus),
+        } => corpus_fetch(config, &corpus),
+        Command::Assets {
+            action: AssetsAction::Status,
+        } => assets_status(config, &corpus),
+        Command::Assets {
+            action: AssetsAction::Fetch,
+        } => assets_fetch(config, &corpus),
         // 模型命令刻意**不打开语料库**：它维护的是语音权重，与诗库无关，而打开语料在
         // 首启时是十分钟级的副作用。一条查模型许可的命令不该触发那件事。
         Command::Models { action } => models(action),
@@ -789,7 +796,19 @@ fn corpus_status(corpus: &CorpusConfig) -> std::result::Result<Produced, Failed>
         .map_err(Failed::from)
 }
 
-fn corpus_fetch(corpus: &CorpusConfig) -> std::result::Result<Produced, Failed> {
+fn corpus_fetch(config: &Config, corpus: &CorpusConfig) -> std::result::Result<Produced, Failed> {
+    if should_use_legacy_corpus_fetch(corpus) {
+        return legacy_corpus_fetch(corpus);
+    }
+    let assets = sync_assets(config, corpus)?;
+    let warnings = derived_warnings_from_handle(&assets.corpus);
+    let out = CorpusOut::new(&assets.corpus, true);
+    Produced::new(&out, false)
+        .map(|produced| produced.warn(warnings))
+        .map_err(Failed::from)
+}
+
+fn legacy_corpus_fetch(corpus: &CorpusConfig) -> std::result::Result<Produced, Failed> {
     let provisioned = provision(corpus).map_err(|reason| Failed {
         exit: Exit::CorpusUnavailable,
         // 这条失败不能再建议「运行 corpus fetch」——用户刚刚运行的就是它。
@@ -802,6 +821,77 @@ fn corpus_fetch(corpus: &CorpusConfig) -> std::result::Result<Produced, Failed> 
     Produced::new(&out, false)
         .map(|produced| produced.warn(warnings))
         .map_err(Failed::from)
+}
+
+fn should_use_legacy_corpus_fetch(corpus: &CorpusConfig) -> bool {
+    std::env::var_os(yunjian_core::assets::ENV_ASSETS_MANIFEST).is_none()
+        && (corpus.path.is_some() || corpus.archive.is_some())
+}
+
+fn assets_status(config: &Config, corpus: &CorpusConfig) -> std::result::Result<Produced, Failed> {
+    let target = resolved_corpus_file(corpus);
+    if !target.is_file() {
+        return Err(Failed {
+            exit: Exit::CorpusUnavailable,
+            failure: corpus_failure(format!("尚无可用语料库：{} 不存在", target.display())),
+            warnings: Vec::new(),
+        });
+    }
+    let provisioned = provision(corpus).map_err(|reason| Failed {
+        exit: Exit::CorpusUnavailable,
+        failure: corpus_failure(reason),
+        warnings: Vec::new(),
+    })?;
+    let warnings = derived_warnings(&provisioned);
+    let (corpus, seed) =
+        yunjian_ai::shipped_assets_status(provisioned.handle, &config.app.data_dir)
+            .map_err(Failed::from)?;
+    Produced::new(&assets_out(&corpus, &seed, None), false)
+        .map(|produced| produced.warn(warnings))
+        .map_err(Failed::from)
+}
+
+fn assets_fetch(config: &Config, corpus: &CorpusConfig) -> std::result::Result<Produced, Failed> {
+    let assets = sync_assets(config, corpus)?;
+    let warnings = derived_warnings_from_handle(&assets.corpus);
+    let out = assets_out(&assets.corpus, &assets.seed, Some(&assets.seed_path));
+    Produced::new(&out, false)
+        .map(|produced| produced.warn(warnings))
+        .map_err(Failed::from)
+}
+
+fn sync_assets(
+    config: &Config,
+    corpus: &CorpusConfig,
+) -> std::result::Result<yunjian_ai::ShippedAssets, Failed> {
+    yunjian_ai::sync_shipped_assets(corpus.clone(), &config.app.data_dir).map_err(|error| Failed {
+        exit: Exit::CorpusUnavailable,
+        failure: Failure::new(ErrorCode::CorpusUnavailable, error.to_string())
+            .with_hint("检查统一资产清单、语料归档和赏析种子的 URL、SHA-256 与版本是否一致"),
+        warnings: Vec::new(),
+    })
+}
+
+fn assets_out(
+    corpus: &CorpusHandle,
+    seed: &yunjian_ai::ShippedSeedStatus,
+    seed_path: Option<&Path>,
+) -> AssetsOut {
+    AssetsOut {
+        corpus_path: corpus.path().display().to_string(),
+        corpus_version: corpus.meta().corpus_version.clone(),
+        seed_corpus_version: seed.corpus_version.clone(),
+        seed_template_version: seed.template_version.clone(),
+        record_count: seed.record_count,
+        stale_count: seed.stale_count,
+        seed_path: seed_path.map(|path| path.display().to_string()),
+    }
+}
+
+fn derived_warnings_from_handle(handle: &CorpusHandle) -> Vec<Warning> {
+    degradation(handle.derived())
+        .map(|message| vec![Warning::new(WarningCode::DerivedUnavailable, message)])
+        .unwrap_or_default()
 }
 
 /// 语料解析顺序里前两级的目标文件。第三级（从归档落地）刻意不在这里，

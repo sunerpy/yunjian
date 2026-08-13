@@ -7584,6 +7584,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tracing",
+ "yunjian-ai",
  "yunjian-core",
 ]
 
@@ -7598,6 +7599,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tokio",
  "tokio-util",
  "toml 0.8.23",
@@ -7627,6 +7629,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "ureq 3.4.0",
 ]
 
 [[package]]
