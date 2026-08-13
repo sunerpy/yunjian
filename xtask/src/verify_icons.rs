@@ -66,6 +66,19 @@ const SHEET_SIZES: [u32; 6] = [16, 24, 32, 48, 64, 256];
 const SMALL_SHEET_SIZES: [u32; 3] = [16, 24, 32];
 /// 两块底板。取 Windows 浅色与深色托盘的实际底色。
 const BACKDROPS: [[u8; 3]; 2] = [[243, 243, 243], [32, 32, 32]];
+/// 深色补偿对照图输出路径。见 `render_compensation_sheet` 上方那段说明。
+const COMPENSATION_SHEET: &str = "docs/reports/icon-dark-compensation.png";
+/// 深色补偿对照图每格的边长，取值理由同 `SMALL_CELL`。
+const COMPENSATION_CELL: u32 = 240;
+/// 深色补偿对照图用哪一层做样本。颜色对比与尺寸无关，取最大的清晰层即可。
+const COMPENSATION_SAMPLE_SIZE: u32 = 32;
+/// 朱砂。取值来自「浅深两侧对比相等」的解，推导在 `generate_source.py` 的深色补偿一节。
+const SEAL: [u8; 4] = [219, 70, 52, 255];
+/// 米白刻痕。
+const INK: [u8; 4] = [250, 246, 238, 255];
+/// 上一版（v4）的配色。**只用于深色补偿对照图的参照列**，不参与任何产物断言。
+const LEGACY_SEAL: [u8; 4] = [216, 69, 47, 255];
+const LEGACY_INK: [u8; 4] = [245, 239, 225, 255];
 /// 小尺寸层允许的最大颜色数（含全透明）。
 ///
 /// 这条断言守的是一个**已实际发生过**的失效：`cargo tauri icon` 生成 ICO 的方式是把
@@ -76,6 +89,217 @@ const BACKDROPS: [[u8; 3]; 2] = [[243, 243, 243], [32, 32, 32]];
 const MAX_SMALL_LAYER_COLORS: usize = 4;
 /// 受上面那条颜色数约束的层。48 px 以上不约束：那些尺寸本来就有余量表达更多层次。
 const CRISP_SIZES: [u32; 3] = [16, 24, 32];
+
+/// 一层图标的三种像素。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Cell {
+    Clear,
+    Seal,
+    Ink,
+}
+
+/// 从**已写进 ICO 的字节**反推出来的骨架几何。
+///
+/// 全部字段单位是该层的像素。`generate_source.py` 在渲染前也断言同一组量，
+/// 但那只能证明「生成器自己自洽」；v4 的六档里有两档笔画变细、印面偏小，恰恰是
+/// 生成之后、写进 ICO 的路上丢的。这个结构存在的唯一理由就是把那一段补上。
+#[derive(Debug, PartialEq, Eq)]
+struct Geometry {
+    margin: u32,
+    mark: u32,
+    border: u32,
+    stroke_w: u32,
+    gap: u32,
+    stroke_h: u32,
+}
+
+/// 笔宽的期望值：`floor(2 × 该层缩放 + 0.5)`，缩放 = `size / 16`。
+///
+/// 用整数算而不是浮点四舍五入：Rust 的 `f64::round` 与 Python 内建 `round` 在 `.5`
+/// 上行为不同（后者是银行家舍入），而 20 px 档的目标值恰好是 2.5，两侧算法必须给出
+/// 同一个 3，否则这条断言在唯一需要它的档位上与生成器不一致。
+fn expected_stroke_width(size: u32) -> u32 {
+    (2 * size + 8) / 16
+}
+
+/// 各段连续 `true` 的 (起始下标, 长度)。
+fn runs(values: &[bool]) -> Vec<(u32, u32)> {
+    let mut spans = Vec::new();
+    let mut start: Option<u32> = None;
+    for (index, on) in values.iter().enumerate() {
+        let index = index as u32;
+        match (on, start) {
+            (true, None) => start = Some(index),
+            (false, Some(from)) => {
+                spans.push((from, index - from));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(from) = start {
+        spans.push((from, values.len() as u32 - from));
+    }
+    spans
+}
+
+/// 把一层位图判成 `Cell` 网格。出现第三种实色即失败——那说明这层是降采样产物。
+fn classify(image: &Rgba) -> Result<Vec<Vec<Cell>>> {
+    let mut grid = Vec::with_capacity(image.height as usize);
+    for y in 0..image.height {
+        let mut row = Vec::with_capacity(image.width as usize);
+        for x in 0..image.width {
+            let px = image.pixel(x, y);
+            row.push(match px {
+                _ if px[3] == 0 => Cell::Clear,
+                p if p == SEAL => Cell::Seal,
+                p if p == INK => Cell::Ink,
+                other => bail!(
+                    "{}×{} 层在 ({x},{y}) 出现既非朱砂 {SEAL:?} 也非米白 {INK:?} 的实色 {other:?}",
+                    image.width,
+                    image.height
+                ),
+            });
+        }
+        grid.push(row);
+    }
+    Ok(grid)
+}
+
+/// 从 `Cell` 网格反推骨架几何。
+///
+/// 「笔行」的判据是**该行恰有两段米白**：印面行有零段，所以这个判据不需要知道
+/// 任何坐标常量，改了设计也不会悄悄量到别的东西上。
+fn measure(grid: &[Vec<Cell>]) -> Result<Geometry> {
+    let size = grid.len() as u32;
+    let occupied = |x: u32, y: u32| grid[y as usize][x as usize] != Cell::Clear;
+    let xs: Vec<u32> = (0..size)
+        .filter(|&x| (0..size).any(|y| occupied(x, y)))
+        .collect();
+    let ys: Vec<u32> = (0..size)
+        .filter(|&y| (0..size).any(|x| occupied(x, y)))
+        .collect();
+    let (&x0, &x1) = (
+        xs.first().context("整层全透明")?,
+        xs.last().context("整层全透明")?,
+    );
+    let (&y0, &y1) = (
+        ys.first().context("整层全透明")?,
+        ys.last().context("整层全透明")?,
+    );
+
+    let ink_row = |y: u32| -> Vec<bool> {
+        (0..size)
+            .map(|x| grid[y as usize][x as usize] == Cell::Ink)
+            .collect()
+    };
+    let stroke_rows: Vec<u32> = (0..size)
+        .filter(|&y| runs(&ink_row(y)).len() == 2)
+        .collect();
+    let (&first, &last) = (
+        stroke_rows
+            .first()
+            .context("找不到任何「恰有两段米白」的行——刻痕不是两道竖笔")?,
+        stroke_rows.last().context("找不到笔行")?,
+    );
+    if last - first + 1 != stroke_rows.len() as u32 {
+        bail!("笔行不连续：{stroke_rows:?}");
+    }
+    let spans = runs(&ink_row(first));
+    let (left_x, left_w) = spans[0];
+    let (right_x, right_w) = spans[1];
+    if left_w != right_w {
+        bail!("左笔宽 {left_w} != 右笔宽 {right_w}，两笔必须等宽");
+    }
+    if x1 - (right_x + right_w - 1) != left_x - x0 {
+        bail!(
+            "两笔在印身内左右不等距：左 {} 右 {}",
+            left_x - x0,
+            x1 - (right_x + right_w - 1)
+        );
+    }
+    if first - y0 != y1 - last {
+        bail!("两笔在印身内上下不等距：上 {} 下 {}", first - y0, y1 - last);
+    }
+    if x1 - x0 != y1 - y0 {
+        bail!("印身不是正方形：{}×{}", x1 - x0 + 1, y1 - y0 + 1);
+    }
+    Ok(Geometry {
+        margin: x0,
+        mark: x1 - x0 + 1,
+        border: left_x - x0,
+        stroke_w: left_w,
+        gap: right_x - (left_x + left_w),
+        stroke_h: stroke_rows.len() as u32,
+    })
+}
+
+/// 逐层核对骨架：笔宽逐档取整、两笔等宽等高、四边净距相等、全网格双向镜像。
+///
+/// 这一组断言的存在理由是 v4 的一次真实失效：**六档里有两档的中竖笔明显变细、
+/// 印面偏小**，而当时的门禁只查层数、层序、四角 alpha 与颜色数，四项全绿。
+/// 换句话说，那次失效发生在字节里，却没有任何字节断言看着它。
+fn check_geometry(failures: &mut Failures, size: u32, image: &Rgba) {
+    let grid = match classify(image).and_then(|grid| measure(&grid).map(|got| (grid, got))) {
+        Ok(pair) => pair,
+        Err(err) => {
+            failures.check(false, ICO, || format!("{size} px 层无法量出骨架：{err:#}"));
+            return;
+        }
+    };
+    let (grid, got) = grid;
+    let what = ICO;
+
+    let want_stroke = expected_stroke_width(size);
+    failures.check(got.stroke_w == want_stroke, what, || {
+        format!(
+            "{size} px 笔宽 {} != floor(2 × {}/16 + 0.5) = {want_stroke}——该档没有按自己的\
+             网格取整，而是浮点缩放来的（v4 就是这样丢了两档笔宽）",
+            got.stroke_w, size
+        )
+    });
+    failures.check(got.stroke_h == 2 * got.stroke_w + got.gap, what, || {
+        format!(
+            "{size} px 笔高 {} != 2×{} + {} ，两笔加缝的外接框不是正方形",
+            got.stroke_h, got.stroke_w, got.gap
+        )
+    });
+    failures.check(got.border >= 2 && got.gap >= 2, what, || {
+        format!(
+            "{size} px 净间距或缝宽小于 2 px：朱边 {} 缝 {}",
+            got.border, got.gap
+        )
+    });
+    let seal_share = f64::from(got.mark) / f64::from(size);
+    failures.check((0.83..=0.90).contains(&seal_share), what, || {
+        format!(
+            "{size} px 印身占整格 {:.1}%（印身 {}），应落在 83%~90%，否则各档取景不是一套",
+            seal_share * 100.0,
+            got.mark
+        )
+    });
+
+    let mirrored_x = (0..size).all(|y| {
+        (0..size).all(|x| grid[y as usize][x as usize] == grid[y as usize][(size - 1 - x) as usize])
+    });
+    let mirrored_y = (0..size).all(|y| grid[y as usize] == grid[(size - 1 - y) as usize]);
+    failures.check(mirrored_x && mirrored_y, what, || {
+        format!("{size} px 层不是双向镜像对称：左右={mirrored_x} 上下={mirrored_y}")
+    });
+
+    emit(&format!(
+        "  骨架     {size:>3} px  气口={:<3} 朱边={:<3} 笔宽={:<3}(期望 {want_stroke}) \
+         缝宽={:<3} 笔高={:<4} 印身={}({:.1}%)  双向镜像={}",
+        got.margin,
+        got.border,
+        got.stroke_w,
+        got.gap,
+        got.stroke_h,
+        got.mark,
+        seal_share * 100.0,
+        mirrored_x && mirrored_y
+    ));
+}
 
 /// 一张解码后的 RGBA8 位图。
 struct Rgba {
@@ -318,6 +542,60 @@ fn write_png(path: &Path, image: &Rgba) -> Result<()> {
 /// 而**造型被推翻的四轮，问题全部只出在 16 / 24 / 32 这三档**。
 /// 所以另出一张只含这三档、尺寸 720×480 的小表：它小到不会被任何管道再缩一次，
 /// 看到的就是字节本身。
+/// 把一层的配色替换成上一版（v4）的，用来做深色补偿的参照列。
+fn retint_to_legacy(image: &Rgba) -> Rgba {
+    let mut pixels = image.pixels.clone();
+    for px in pixels.chunks_exact_mut(4) {
+        let current: [u8; 4] = [px[0], px[1], px[2], px[3]];
+        if current == SEAL {
+            px.copy_from_slice(&LEGACY_SEAL);
+        } else if current == INK {
+            px.copy_from_slice(&LEGACY_INK);
+        }
+    }
+    Rgba {
+        width: image.width,
+        height: image.height,
+        pixels,
+    }
+}
+
+/// 渲染深色补偿对照图：左列本版配色，右列上一版配色，上行浅底、下行深底。
+///
+/// # 为什么需要单独一张
+///
+/// 六档表与小尺寸表都只呈现**当前**这一版，看不出补偿到底改了什么。而本版的深色
+/// 补偿是把朱砂移到「浅深两侧对比相等」的那个点（3.83:1 / 3.83:1），取代 v4 的
+/// 3.93:1 / 3.73:1——深色侧净增只有 **2.7%**，因为 3.83:1 是任何单色填充在这两种
+/// 托盘底色之间能取到的**最大下界**（推导在 `generate_source.py` 的深色补偿一节）。
+///
+/// 这张表的用处正是让这个「弱」可被目视核验：如果并置之后仍看不出差别，那是算术
+/// 上限的结论，不是补偿没做。声称做了补偿却不给对照，与没做无法区分。
+fn render_compensation_sheet(sample: &Rgba) -> Rgba {
+    let legacy = retint_to_legacy(sample);
+    let cell = COMPENSATION_CELL;
+    let width = 2 * cell;
+    let height = BACKDROPS.len() as u32 * cell;
+    let mut sheet = Rgba {
+        width,
+        height,
+        pixels: vec![0; (width * height * 4) as usize],
+    };
+    for (ri, bg) in BACKDROPS.iter().enumerate() {
+        let band = ri as u32 * cell;
+        for y in band..band + cell {
+            for x in 0..width {
+                let i = ((y * width + x) * 4) as usize;
+                sheet.pixels[i..i + 4].copy_from_slice(&[bg[0], bg[1], bg[2], 255]);
+            }
+        }
+        for (ci, variant) in [sample, &legacy].into_iter().enumerate() {
+            blit_magnified(&mut sheet, variant, ci as u32 * cell, band, cell, *bg);
+        }
+    }
+    sheet
+}
+
 fn render_sheet(layers: &[(u32, Rgba)], sizes: &[u32], cell: u32) -> Rgba {
     let width = sizes.len() as u32 * cell;
     let height = BACKDROPS.len() as u32 * cell;
@@ -446,6 +724,7 @@ pub(crate) fn run() -> Result<()> {
                     )
                 });
             }
+            check_geometry(&mut failures, entry.size, &layer);
             layers.push((entry.size, layer));
         }
         emit(&format!(
@@ -503,7 +782,23 @@ pub(crate) fn run() -> Result<()> {
             odd.is_empty()
         ));
     }
-    emit("  ↑ 这两张表必须由人亲眼看：字节断言证不了「16 px 下还认得出是什么」。");
+    if let Some((_, sample)) = layers
+        .iter()
+        .find(|(size, _)| *size == COMPENSATION_SAMPLE_SIZE)
+    {
+        let sheet = render_compensation_sheet(sample);
+        write_png(&root.join(COMPENSATION_SHEET), &sheet)?;
+        emit(&format!(
+            "  补偿表   {COMPENSATION_SHEET}  {}×{}  列 [本版 #DB4634, 上一版 #D8452F]  \
+             行 [浅色, 深色]  样本 {COMPENSATION_SAMPLE_SIZE} px",
+            sheet.width, sheet.height
+        ));
+    } else {
+        failures.check(false, ICO, || {
+            format!("缺少 {COMPENSATION_SAMPLE_SIZE} px 层，深色补偿对照图无法生成")
+        });
+    }
+    emit("  ↑ 这几张表必须由人亲眼看：字节断言证不了「16 px 下还认得出是什么」。");
 
     failures.into_result()?;
     emit("== 全部通过 ==");
@@ -737,6 +1032,129 @@ mod tests {
         sheet.sort_unstable();
         required.sort_unstable();
         assert_eq!(sheet, required, "联系表列必须覆盖每一个必需的 ICO 层尺寸");
+    }
+
+    /// 按骨架参数合成一层，用来把几何断言的正反两面都测到。
+    ///
+    /// 参数顺序与 `generate_source.py` 的 `SKELETON` 一致：气口 / 朱边 / 笔宽 / 缝宽。
+    /// `stroke_h` 单独给出，好让测试能构造一个「笔高不等于 2×笔宽+缝宽」的坏样本。
+    fn synth(size: u32, m: u32, b: u32, s: u32, g: u32, stroke_h: u32) -> Rgba {
+        let mut pixels = vec![0u8; (size * size * 4) as usize];
+        let first = (size - stroke_h) / 2;
+        let left = m + b;
+        for y in 0..size {
+            for x in 0..size {
+                let inside = x >= m && x < size - m && y >= m && y < size - m;
+                let in_stroke_band = y >= first && y < first + stroke_h;
+                let in_left = x >= left && x < left + s;
+                let in_right = x >= left + s + g && x < left + 2 * s + g;
+                let cell = match (inside, in_stroke_band && (in_left || in_right)) {
+                    (false, _) => [0, 0, 0, 0],
+                    (true, true) => INK,
+                    (true, false) => SEAL,
+                };
+                let i = ((y * size + x) * 4) as usize;
+                pixels[i..i + 4].copy_from_slice(&cell);
+            }
+        }
+        Rgba {
+            width: size,
+            height: size,
+            pixels,
+        }
+    }
+
+    /// 笔宽期望值必须与 `generate_source.py` 的 `floor(2×缩放+0.5)` 逐档一致。
+    ///
+    /// 20 与 24 px 是这条唯一有区分力的地方：20 px 的目标值是 2.5，用银行家舍入
+    /// 会算出 2，用 `.5` 向上才是 3。这张表就是把两侧算法钉在一起。
+    #[test]
+    fn expected_stroke_width_matches_the_generator_per_tier() {
+        for (size, want) in [
+            (16, 2),
+            (20, 3),
+            (24, 3),
+            (32, 4),
+            (48, 6),
+            (64, 8),
+            (128, 16),
+            (256, 32),
+            (1024, 128),
+        ] {
+            assert_eq!(expected_stroke_width(size), want, "{size} px");
+        }
+    }
+
+    /// 量骨架必须从像素反推出与 16 px 定稿一致的每一项。
+    #[test]
+    fn measures_the_shipped_skeleton_from_pixels() {
+        let grid = classify(&synth(16, 1, 4, 2, 2, 6)).expect("只含两种实色");
+        assert_eq!(
+            measure(&grid).expect("可量"),
+            Geometry {
+                margin: 1,
+                mark: 14,
+                border: 4,
+                stroke_w: 2,
+                gap: 2,
+                stroke_h: 6,
+            }
+        );
+    }
+
+    /// v4 的真实失效：某一档的笔画比该档应有的细。这条断言必须抓住它。
+    ///
+    /// 用 32 px 构造一个笔宽 3 而不是 4 的层——层数、层序、四角 alpha、颜色数
+    /// 四项全绿，只有笔宽是错的，正是当时漏过去的那种形态。
+    #[test]
+    fn catches_a_tier_whose_stroke_is_thinner_than_its_grid() {
+        let mut failures = Failures::default();
+        check_geometry(&mut failures, 32, &synth(32, 2, 8, 4, 4, 12));
+        assert!(failures.into_result().is_ok(), "合格的 32 px 层不该被判红");
+
+        let mut failures = Failures::default();
+        check_geometry(&mut failures, 32, &synth(32, 2, 9, 3, 4, 10));
+        let err = failures.into_result().expect_err("笔宽 3 应被判红");
+        let text = err.to_string();
+        assert!(text.contains("笔宽 3"), "{text}");
+        assert!(text.contains("= 4"), "失败信息要带上期望值：{text}");
+    }
+
+    /// 两笔不等宽必须在量骨架阶段就被拒——那是 v2「最右竖条顶穿右框线」的同类形态。
+    #[test]
+    fn rejects_layers_whose_two_strokes_differ() {
+        let mut layer = synth(16, 1, 4, 2, 2, 6);
+        // 把右笔的最右一列改回朱砂，右笔就只剩 1 px。
+        for y in 5..11 {
+            let i = ((y * 16 + 10) * 4) as usize;
+            layer.pixels[i..i + 4].copy_from_slice(&SEAL);
+        }
+        let grid = classify(&layer).expect("仍只含两种实色");
+        let err = measure(&grid).expect_err("两笔不等宽应被拒");
+        assert!(err.to_string().contains("等宽"), "{err}");
+    }
+
+    /// 出现第三种实色即判为降采样产物：`classify` 必须点名那个像素。
+    #[test]
+    fn classify_rejects_a_third_solid_colour() {
+        let mut layer = synth(16, 1, 4, 2, 2, 6);
+        layer.pixels[(((7 * 16) + 7) * 4) as usize..][..4].copy_from_slice(&[200, 100, 90, 255]);
+        let err = classify(&layer).expect_err("第三种实色应被拒");
+        assert!(err.to_string().contains("(7,7)"), "{err}");
+    }
+
+    /// 深色补偿对照图必须真的并置两套配色，否则它证不了补偿做了什么。
+    #[test]
+    fn compensation_sheet_places_both_palettes_side_by_side() {
+        let sheet = render_compensation_sheet(&synth(32, 2, 8, 4, 4, 12));
+        assert_eq!((sheet.width, sheet.height), (480, 480));
+        // 每格 240 / 源 32 = 7 倍居中，格中心必然落在印面上。
+        let centre = |ci: u32, ri: u32| sheet.pixel(ci * 240 + 120, ri * 240 + 120);
+        assert_eq!(centre(0, 0), SEAL, "左列必须是本版朱砂");
+        assert_eq!(centre(1, 0), LEGACY_SEAL, "右列必须是上一版朱砂");
+        assert_ne!(SEAL, LEGACY_SEAL, "两版配色相同则这张表毫无信息量");
+        assert_eq!(sheet.pixel(0, 0), [243, 243, 243, 255], "上行是浅底");
+        assert_eq!(sheet.pixel(0, 240), [32, 32, 32, 255], "下行是深底");
     }
 
     /// 门禁必须一次报出全部失败项，而不是第一条就中止。
