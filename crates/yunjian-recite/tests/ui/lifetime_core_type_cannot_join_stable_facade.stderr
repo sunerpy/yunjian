@@ -1,0 +1,8 @@
+error: implementation of `Deserialize` is not general enough
+  --> tests/ui/lifetime_core_type_cannot_join_stable_facade.rs:10:5
+   |
+10 |     assert_stable_api_type::<BorrowedCoreResponse<'static>>();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ implementation of `Deserialize` is not general enough
+   |
+   = note: `BorrowedCoreResponse<'_>` must implement `Deserialize<'0>`, for any lifetime `'0`...
+   = note: ...but `BorrowedCoreResponse<'_>` actually implements `Deserialize<'1>`, for some specific lifetime `'1`

@@ -8,8 +8,19 @@ use crate::{
     find_work_group_attributions, frequent_content_chars, list_tags, poem_detail, poem_features,
     rhyme_groups_of,
 };
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+/// 编译期断言候选门面类型是可序列化、线程安全且不借用外部数据的拥有型类型。
+///
+/// 下游边界测试用它证明带生命周期的类型无法进入稳定门面。
+#[doc(hidden)]
+pub fn assert_stable_api_type<T>()
+where
+    T: Serialize + DeserializeOwned + Send + Sync + 'static,
+{
+}
 
 /// 可廉价克隆并跨线程共享的云笺核心客户端。
 #[derive(Debug, Clone)]
@@ -245,6 +256,7 @@ impl Yunjian {
 
 #[cfg(test)]
 mod tests {
+    use super::assert_stable_api_type;
     use super::{
         AuthorDetailRequest, AuthorSearchRequest, CharacterRhymesRequest, DynastyBrowseRequest,
         FirstLineSearchRequest, LastCharacterSearchRequest, PoemDetailRequest, RhymeCheckRequest,
@@ -254,14 +266,6 @@ mod tests {
         Attribution, AuthorDetail, CharacterRhymes, MetaPage, PoemDetail, Result, RhymeAnswer,
         RhymeGroupMatches, RhymeGroupRef, SearchPage, TagSummary, TextSearchRequest,
     };
-    use serde::Serialize;
-    use serde::de::DeserializeOwned;
-
-    fn assert_owned_api_type<T>()
-    where
-        T: Serialize + DeserializeOwned + Send + Sync + 'static,
-    {
-    }
 
     #[test]
     fn facade_is_one_cheap_cloning_arc() {
@@ -275,30 +279,30 @@ mod tests {
 
     #[test]
     fn every_public_request_and_response_is_owned_serializable_send_sync_static() {
-        assert_owned_api_type::<TextSearchRequest>();
-        assert_owned_api_type::<TitleSearchRequest>();
-        assert_owned_api_type::<AuthorSearchRequest>();
-        assert_owned_api_type::<AuthorDetailRequest>();
-        assert_owned_api_type::<DynastyBrowseRequest>();
-        assert_owned_api_type::<FirstLineSearchRequest>();
-        assert_owned_api_type::<LastCharacterSearchRequest>();
-        assert_owned_api_type::<WorkGroupRequest>();
-        assert_owned_api_type::<RhymeGroupSearchRequest>();
-        assert_owned_api_type::<RhymeCheckRequest>();
-        assert_owned_api_type::<CharacterRhymesRequest>();
-        assert_owned_api_type::<TagBrowseRequest>();
-        assert_owned_api_type::<PoemDetailRequest>();
+        assert_stable_api_type::<TextSearchRequest>();
+        assert_stable_api_type::<TitleSearchRequest>();
+        assert_stable_api_type::<AuthorSearchRequest>();
+        assert_stable_api_type::<AuthorDetailRequest>();
+        assert_stable_api_type::<DynastyBrowseRequest>();
+        assert_stable_api_type::<FirstLineSearchRequest>();
+        assert_stable_api_type::<LastCharacterSearchRequest>();
+        assert_stable_api_type::<WorkGroupRequest>();
+        assert_stable_api_type::<RhymeGroupSearchRequest>();
+        assert_stable_api_type::<RhymeCheckRequest>();
+        assert_stable_api_type::<CharacterRhymesRequest>();
+        assert_stable_api_type::<TagBrowseRequest>();
+        assert_stable_api_type::<PoemDetailRequest>();
 
-        assert_owned_api_type::<SearchPage>();
-        assert_owned_api_type::<MetaPage>();
-        assert_owned_api_type::<AuthorDetail>();
-        assert_owned_api_type::<Attribution>();
-        assert_owned_api_type::<RhymeGroupMatches>();
-        assert_owned_api_type::<RhymeAnswer>();
-        assert_owned_api_type::<CharacterRhymes>();
-        assert_owned_api_type::<RhymeGroupRef>();
-        assert_owned_api_type::<TagSummary>();
-        assert_owned_api_type::<PoemDetail>();
+        assert_stable_api_type::<SearchPage>();
+        assert_stable_api_type::<MetaPage>();
+        assert_stable_api_type::<AuthorDetail>();
+        assert_stable_api_type::<Attribution>();
+        assert_stable_api_type::<RhymeGroupMatches>();
+        assert_stable_api_type::<RhymeAnswer>();
+        assert_stable_api_type::<CharacterRhymes>();
+        assert_stable_api_type::<RhymeGroupRef>();
+        assert_stable_api_type::<TagSummary>();
+        assert_stable_api_type::<PoemDetail>();
     }
 
     #[test]
