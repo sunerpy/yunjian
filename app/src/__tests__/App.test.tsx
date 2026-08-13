@@ -141,3 +141,106 @@ describe("外壳导航", () => {
     expect(screen.getByTestId("app-nav")).toBeTruthy();
   });
 });
+
+/**
+ * 背诵界面（todo 63）的入口。
+ *
+ * 与上面那一组同一条理由：`recite/__tests__/` 下的面板级断言全部直接挂子组件，
+ * 绕过了「用户怎么走到这里」。这一组从 `<App />` 出发，只点用户看得见的按钮。
+ */
+describe("外壳导航到背诵界面", () => {
+  it("导航条上有背诵入口且可点", async () => {
+    await renderApp();
+    const entry = screen.getByTestId("nav-recite") as HTMLButtonElement;
+    expect(entry.disabled).toBe(false);
+    expect(entry.textContent).toBe("背诵");
+    expect(screen.queryByTestId("recite-screen")).toBeNull();
+    expect(entry.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("**点背诵入口后背诵屏出现，四种形态与复习队列都在**", async () => {
+    await renderApp();
+    fireEvent.click(screen.getByTestId("nav-recite"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("recite-screen")).toBeTruthy();
+    });
+    // 四种形态一个不漏，包括此刻走不通的语音——它必须能被请求到并得到明确回答。
+    for (const mode of ["cloze", "first-char", "masked", "voice"]) {
+      expect(screen.getByTestId(`mode-${mode}`), `缺形态 ${mode}`).toBeTruthy();
+    }
+    // 复习队列由 FSRS 排程驱动，一进屏就该拉到样例排程。
+    await waitFor(() => {
+      expect(screen.getByTestId("review-queue")).toBeTruthy();
+    });
+    expect(screen.getByTestId("nav-recite").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBeNull();
+  });
+
+  it("**从 `<App />` 走完一整局：出题、作答、五类标记、发音注记、落账**", async () => {
+    // 这一条是整条链的端到端确认，也是唯一能拦住「面板做好了但接不上」的测法。
+    await renderApp();
+    fireEvent.click(screen.getByTestId("nav-recite"));
+    await waitFor(() => {
+      expect(screen.getByTestId("start-session")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId("start-session"));
+    await waitFor(() => {
+      expect(screen.getByTestId("session-prompt")).toBeTruthy();
+    });
+    // 样例提示里有内核填的全角下划线，不是 CSS 画的。
+    expect(screen.getByTestId("session-prompt").textContent).toContain("＿");
+
+    fireEvent.change(screen.getByTestId("recite-answer"), {
+      target: { value: "床前明月光，疑是地上霜。举头望明月，低头思故乡。" },
+    });
+    fireEvent.click(screen.getByTestId("submit-answer"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("op-feedback")).toBeTruthy();
+    });
+    // 五类差异在真实路径上也各自渲染出不同的标记。
+    const kinds = [
+      ...screen.getByTestId("op-feedback").querySelectorAll<HTMLElement>("[data-op]"),
+    ].map((cell) => cell.dataset.op);
+    for (const kind of [
+      "deletion",
+      "insertion",
+      "re_recitation",
+      "substitution",
+      "near_homophone_substitution",
+    ]) {
+      expect(kinds, `样例载荷里缺 ${kind}`).toContain(kind);
+    }
+    expect(screen.getByTestId("pronunciation-boundary").textContent).toContain("不评估发音标准度");
+
+    fireEvent.click(screen.getByTestId("grade-good"));
+    fireEvent.click(screen.getByTestId("commit-grade"));
+    await waitFor(() => {
+      expect(screen.getByTestId("commit-facts")).toBeTruthy();
+    });
+    expect(screen.getByTestId("commit-grade-label").textContent).toBe("良好");
+  });
+
+  it("能从背诵页回到检索，也能切到设置", async () => {
+    await renderApp();
+    fireEvent.click(screen.getByTestId("nav-recite"));
+    await waitFor(() => {
+      expect(screen.getByTestId("recite-screen")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("nav-search"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("recite-screen")).toBeNull();
+    });
+    fireEvent.click(screen.getByTestId("nav-recite"));
+    await waitFor(() => {
+      expect(screen.getByTestId("recite-screen")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("nav-settings"));
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-screen")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("recite-screen")).toBeNull();
+  });
+});

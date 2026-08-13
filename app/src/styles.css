@@ -103,6 +103,34 @@
   --color-tone-level: #2f6b46;
   --color-tone-oblique: #8a4b1f;
   --color-tone-uncertain: #8a8578;
+
+  /* ---- 背诵逐字标记：六类各一组前景与底色（todo 63） ----
+     颜色只是四个区分维度中的一维（另三维是记号字符、文字装饰与边框样式，见
+     `recite/recite.css`），但它必须自成一组令牌：把它们写死在 `recite.css` 里
+     会绕开本文件深浅两套配色的对应关系，而那正是 todo 61 目视 QA 抓到的那类缺陷。
+
+     色相刻意两两拉开，且**不复用平仄的两个色**——平仄是文本属性标注，
+     差异标记是作答判定，两者会同屏出现，共用色号会让人以为它们相关。
+
+     对比度（前景对各自底色，用 WCAG 相对亮度公式实算，非估计）：
+       漏读 6.29 / 7.78 · 增读 6.08 / 7.48 · 回读 5.83 / 7.36 ·
+       替换 7.38 / 6.96 · 近音替换 7.59 / 7.45 · 相符 8.97 / 8.09（浅 / 深）
+     最低一档 5.83:1，高于 AA 对正文要求的 4.5:1。
+
+     其中两个值是**亲手 QA 之后调过的**，不是一次算出来的：浅色下的青绿
+     （6.49 → 7.59）与深色下的红（6.86 → 7.78）分别是各自配色里的最低一档，
+     而目视时那两处确实是最先发虚的。数值达标不等于看得清，两边都要过。 */
+  --color-op-normal: #3f4a55;
+  --color-op-deletion: #a32617;
+  --color-op-deletion-surface: #fbe9e6;
+  --color-op-insertion: #8a4a0c;
+  --color-op-insertion-surface: #fbf0e0;
+  --color-op-rerecitation: #1f5aa8;
+  --color-op-rerecitation-surface: #e6eefb;
+  --color-op-substitution: #6b2f8a;
+  --color-op-substitution-surface: #f2e8fa;
+  --color-op-nearhomophone: #0b544d;
+  --color-op-nearhomophone-surface: #e0f2f0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -147,6 +175,18 @@
     --color-tone-level: #7fc09a;
     --color-tone-oblique: #d9a273;
     --color-tone-uncertain: #8a8578;
+
+    --color-op-normal: #b6bfc9;
+    --color-op-deletion: #f4a49a;
+    --color-op-deletion-surface: #33201d;
+    --color-op-insertion: #e8b078;
+    --color-op-insertion-surface: #33281a;
+    --color-op-rerecitation: #8fb6ea;
+    --color-op-rerecitation-surface: #1b2536;
+    --color-op-substitution: #c99ce6;
+    --color-op-substitution-surface: #2a1f36;
+    --color-op-nearhomophone: #6fcabd;
+    --color-op-nearhomophone-surface: #152e2b;
   }
 }
 

@@ -1,0 +1,480 @@
+/*
+ * 背诵界面样式。
+ *
+ * # 逐字标记的四个视觉维度
+ *
+ * `opMark.ts` 的表格给出了设计，这里是它的实现。每一类差异同时改变**记号、前景色、
+ * 底色、文字装饰、边框**五项，因此单看黑白打印稿、单看灰度截图、或有红绿色觉异常时
+ * 仍然可分。`__tests__/opMark.test.ts` 断言六个类各自的声明集合两两不同——
+ * 「都加了 border 但只有颜色不一样」会被那条挡下来。
+ *
+ * # 令牌加在 `styles.css` 而不是这里
+ *
+ * 颜色一律走 `--color-op-*`，声明在 `styles.css` 的浅色与深色两处。
+ * todo 62 当时刻意不碰共享令牌层，理由是 todo 63 也在改它；现在 todo 63 就是本 todo，
+ * 冲突面消失，于是可以正当地加一组语义令牌，而不是在这里写死六个 hex。
+ * `__tests__/theme.test.ts` 会强制这六个令牌在深色下逐个覆盖。
+ */
+
+.recite-screen {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  max-width: 46rem;
+  margin-inline: auto;
+  font-family: var(--font-sans);
+  /* 提示文本、参考诗文与复习库路径都要能选中复制：外壳在 body 上关掉了选中。 */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.recite-screen__title {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+/* ============================== 分区 ============================== */
+
+.recite-section {
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.recite-section__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.recite-section__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+/* 退化提示：语音走不通时那一条。用告警色但不用最强那一档——
+   这是一次「仍然练成了」的降级，不是失败。 */
+.recite-fallback {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-error-surface);
+  border: 1px solid var(--color-error-border);
+  border-left: 6px solid var(--color-error-text);
+  border-radius: var(--radius-sm);
+  color: var(--color-error-text);
+  font-size: var(--text-sm);
+  line-height: 1.8;
+}
+
+/* ============================== 表单 ============================== */
+
+.recite-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.recite-field__label {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.recite-field__hint {
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.recite-field__control {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+/* 作答框用衬线：键入的是诗，与提示文本同一种字形才看得出行的形状。 */
+.recite-field__control--answer {
+  font-family: var(--font-serif);
+  font-size: var(--text-base);
+  line-height: 2;
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.recite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.recite-button {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.recite-button[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  border-width: 2px;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.recite-button:disabled {
+  color: var(--color-text-muted);
+}
+
+/* ============================== 提示文本 ============================== */
+
+.recite-prompt {
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--color-sourced-surface);
+  border: 1px solid var(--color-sourced-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  line-height: 2.2;
+  /* 提示里的全角下划线是内核给的 `＿`，不是 CSS 画的下划线：
+     用 text-decoration 伪造会让「有几个空」在复制出来的文本里消失。 */
+  white-space: pre-wrap;
+}
+
+/* ============================== 逐字标记 ============================== */
+
+.recite-ops {
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-wrap: wrap;
+  /* 行距给足：每一格上方要放记号角标，下方可能有下划线装饰。
+     行间距刻意给到 `--space-6`：亲手 QA 量到第二行的上标（替换类的应读字）
+     与上一行回读框的下沿只剩几个像素余量，属临界未重叠。角标是浮在格子外的，
+     所以行距要按「格高 + 角标高」来留，而不是按字高。 */
+  gap: var(--space-6) var(--space-1);
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  line-height: 2.4;
+}
+
+.recite-op {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  /* 上内边距给角标留位：不给的话 `＋` 与 `↻` 的上沿会压在边框上，
+     在真实浏览器里看起来像溢出了格子。 */
+  padding: 0.15em var(--space-1) 0;
+  border-radius: var(--radius-sm);
+}
+
+/* 记号角标：每一格右上角一个小字符。它是四维区分里的第一维，
+   也是唯一在纯文本复制时会跟着走的一维（`aria-label` 另有完整说明）。
+
+   字号取 `--text-sm` 而不是 `--text-xs`：亲手 QA 时 12px 的红色 `✗`
+   被误读成了星形（把同一个 U+2717 放大到 64px 看则是清楚的叉）。
+   记号既然承担第一维区分，就不能小到需要辨认。加粗同理。 */
+.recite-op__mark {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1;
+  align-self: flex-start;
+  margin-left: 0.1em;
+}
+
+/* 替换类的应读字：右上角标，与记号并排。它是「原文是什么」，
+   刻意比记号轻一档——记号是判定，这个是参照。 */
+.recite-op__expected {
+  font-family: var(--font-serif);
+  font-size: var(--text-xs);
+  line-height: 1;
+  align-self: flex-start;
+  opacity: 0.85;
+}
+
+/* ---- 相符：底色与边框都不上，只给中性色。
+        给它加框会让「全对」看起来满屏是事，用户分不清哪些格子需要注意。 ---- */
+.recite-op--normal {
+  color: var(--color-op-normal);
+  background: transparent;
+  border: 2px solid transparent;
+}
+
+/* ---- 漏读：删除线 + 虚线框。它是唯一「用户没读出来」的一类，
+        删除线正好表达「这个字不在作答里」。 ---- */
+.recite-op--deletion {
+  color: var(--color-op-deletion);
+  background: var(--color-op-deletion-surface);
+  border: 2px dashed var(--color-op-deletion);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+/* ---- 增读：波浪下划线 + 实线框。波浪表达「这里多冒出来一个东西」。 ---- */
+.recite-op--insertion {
+  color: var(--color-op-insertion);
+  background: var(--color-op-insertion-surface);
+  border: 2px solid var(--color-op-insertion);
+  text-decoration: underline wavy;
+  text-decoration-thickness: 2px;
+}
+
+/* ---- 回读：双线框 + 双下划线，另在前后加方括号。
+        括号只有回读有——它是唯一跨多字的一类，必须看得出区间边界，
+        而边界这件事颜色和下划线都表达不了。 ---- */
+.recite-op--rerecitation {
+  color: var(--color-op-rerecitation);
+  background: var(--color-op-rerecitation-surface);
+  border: 3px double var(--color-op-rerecitation);
+  text-decoration: underline double;
+  text-decoration-thickness: 1px;
+}
+
+.recite-op--rerecitation::before {
+  content: "［";
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.recite-op--rerecitation::after {
+  content: "］";
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+/* ---- 替换：粗实线下划线 + 实线框，另有右上角标的应读字。
+        角标是结构上的差异（多一个元素）而不只是样式差异，因此替换与增读即使
+        边框样式相同也不会被认错——它是这两类之间最硬的一条区分。 ---- */
+.recite-op--substitution {
+  color: var(--color-op-substitution);
+  background: var(--color-op-substitution-surface);
+  border: 2px solid var(--color-op-substitution);
+  text-decoration: underline solid;
+  text-decoration-thickness: 3px;
+}
+
+/* ---- 近音替换：点线下划线 + 点线框。
+        它与替换本来就是同一类的两档（内核里是同一个变体加一个布尔），所以
+        刻意保留「都有角标、都有粗下划线」这层同族关系，靠记号（≠ 对 ≈）、
+        色相与实/点两组对比把它们分开。 ---- */
+.recite-op--nearhomophone {
+  color: var(--color-op-nearhomophone);
+  background: var(--color-op-nearhomophone-surface);
+  border: 2px dotted var(--color-op-nearhomophone);
+  text-decoration: underline dotted;
+  text-decoration-thickness: 3px;
+}
+
+/* 图例。每一项复用上面的类，于是图例与实际渲染不可能不一致。
+   复用带来两处需要在图例里单独回退的效果，见 `.recite-legend__label`
+   与 `.recite-legend__item--normal`。 */
+.recite-legend {
+  /* 与逐字区之间留一档间距：贴着排会让图例看起来像逐字区的最后一行。 */
+  margin: var(--space-3) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  color: var(--color-text-muted);
+}
+
+.recite-legend__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  /* 与格子同一档内边距，于是图例里的记号与正文里的记号同样大小、同样清楚。 */
+  padding: 0.15em var(--space-2) 0.1em;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+/*
+ * 图例里的类别名不继承文字装饰。
+ *
+ * 胶囊复用了 `.recite-op--*`，于是「漏读」二字会被那条删除线穿过、
+ * 「增读」会被波浪线穿过——亲手 QA 时那让标签本身变得难读，而且六个标签
+ * 各带一种不同的装饰会让图例看起来像出了渲染故障。
+ * 颜色与边框两维仍然由胶囊承担，符号那一维由记号字符承担，
+ * 所以取消装饰**不减少**图例传达的信息量。
+ *
+ * # 取消装饰只能在**产生**它的那个元素上做，不能在后代上做
+ *
+ * 这一条花了两轮才对。CSS 规定祖先的文字装饰会传播到流内后代，
+ * 且**后代无法取消它**——线由祖先绘制，穿过后代的字形。所以：
+ *
+ * | 试过的写法 | 结果 |
+ * | --- | --- |
+ * | 标签上 `text-decoration: none` | 计算值变成 `none`，**线照旧画着** |
+ * | 标签上再加 `display: inline-block` | 作为 flex item 被块化成 `block`，仍在传播链上，**线照旧** |
+ * | **胶囊自己** `text-decoration: none` | 生效——它是产生那条线的元素 |
+ *
+ * 中间那两次尤其值得记：**查计算样式会得到「已经没有装饰」的错误结论**，
+ * 只有真的看一眼截图才知道线还在。
+ *
+ * 代价是图例不再展示「文字装饰」这一维，剩下颜色、边框、记号三维。
+ * 可以接受：图例要回答的是「这个记号代表什么」，不是「这一类长什么样」。
+ */
+.recite-legend .recite-legend__item {
+  text-decoration: none;
+}
+
+/*
+ * 「相符」这一项在图例里补一圈中性边框。
+ *
+ * 正文里的相符格子刻意无框（有框会让「全对」看起来满屏是事），但图例里六项
+ * 应当是同级的——只有它没有胶囊轮廓时，它看起来像整行的标题而不是一个条目。
+ * 这是图例与正文唯一一处刻意不同，因此单列一条而不是改 `.recite-op--normal`。
+ */
+.recite-legend__item--normal {
+  border: 2px solid var(--color-border);
+}
+
+/*
+ * 图例里的回读项不画那对方括号。
+ *
+ * 括号在正文里表示「这一段是一个跨多字的区间」，而图例里只有两个字的类别名，
+ * 没有区间可标。留着它会让这一项比其余五项宽出一截，横向节奏也就乱了。
+ * 正文里的括号照旧——那才是它有意义的地方。
+ */
+.recite-legend__item.recite-op--rerecitation::before,
+.recite-legend__item.recite-op--rerecitation::after {
+  content: none;
+}
+
+/* ============================== 差异清单 ============================== */
+
+/*
+ * 与图例之间拉开一档并加一条分隔线。
+ *
+ * 亲手 QA 的判断：图例是「说明」，清单是「数据」，两者间距原本与图例到逐字区的
+ * 间距相同，于是图例读起来像清单的第一行。分组关系靠间距差 + 一条细线表达。
+ *
+ * 线色用 `--color-text-muted` 而不是 `--color-border`。第一版用了后者，深色下
+ * 那条线**目视完全看不见**——实算的对比度解释了原因（对 `--color-surface-raised`）：
+ *
+ * | 令牌 | 浅色 | 深色 |
+ * | --- | --- | --- |
+ * | `--color-border` | 1.34:1 | **1.21:1** |
+ * | `--color-text-muted` | 4.79:1 | 5.89:1 |
+ *
+ * `--color-border` 是给「卡片对页面底」设计的，那里两侧明度差本来就大；
+ * 放到卡片**内部**当分隔线就没有可依赖的明度差了。这与 todo 62 把告警左标尺
+ * 从 `--color-error-border` 换成 `--color-error-text` 是同一类判断，
+ * 同样是先算再改，不是凭观感调色。
+ */
+.recite-diff {
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-text-muted);
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.8;
+}
+
+.recite-diff--empty {
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-text-muted);
+}
+
+.recite-diff__item {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.recite-diff__mark {
+  font-family: var(--font-sans);
+  min-width: 1.5em;
+  text-align: center;
+}
+
+/* ============================== 分数 ============================== */
+
+.recite-scores {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.recite-scores dt {
+  color: var(--color-text-muted);
+}
+
+.recite-scores dd {
+  margin: 0;
+  /* 分数一律等宽：四个数要能上下对齐，否则「0.95 与 0.8 谁大」得靠读而不是看。 */
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+/* 「不评估发音标准度」那一条。它不是装饰性小字：
+   把节奏连贯度误读成发音质量正是这条注记要防的事，所以给它一条左标尺。 */
+.recite-boundary {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  line-height: 1.8;
+  color: var(--color-text);
+}
+
+/* ============================== 复习队列 ============================== */
+
+.recite-queue {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.recite-queue__item {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.recite-queue__id {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.recite-queue__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.recite-queue__number {
+  font-family: var(--font-mono);
+}

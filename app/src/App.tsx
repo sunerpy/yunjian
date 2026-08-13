@@ -1,7 +1,8 @@
 /**
  * 外壳骨架。
  *
- * 标题栏来自 todo 60，检索与阅读来自 todo 61。设置（62）与背诵（63）各自往内容区里挂。
+ * 标题栏来自 todo 60，检索与阅读来自 todo 61，设置来自 todo 62，背诵来自 todo 63。
+ * 后两者各自往内容区里挂，入口都在下面那一条导航里。
  *
  * 路由刻意是一个多态的 `view` 而不是引入路由库：一个 URL 路由器要连带解决深链、返回栈与
  * Tauri 下的 history 行为，那些问题在一个只有几屏的桌面外壳里没有对应的用户需求。
@@ -21,13 +22,19 @@ import { useMemo, useState } from "react";
 import TitleBar from "./chrome/TitleBar";
 import { useWindowChrome } from "./chrome/useWindowChrome";
 import PoemDetailScreen from "./poem/PoemDetailScreen";
+import ReciteScreen from "./recite/ReciteScreen";
 import SearchScreen from "./search/SearchScreen";
 import SettingsScreen from "./settings/SettingsScreen";
 import { SAMPLE_MODE_NOTICE, createSamplePorts } from "./data/samplePorts";
 import { createTauriPorts } from "./data/tauriPorts";
 import { createSampleSettingsPorts, createTauriSettingsPorts } from "./data/sampleSettingsPorts";
+import { createSampleRecitePorts, createTauriRecitePorts } from "./data/sampleRecitePorts";
 
-type View = { kind: "search" } | { kind: "poem"; poemId: string } | { kind: "settings" };
+type View =
+  | { kind: "search" }
+  | { kind: "poem"; poemId: string }
+  | { kind: "settings" }
+  | { kind: "recite" };
 
 /** 选中态不另设 `data-active`：读屏与测试共用 `aria-current` 这一个信号。 */
 function NavButton({
@@ -81,6 +88,10 @@ export default function App() {
     [],
   );
 
+  // 背诵端口同理：复习队列的 effect 以 port 为依赖，每帧重建会变成一个每帧重跑的
+  // `due` + `stats`，而那两个在真实路径上要开 SQLite。
+  const recitePorts = useMemo(() => createTauriRecitePorts() ?? createSampleRecitePorts(), []);
+
   return (
     <div
       style={{
@@ -107,6 +118,14 @@ export default function App() {
           active={view.kind === "search" || view.kind === "poem"}
           onClick={() => {
             setView({ kind: "search" });
+          }}
+        />
+        <NavButton
+          label="背诵"
+          testId="nav-recite"
+          active={view.kind === "recite"}
+          onClick={() => {
+            setView({ kind: "recite" });
           }}
         />
         <NavButton
@@ -158,6 +177,7 @@ export default function App() {
             }}
           />
         )}
+        {view.kind === "recite" && <ReciteScreen ports={recitePorts} />}
         {view.kind === "settings" && <SettingsScreen ports={settingsPorts} />}
       </main>
     </div>
