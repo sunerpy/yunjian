@@ -8,6 +8,7 @@ use crate::align::{AlignOp, Alignment, align_normalized};
 use crate::score::{Poem, TypedAttempt, TypedScore, score_typed};
 use inputx_phonetic_edit::{EditCostTable, MANDARIN_DEFAULT, edit_distance};
 use pinyin::{Pinyin, ToPinyinMulti};
+use yunjian_core::{CorpusHandle, Result};
 
 /// 判定为近音替换的加权拼音距离上界（含）。
 ///
@@ -100,6 +101,17 @@ pub fn review_typed(reference: &Poem, attempt: &TypedAttempt) -> PhoneticReview 
     let strict = score_typed(reference, attempt);
     let alignment = align_normalized(reference.as_str(), attempt.as_str());
     review_alignment(strict, &alignment)
+}
+
+/// 归一化用户键入文本并完成严格评分与近音复核。
+pub fn review_typed_text(
+    handle: &CorpusHandle,
+    reference: &Poem,
+    text: &str,
+) -> Result<(String, PhoneticReview)> {
+    let attempt = TypedAttempt::new(handle, text)?;
+    let normalized = attempt.as_str().to_owned();
+    Ok((normalized, review_typed(reference, &attempt)))
 }
 
 fn review_alignment(strict: TypedScore, alignment: &Alignment) -> PhoneticReview {

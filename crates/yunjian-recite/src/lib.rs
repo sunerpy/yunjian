@@ -16,6 +16,7 @@ pub use modes::{ClozeOptions, MASK_CHARACTER, MaskStage, PracticeMode, PracticeS
 pub use phonetic::{
     NEAR_HOMOPHONE_ERROR_WEIGHT, NEAR_HOMOPHONE_MAX_DISTANCE, PhoneticReview, SubstitutionClass,
     SubstitutionReview, classify_substitution, nearest_reading_distance, review_typed,
+    review_typed_text,
 };
 pub use schedule::{FSRS6_PARAMETERS, FsrsGrade, ReviewState, Scheduler, grade_typed};
 pub use score::{
