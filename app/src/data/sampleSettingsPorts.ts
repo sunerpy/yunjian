@@ -97,25 +97,80 @@ export function createTauriSettingsPorts(): SettingsPorts | null {
 }
 
 /**
- * 样例存储报告：本机（无头 Linux）真实会落到的那一档。
+ * 样例宿主能演示的四档存储，键名即 `?sample-key-tier=` 的取值。
  *
- * `location` 取 `Backend::Keyutils` 在 Rust 侧的位置串形态（后端名而非路径），
- * 与 `StorageReport.location` 的约定一致——「可显示的非机密字符串：路径或后端名」。
+ * # 为什么需要这个开关
+ *
+ * 默认那一档是**本机（无头 Linux）真实会落到的** keyutils，这让样例模式本身成为一次
+ * 诚实链演示。但另外三档在样例宿主里就永远到不了——尤其是明文那一档，
+ * 而它恰恰是唯一会显示告警的一档。「告警写了但没人看过它长什么样」是本项目
+ * 在深色令牌上已经栽过的那类问题（见 `__tests__/theme.test.ts` 的来历）。
+ *
+ * # 为什么用查询参数，而不是加一个界面控件
+ *
+ * 加控件会在**产品**里留下一个只对调试有意义的开关，将来 todo 64 还得把它摘掉。
+ * 查询参数只被 `createSampleSettingsPorts` 读到，而那个函数只在非 Tauri 宿主里被调用
+ * ——真实桌面端走 `createTauriSettingsPorts`，永远读不到它。样例宿主本来就有一条常驻
+ * 横幅声明「这里的一切都不是语料」，多一个调试入口不改变它的性质。
+ *
+ * `location` 的形态与 `StorageReport.location` 的约定一致：可显示的非机密字符串
+ * （路径或后端名）。
  */
-const SAMPLE_STORED_REPORT: StorageReport = {
-  backend: "keyutils",
-  persistence: "login_session",
-  protection: "os_encrypted",
-  location: "linux keyutils（样例）",
+const SAMPLE_TIERS: Record<string, StorageReport> = {
+  keyutils: {
+    backend: "keyutils",
+    persistence: "login_session",
+    protection: "os_encrypted",
+    location: "linux keyutils（样例）",
+  },
+  keychain: {
+    backend: "secret_service",
+    persistence: "persistent",
+    protection: "os_encrypted",
+    location: "GNOME Keyring（样例）",
+  },
+  session: {
+    backend: "session_memory",
+    persistence: "process_only",
+    protection: "process_memory",
+    location: "本进程内存（样例）",
+  },
+  plaintext: {
+    backend: "plaintext_file",
+    persistence: "persistent",
+    protection: "plaintext",
+    location: "~/.config/yunjian/keys.toml（样例）",
+  },
 };
 
+/** 默认档：本机无头 Linux 真实会落到的那一档。 */
+const DEFAULT_TIER = "keyutils";
+
+function requestedTier(): { report: StorageReport; preset: boolean } {
+  if (typeof window === "undefined") {
+    return { report: SAMPLE_TIERS[DEFAULT_TIER] as StorageReport, preset: false };
+  }
+  const asked = new URLSearchParams(window.location.search).get("sample-key-tier");
+  const found = asked === null ? undefined : SAMPLE_TIERS[asked];
+  // 显式指定了档位就顺带预置一枚密钥，否则要点一次保存才看得到指示串。
+  // 不指定时刻意保持空柜：首次启动没有密钥，那是真实的首启态。
+  return {
+    report: found ?? (SAMPLE_TIERS[DEFAULT_TIER] as StorageReport),
+    preset: found !== undefined,
+  };
+}
+
 /** 尚未存储时的报告。`persistence` 一律 `none`，见 `contracts/settings.ts`。 */
-const SAMPLE_ABSENT_REPORT: StorageReport = {
-  backend: "absent",
-  persistence: "none",
-  protection: "os_encrypted",
-  location: "linux keyutils（样例）",
-};
+function absentReport(stored: StorageReport): StorageReport {
+  return {
+    backend: "absent",
+    persistence: "none",
+    // `backend: absent` 时这两项描述的是「若存在会在哪、受什么保护」，
+    // 所以沿用当前档位的值而不是写死。
+    protection: stored.protection,
+    location: stored.location,
+  };
+}
 
 const SAMPLE_CORPUS: CorpusStatus = {
   kind: "ready",
@@ -175,9 +230,15 @@ const SAMPLE_MODELS: ModelStatus[] = [
 
 /** 样例设置端口。所有方法都是 `async`，与 Tauri 那侧的形状一致。 */
 export function createSampleSettingsPorts(): SettingsPorts {
+  const { report: stored, preset } = requestedTier();
+  const absent = absentReport(stored);
   // 只写不读的密钥柜。**刻意不导出**，也刻意不提供读取入口：
   // 替身若能读回密钥，「读回的方法不存在」这条契约就只在生产代码里成立。
   const vault = new Map<string, string>();
+  if (preset) {
+    // 预置值本身也读不出来：柜子只被 `has` 查询，从不被 `get`。
+    vault.set("deepseek", "sample-preset");
+  }
   let aiSettings: AiSettings = {
     provider: PROVIDER_NONE,
     model: null,
@@ -192,16 +253,16 @@ export function createSampleSettingsPorts(): SettingsPorts {
     keyStatus: (provider: string) =>
       Promise.resolve(
         vault.has(provider)
-          ? { report: SAMPLE_STORED_REPORT, needs_reprompt: false }
-          : { report: SAMPLE_ABSENT_REPORT, needs_reprompt: true },
+          ? { report: stored, needs_reprompt: false }
+          : { report: absent, needs_reprompt: true },
       ),
     setKey: (provider: string, secret: string) => {
       vault.set(provider, secret);
-      return Promise.resolve(SAMPLE_STORED_REPORT);
+      return Promise.resolve(stored);
     },
     deleteKey: (provider: string) => {
       vault.delete(provider);
-      return Promise.resolve(SAMPLE_ABSENT_REPORT);
+      return Promise.resolve(absent);
     },
   };
 
