@@ -19,6 +19,41 @@ use yunjian_recite::{
     classify_substitution,
 };
 
+/// `assets status` 与 `assets fetch` 共用的载荷。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AssetsOut {
+    /// 已打开的语料库路径。
+    pub corpus_path: String,
+    /// 实际语料版本。
+    pub corpus_version: String,
+    /// 已导入种子对应的语料版本。
+    pub seed_corpus_version: String,
+    /// 已导入种子的提示词模板版本。
+    pub seed_template_version: String,
+    /// 当前随包赏析记录数。
+    pub record_count: usize,
+    /// 当前因 grounding 变化而失效的记录数。
+    pub stale_count: usize,
+    /// 已发布种子文件路径；只读状态没有可验证文件时为 `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_path: Option<String>,
+}
+
+impl Renderable for AssetsOut {
+    fn render(&self) -> Vec<String> {
+        vec![
+            format!("语料：{}（版本 {}）", self.corpus_path, self.corpus_version),
+            format!(
+                "随包赏析：语料版本 {} · 模板版本 {} · {} 条 · stale {} 条",
+                self.seed_corpus_version,
+                self.seed_template_version,
+                self.record_count,
+                self.stale_count
+            ),
+        ]
+    }
+}
+
 /// 能渲染成若干行人类可读文本的输出。
 pub trait Renderable {
     /// 渲染成逐行文本。每一行由 [`crate::present::line`] 写往 stdout。

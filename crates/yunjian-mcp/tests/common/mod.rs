@@ -432,3 +432,33 @@ pub fn args(pairs: Vec<(&str, Value)>) -> Value {
     }
     Value::Object(object)
 }
+
+/// 断言一段 stdio stdout 只包含逐行 JSON-RPC 2.0 协议帧。
+///
+/// 这是进程级测试的共享门禁：任何日志、libtest 统计行或调试打印都会在解析处失败。
+#[allow(dead_code)]
+pub fn assert_protocol_only(stdout: &[u8]) {
+    assert!(!stdout.is_empty(), "握手与协议调用应产生协议帧");
+    assert_eq!(
+        stdout.last(),
+        Some(&b'\n'),
+        "stdio 协议流必须由换行分隔：{}",
+        String::from_utf8_lossy(stdout)
+    );
+    let text = std::str::from_utf8(stdout).expect("stdout 必须是 UTF-8 JSON-RPC");
+    for (index, line) in text.lines().enumerate() {
+        assert!(!line.is_empty(), "stdout 不得有空行，第 {} 行", index + 1);
+        let frame: Value = serde_json::from_str(line).unwrap_or_else(|error| {
+            panic!(
+                "stdout 第 {} 行不是 JSON-RPC（可能有协议外打印）：{error}\n{line}",
+                index + 1
+            )
+        });
+        assert_eq!(
+            frame["jsonrpc"],
+            "2.0",
+            "stdout 第 {} 行不是 JSON-RPC 2.0：{line}",
+            index + 1
+        );
+    }
+}

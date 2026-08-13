@@ -76,6 +76,11 @@ jobs:
       - name: 测试（含背诵评分黄金契约）
         run: make test
 
+      # 默认工作区测试不会启用 `yunjian-mcp/http`，而一致性 harness 需要同时编译可选传输，
+      # 才能守住完整特性组合下的五工具协议面。
+      - name: MCP 端到端一致性测试
+        run: make mcp-conformance
+
       # 自绘标题栏的时序缺陷（StrictMode 下卸载后写状态、订阅泄漏）与非 Tauri 降级
       # 只有 Vitest 验得到，Rust 侧一条都覆盖不到。它在 `make ci` 的 GATE 里，
       # 这里单列一步只是为了让失败定位到「前端测试」而不是一整条 ci。

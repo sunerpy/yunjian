@@ -28,7 +28,7 @@ OXFMT_ARGS := --ignore-path .oxfmtignore --ignore-path .gitignore .
 # `frontend-test` 必须在门禁里，不是可选补充：自绘标题栏的时序缺陷（StrictMode 双调用下
 # 卸载后写状态、订阅泄漏）与非 Tauri 降级只有 Vitest 验得到，Rust 侧一条都覆盖不到。
 # 不进 GATE 就等于那些断言只在有人手动想起来的时候才跑。
-GATE := fmt-check lint test frontend-test
+GATE := fmt-check lint test mcp-conformance frontend-test
 
 # 语料门禁跑的样本规模。10k 是方案为 CI 指定的规模：足够大到让索引行为与真实语料同形
 # （两字查询在 19 首上无论怎么查都是零点几毫秒，看不出路径退化），又足够小到能在几秒内跑完。
@@ -47,7 +47,7 @@ FRONTEND_DIST := app/dist/index.html
 
 NPM := npm
 
-.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test build check ci corpus-gate \
+.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test mcp-conformance build check ci corpus-gate \
 	corpus-artifact hooks frontend frontend-test
 
 help: ## 列出全部可用目标
@@ -127,6 +127,10 @@ lint: ## clippy 覆盖全工作区与全 target，出现警告即失败
 test: ## 跑全工作区测试。不加过滤，doctest 才会被执行
 	@echo "==> cargo test --workspace"
 	@$(CARGO) test --workspace
+
+mcp-conformance: ## 用真实 rmcp 客户端执行 MCP 端到端一致性测试
+	@echo "==> cargo test -p yunjian-mcp --features http --test conformance"
+	@$(CARGO) test -p yunjian-mcp --features http --test conformance
 
 # 语音特性（`--features voice`）刻意不进任何门禁：它会拉起需要 libclang 与
 # 网络下载的原生依赖，且分发物许可与默认构建不同。要验它请显式指定特性。

@@ -7,8 +7,11 @@ use crate::{
 use async_trait::async_trait;
 use blake3::Hasher;
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::Deserialize;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
+use yunjian_core::assets::AppreciationSeedManifest;
 use yunjian_core::operation::{Event, OperationHandle, cancel, next_event, start_operation};
 use yunjian_core::{Error, Result};
 
@@ -48,6 +51,32 @@ pub struct CacheCounts {
     pub shipped: usize,
     /// 用户自费生成行数。
     pub local: usize,
+}
+
+/// 当前已导入随包种子的版本与可用性统计。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShippedSeedStatus {
+    /// 种子生成时对应的语料版本。
+    pub corpus_version: String,
+    /// 种子生成时使用的提示词模板版本。
+    pub template_version: String,
+    /// 当前随包表中的记录数。
+    pub record_count: usize,
+    /// 因 grounding 摘要变化而失效的记录数。
+    pub stale_count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct SeedRecord {
+    stable_id: String,
+    model: String,
+    model_license: String,
+    provider: String,
+    generated_at: u64,
+    template_version: String,
+    grounding_digest: String,
+    reviewed: bool,
+    text: String,
 }
 
 /// 一条待导入随包层的预生成赏析。
@@ -275,6 +304,131 @@ impl AppreciationCache {
         Ok(())
     }
 
+    /// 校验并以单一事务替换全部随包赏析，用户自费缓存不受影响。
+    pub fn replace_shipped_seed(
+        &self,
+        seed_path: impl AsRef<Path>,
+        manifest: &AppreciationSeedManifest,
+        current_template_version: &str,
+    ) -> Result<usize> {
+        self.ensure_seed_compatible(manifest, current_template_version)?;
+        let bytes = std::fs::read(seed_path.as_ref())?;
+        let records: Vec<SeedRecord> = serde_json::from_slice(&bytes).map_err(|error| {
+            Error::Corpus(format!(
+                "解析赏析种子 {} 失败：{error}",
+                seed_path.as_ref().display()
+            ))
+        })?;
+        validate_seed_records(&records, manifest)?;
+
+        let mut connection = self.connection();
+        let transaction = connection.transaction()?;
+        transaction.execute("DELETE FROM appreciation_shipped", [])?;
+        for record in &records {
+            transaction.execute(
+                "INSERT INTO appreciation_shipped (stable_id, template_version, model, model_license, grounding_digest, text, generated_at, stale) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
+                params![
+                    record.stable_id,
+                    record.template_version,
+                    record.model,
+                    record.model_license,
+                    record.grounding_digest,
+                    record.text,
+                    i64::try_from(record.generated_at).unwrap_or(i64::MAX),
+                ],
+            )?;
+        }
+        transaction.execute(
+            "INSERT OR REPLACE INTO appreciation_shipped_meta (singleton, corpus_version, template_version, record_count) VALUES (1, ?1, ?2, ?3)",
+            params![
+                manifest.corpus_version,
+                manifest.template_version,
+                i64::try_from(records.len()).unwrap_or(i64::MAX),
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(records.len())
+    }
+
+    /// 返回当前种子版本、记录数和 stale 记录数；尚未导入时返回 `None`。
+    pub fn shipped_status(&self) -> Result<Option<ShippedSeedStatus>> {
+        let connection = self.connection();
+        let metadata = connection
+            .query_row(
+                "SELECT corpus_version, template_version, record_count FROM appreciation_shipped_meta WHERE singleton=1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        nonnegative_usize(row.get(2)?, 2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((corpus_version, template_version, recorded_count)) = metadata else {
+            return Ok(None);
+        };
+        let (record_count, stale_count) = connection.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(stale), 0) FROM appreciation_shipped",
+            [],
+            |row| {
+                Ok((
+                    nonnegative_usize(row.get(0)?, 0)?,
+                    nonnegative_usize(row.get(1)?, 1)?,
+                ))
+            },
+        )?;
+        if record_count != recorded_count {
+            return Err(Error::Corpus(format!(
+                "赏析种子元数据记录 {recorded_count} 条，随包表实际 {record_count} 条"
+            )));
+        }
+        Ok(Some(ShippedSeedStatus {
+            corpus_version,
+            template_version,
+            record_count,
+            stale_count,
+        }))
+    }
+
+    fn ensure_seed_compatible(
+        &self,
+        manifest: &AppreciationSeedManifest,
+        current_template_version: &str,
+    ) -> Result<()> {
+        if manifest.corpus_version == self.corpus_version
+            && manifest.template_version == current_template_version
+        {
+            return Ok(());
+        }
+        Err(Error::Corpus(format!(
+            "赏析种子版本不兼容：种子语料版本 {}，实际语料版本 {}，种子模板版本 {}，当前模板版本 {}；未写入任何记录",
+            manifest.corpus_version,
+            self.corpus_version,
+            manifest.template_version,
+            current_template_version
+        )))
+    }
+
+    #[cfg(test)]
+    fn set_shipped_metadata(
+        &self,
+        corpus_version: &str,
+        template_version: &str,
+        record_count: usize,
+    ) -> Result<()> {
+        self.connection().execute(
+            "INSERT OR REPLACE INTO appreciation_shipped_meta (singleton, corpus_version, template_version, record_count) VALUES (1, ?1, ?2, ?3)",
+            params![
+                corpus_version,
+                template_version,
+                i64::try_from(record_count).unwrap_or(i64::MAX)
+            ],
+        )?;
+        Ok(())
+    }
+
     /// 清理用户自费缓存并返回删除行数。
     pub fn purge(&self, scope: PurgeScope) -> Result<usize> {
         let removed = match scope {
@@ -324,6 +478,58 @@ impl AppreciationCache {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+fn validate_seed_records(
+    records: &[SeedRecord],
+    manifest: &AppreciationSeedManifest,
+) -> Result<()> {
+    if records.len() != manifest.record_count {
+        return Err(Error::Corpus(format!(
+            "赏析种子清单记录 {} 条，JSON 实际 {} 条；未写入任何记录",
+            manifest.record_count,
+            records.len()
+        )));
+    }
+    let mut keys = BTreeSet::new();
+    for record in records {
+        crate::pregenerate::OpenWeightModel::new(
+            &record.model,
+            &record.model_license,
+            &record.provider,
+        )?;
+        if record.reviewed {
+            return Err(Error::PregenerationRejected(format!(
+                "种子记录 `{}` 的 reviewed 必须为 false",
+                record.stable_id
+            )));
+        }
+        for (field, value) in [
+            ("stable_id", record.stable_id.as_str()),
+            ("grounding_digest", record.grounding_digest.as_str()),
+            ("text", record.text.as_str()),
+        ] {
+            if value.trim().is_empty() {
+                return Err(Error::Corpus(format!(
+                    "赏析种子记录 `{}` 的 {field} 为空；未写入任何记录",
+                    record.stable_id
+                )));
+            }
+        }
+        if record.template_version != manifest.template_version {
+            return Err(Error::Corpus(format!(
+                "赏析种子记录 `{}` 的模板版本 {} 与清单 {} 不同；未写入任何记录",
+                record.stable_id, record.template_version, manifest.template_version
+            )));
+        }
+        if !keys.insert((&record.stable_id, &record.template_version)) {
+            return Err(Error::Corpus(format!(
+                "赏析种子包含重复键 ({}, {})；未写入任何记录",
+                record.stable_id, record.template_version
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// 为任意赏析供应商增加两级缓存查写的装饰器。
@@ -474,6 +680,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+    use yunjian_core::assets::AppreciationSeedManifest;
     use yunjian_core::operation::{OperationHandle, start_operation};
 
     struct TestDir(PathBuf);
@@ -575,6 +782,158 @@ mod tests {
         Arc::new(
             AppreciationCache::open(directory.path(), "corpus-v1", capacity).expect("打开赏析缓存"),
         )
+    }
+
+    fn write_seed(directory: &TestDir, rows: &[ShippedAppreciation]) -> PathBuf {
+        let path = directory.path().join("appreciations.json");
+        let records = rows
+            .iter()
+            .map(|row| {
+                serde_json::json!({
+                    "stable_id": row.stable_id,
+                    "title": "题目",
+                    "author": "作者",
+                    "anthology_tags": ["唐诗三百首"],
+                    "model": row.model,
+                    "model_license": row.model_license,
+                    "provider": "local-weights",
+                    "generated_at": row.generated_at,
+                    "template_version": row.template_version,
+                    "grounding_digest": row.grounding_digest,
+                    "reviewed": false,
+                    "text": row.text
+                })
+            })
+            .collect::<Vec<_>>();
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&records).expect("序列化种子 fixture"),
+        )
+        .expect("写种子 fixture");
+        path
+    }
+
+    fn seed_manifest(
+        template_version: &str,
+        corpus_version: &str,
+        rows: usize,
+    ) -> AppreciationSeedManifest {
+        AppreciationSeedManifest {
+            url: "fixture://appreciations.json".to_owned(),
+            sha256: "0".repeat(64),
+            template_version: template_version.to_owned(),
+            corpus_version: corpus_version.to_owned(),
+            record_count: rows,
+        }
+    }
+
+    #[test]
+    fn mismatched_seed_is_refused_with_every_version_named_before_any_row_is_written() {
+        let directory = TestDir::new("seed-version-refusal");
+        let cache = cache(&directory, 8);
+        let request = request();
+        let seed = write_seed(&directory, &[shipped(&request, "不应导入")]);
+        let manifest = seed_manifest("2.0.0", "corpus-v1", 1);
+
+        let error = cache
+            .replace_shipped_seed(&seed, &manifest, "1.0.0")
+            .expect_err("模板不匹配必须拒绝");
+        let message = error.to_string();
+
+        for expected in [
+            "种子语料版本 corpus-v1",
+            "实际语料版本 corpus-v1",
+            "种子模板版本 2.0.0",
+            "当前模板版本 1.0.0",
+        ] {
+            assert!(
+                message.contains(expected),
+                "拒绝消息缺 `{expected}`：{message}"
+            );
+        }
+        assert_eq!(cache.counts().expect("统计").shipped, 0);
+        assert!(cache.shipped_status().expect("读状态").is_none());
+    }
+
+    #[test]
+    fn interrupted_seed_replacement_rolls_back_rows_and_metadata() {
+        let directory = TestDir::new("seed-rollback");
+        let cache = cache(&directory, 8);
+        let request = request();
+        cache
+            .insert_shipped(&shipped(&request, "旧种子仍须可用"))
+            .expect("写旧种子");
+        cache
+            .set_shipped_metadata("old-corpus", "1.0.0", 1)
+            .expect("写旧元数据");
+        {
+            let connection = cache.connection();
+            connection
+                .execute_batch(
+                    "CREATE TRIGGER abort_second_seed BEFORE INSERT ON appreciation_shipped \
+                     WHEN NEW.stable_id = 'fixture:second' \
+                     BEGIN SELECT RAISE(ABORT, 'simulated interruption'); END;",
+                )
+                .expect("安装失败注入 trigger");
+        }
+        let mut second = shipped(&request, "第二行");
+        second.stable_id = "fixture:second".to_owned();
+        let seed = write_seed(&directory, &[shipped(&request, "新第一行"), second]);
+
+        cache
+            .replace_shipped_seed(&seed, &seed_manifest("1.0.0", "corpus-v1", 2), "1.0.0")
+            .expect_err("第二行失败必须回滚整个替换");
+
+        assert_eq!(cache.counts().expect("统计").shipped, 1);
+        let hit = cache
+            .lookup(&request, &ProviderId::new("other").expect("provider"))
+            .expect("查旧种子")
+            .expect("旧种子仍应命中");
+        assert_eq!(hit.appreciation.text, "旧种子仍须可用");
+        let status = cache.shipped_status().expect("状态").expect("旧元数据仍在");
+        assert_eq!(status.corpus_version, "old-corpus");
+        assert_eq!(status.template_version, "1.0.0");
+        assert_eq!(status.record_count, 1);
+    }
+
+    #[tokio::test]
+    async fn seed_upgrade_replaces_shipped_rows_preserves_local_cache_and_reports_staleness() {
+        let directory = TestDir::new("seed-upgrade");
+        let cache = cache(&directory, 8);
+        let request = request();
+        let provider = CountingProvider::new("user-provider");
+        let local = provider
+            .appreciate(request.clone())
+            .await
+            .expect("造用户缓存");
+        cache.store_completed(&request, &local).expect("写用户缓存");
+        cache
+            .insert_shipped(&shipped(&request, "待替换旧种子"))
+            .expect("写旧随包行");
+        let mut second = shipped(&request, "新第二行");
+        second.stable_id = "fixture:second".to_owned();
+        let seed = write_seed(&directory, &[shipped(&request, "新第一行"), second]);
+
+        let imported = cache
+            .replace_shipped_seed(&seed, &seed_manifest("1.0.0", "corpus-v1", 2), "1.0.0")
+            .expect("升级种子");
+        assert_eq!(imported, 2);
+        cache
+            .connection()
+            .execute(
+                "UPDATE appreciation_shipped SET stale=1 WHERE stable_id='fixture:second'",
+                [],
+            )
+            .expect("标一条 stale");
+
+        let counts = cache.counts().expect("统计");
+        assert_eq!(counts.shipped, 2);
+        assert_eq!(counts.local, 1, "替换随包种子不得触碰用户缓存");
+        let status = cache.shipped_status().expect("状态").expect("已有种子状态");
+        assert_eq!(status.corpus_version, "corpus-v1");
+        assert_eq!(status.template_version, "1.0.0");
+        assert_eq!(status.record_count, 2);
+        assert_eq!(status.stale_count, 1);
     }
 
     #[tokio::test]

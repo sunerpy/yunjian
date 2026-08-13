@@ -40,7 +40,7 @@
 
 #![warn(missing_docs)]
 
-use yunjian_core::{LoggerConfig, init_config, init_logger};
+use yunjian_core::{Config, LoggerConfig, init_config, init_logger};
 
 /// 配置发现与用户配置目录使用的应用名。与命令行共用同一个名字，
 /// 两个入口因此读同一份 `config.toml`。
@@ -54,19 +54,17 @@ pub const APP: &str = "yunjian";
 /// 这里刻意不吞：一个起不来的窗口没有可降级的形态，静默返回只会得到一个既没有窗口
 /// 也没有解释的进程。
 pub fn run() {
-    // guard 必须具名。写成 `let _ = ...` 会立刻析构，写文件的后台线程随之停掉，
-    // 于是日志文件恒为空——而这种失效在 stderr 上看不出来。
-    let _log_guard = match init_config(None, APP) {
-        Ok(config) => init_logger(&config.logger).ok().flatten(),
-        Err(error) => {
-            // 配置失败时还没有日志设施，而 GUI 进程里 stdout 也不是诊断出口
-            //（工作区级 `print_stdout = "deny"` 正是为此）。先用默认配置把日志装起来
-            // ——默认目录不可写时 `init_logger` 自己会降级成只写 stderr，这条路径因此总能出声。
-            let guard = init_logger(&LoggerConfig::default()).ok().flatten();
-            tracing::error!(error = %error, "配置初始化失败，改用默认配置继续启动");
-            guard
-        }
+    let (config, config_error) = match init_config(None, APP) {
+        Ok(config) => (config.clone(), None),
+        Err(error) => (Config::default(), Some(error)),
     };
+    let logger = config_error
+        .as_ref()
+        .map_or_else(|| config.logger.clone(), |_| LoggerConfig::default());
+    let _log_guard = init_logger(&logger).ok().flatten();
+    if let Some(error) = config_error {
+        tracing::error!(error = %error, "配置初始化失败，改用默认配置继续启动");
+    }
 
     tracing::info!(
         app = APP,
@@ -74,7 +72,35 @@ pub fn run() {
         "云笺桌面端启动"
     );
 
+    let startup_config = config.clone();
     tauri::Builder::default()
+        .setup(move |_| {
+            start_asset_sync(startup_config.clone());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
+}
+
+fn start_asset_sync(config: Config) {
+    let spawn = std::thread::Builder::new()
+        .name("yunjian-assets".to_owned())
+        .spawn(
+            move || match yunjian_ai::sync_shipped_assets(config.corpus, config.app.data_dir) {
+                Ok(assets) => tracing::info!(
+                    corpus_version = %assets.corpus.meta().corpus_version,
+                    seed_template_version = %assets.seed.template_version,
+                    record_count = assets.seed.record_count,
+                    stale_count = assets.seed.stale_count,
+                    "语料与随包赏析种子已就绪"
+                ),
+                Err(error) => tracing::warn!(
+                    error = %error,
+                    "首启资产同步失败；已有语料与旧赏析种子保持不变"
+                ),
+            },
+        );
+    if let Err(error) = spawn {
+        tracing::warn!(error = %error, "无法启动首启资产同步线程");
+    }
 }

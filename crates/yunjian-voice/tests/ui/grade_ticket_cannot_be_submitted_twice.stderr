@@ -1,0 +1,15 @@
+error[E0382]: use of moved value: `ticket`
+ --> tests/ui/grade_ticket_cannot_be_submitted_twice.rs:6:13
+  |
+4 | fn misuse(ticket: GradeTicket, scheduler: &mut Scheduler) {
+  |           ------ move occurs because `ticket` has type `GradeTicket`, which does not implement the `Copy` trait
+5 |     let _ = ticket.submit(scheduler, FsrsGrade::Good);
+  |                    ---------------------------------- `ticket` moved due to this method call
+6 |     let _ = ticket.submit(scheduler, FsrsGrade::Easy);
+  |             ^^^^^^ value used here after move
+  |
+note: `GradeTicket::submit` takes ownership of the receiver `self`, which moves `ticket`
+ --> src/session.rs
+  |
+  |         self,
+  |         ^^^^

@@ -50,6 +50,13 @@ pub mod prosody;
 /// 「偏置输出进不了评分」「四字后停顿恰好提示一次」这两件最要紧的事。
 pub mod recognize;
 
+/// 跟读会话的编排：示范 → 复诵 → 节奏观察 → **用户自选** FSRS 等级。**判定层不带特性
+/// 开关**——状态机、节奏连贯度的三项算术、五条失败路径的原因码、一次性评级票据都是纯
+/// 逻辑，真实合成与识别藏在 [`session::Demonstrator`] 与 [`session::Listener`] 之后，
+/// 于是一台没有模型、没有声卡的机器仍然能验证「播放与录音不重叠」「连贯度只由三项信号
+/// 算出」「提交两次编译不过」这三件最要紧的事。
+pub mod session;
+
 #[cfg(feature = "voice")]
 pub mod asr;
 #[cfg(feature = "voice")]

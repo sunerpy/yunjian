@@ -50,6 +50,11 @@ pub const SPEECH_FLOOR_DBFS: f32 = crate::prosody::SILENCE_FLOOR_DBFS;
 /// 双路解码在参考设备上的实时率上限。超过它就降为单路无偏置解码，**而不是丢帧**。
 pub const REALTIME_BUDGET: f32 = 1.0;
 
+/// 计入「一次长停顿」的默认静音门槛，毫秒。取 [`DEFAULT_TRAILING_SILENCE_MS`] 与句读
+/// 呼吸之间：短于它的静音是正常换气，长于它才是节奏断裂，而 2000 ms 那一档已经会触发
+/// 卡顿提示，用它计数就永远只在提示之后才计到。
+pub const DEFAULT_LONG_PAUSE_MS: u32 = 700;
+
 // ---------------------------------------------------------------------------
 // 类型隔离
 // ---------------------------------------------------------------------------
@@ -401,6 +406,12 @@ pub struct SpeechGateConfig {
     pub speech_floor_dbfs: f32,
     /// 计入「一次停顿」的最短静音时长，毫秒。
     pub pause_ms: u32,
+    /// 计入「一次长停顿」的最短静音时长，毫秒。
+    ///
+    /// **与 [`Self::pause_ms`] 分开是必要的**：`pause_ms` 计的是句读呼吸这种正常停顿，
+    /// 而节奏连贯度要的是「卡住了」那种停顿。用同一个门槛会让每一次正常换气都被算成
+    /// 一次不连贯，于是任何朗读都拿不到高连贯度，指标随之失去区分力。
+    pub long_pause_ms: u32,
 }
 
 impl Default for SpeechGateConfig {
@@ -408,6 +419,7 @@ impl Default for SpeechGateConfig {
         Self {
             speech_floor_dbfs: SPEECH_FLOOR_DBFS,
             pause_ms: 300,
+            long_pause_ms: DEFAULT_LONG_PAUSE_MS,
         }
     }
 }
@@ -424,6 +436,10 @@ pub struct SpeechGate {
     silence_run_ms: u32,
     pause_count: usize,
     counted_current_pause: bool,
+    long_pause_count: usize,
+    counted_current_long_pause: bool,
+    onsets_ms: Vec<u64>,
+    in_speech: bool,
 }
 
 impl SpeechGate {
@@ -438,23 +454,41 @@ impl SpeechGate {
             silence_run_ms: 0,
             pause_count: 0,
             counted_current_pause: false,
+            long_pause_count: 0,
+            counted_current_long_pause: false,
+            onsets_ms: Vec::new(),
+            in_speech: false,
         }
     }
 
     /// 观察一帧的 RMS。
     pub fn observe(&mut self, rms: f32, frame_ms: u32) -> Activity {
+        let frame_start_ms = self.elapsed_ms;
         self.elapsed_ms += u64::from(frame_ms);
         if rms >= self.floor_rms {
+            if !self.in_speech {
+                self.onsets_ms.push(frame_start_ms);
+                self.in_speech = true;
+            }
             self.spoke = true;
             self.silence_run_ms = 0;
             self.counted_current_pause = false;
+            self.counted_current_long_pause = false;
             return Activity::Speech;
         }
+        self.in_speech = false;
         self.silence_run_ms = self.silence_run_ms.saturating_add(frame_ms);
         if self.spoke && !self.counted_current_pause && self.silence_run_ms >= self.config.pause_ms
         {
             self.pause_count += 1;
             self.counted_current_pause = true;
+        }
+        if self.spoke
+            && !self.counted_current_long_pause
+            && self.silence_run_ms >= self.config.long_pause_ms
+        {
+            self.long_pause_count += 1;
+            self.counted_current_long_pause = true;
         }
         Activity::Silence
     }
@@ -479,6 +513,22 @@ impl SpeechGate {
     #[must_use]
     pub const fn pause_count(&self) -> usize {
         self.pause_count
+    }
+
+    /// 计入的长停顿次数，即节奏连贯度的三项输入之一。
+    #[must_use]
+    pub const fn long_pause_count(&self) -> usize {
+        self.long_pause_count
+    }
+
+    /// 每一段语音活动的起始时刻，毫秒。
+    ///
+    /// **这是节奏连贯度唯一可用的「起始时刻」来源。** 上游只暴露 token 的 start 时间而
+    /// 没有 stop（sherpa-onnx #985），且 77% CER 下 token 序列本身是噪声，所以起始间隔
+    /// 取自能量门控的语音活动段而不是识别假设——它不依赖任何转写是否正确。
+    #[must_use]
+    pub fn onsets_ms(&self) -> &[u64] {
+        &self.onsets_ms
     }
 
     /// 当前连续静音时长，毫秒。
@@ -803,6 +853,10 @@ pub struct RecognitionOutcome {
     pub spoke: bool,
     /// 计入的停顿次数。
     pub pause_count: usize,
+    /// 计入的长停顿次数。
+    pub long_pause_count: usize,
+    /// 每一段语音活动的起始时刻，毫秒。
+    pub onsets_ms: Vec<u64>,
     /// 总时长，毫秒。
     pub total_ms: u64,
     /// 发出的提示次数。
@@ -883,6 +937,8 @@ where
         let outcome = RecognitionOutcome {
             spoke: detector.gate().spoke(),
             pause_count: detector.gate().pause_count(),
+            long_pause_count: detector.gate().long_pause_count(),
+            onsets_ms: detector.gate().onsets_ms().to_vec(),
             total_ms: detector.gate().elapsed_ms(),
             prompt_count,
             cost,

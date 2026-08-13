@@ -87,8 +87,10 @@ impl VoiceError {
         match self {
             Self::FeatureDisabled => R::FeatureDisabled,
             Self::NoInputDevice { .. } => R::NoInputDevice,
-            Self::ModelMissing { .. }
-            | Self::AudioRead { .. }
+            // 模型缺失与采集失败刻意不同码：这一条的下一步是 `yunjian models fetch`，
+            // 与麦克风、设备、系统版本都无关，归成采集失败会把用户指去检查硬件。
+            Self::ModelMissing { .. } => R::ModelUnavailable,
+            Self::AudioRead { .. }
             | Self::AudioWrite { .. }
             | Self::Backend(_)
             | Self::RecognizerConfig { .. }

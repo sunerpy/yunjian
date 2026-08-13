@@ -1,0 +1,217 @@
+/*
+ * 检索页样式。
+ *
+ * 结果行用 `--font-serif` 排题目与命中句：它们是语料原文的一部分。
+ * 异说标注用 `--font-sans` 且小一号——它是产品对数据的说明，不是数据本身。
+ */
+
+.search-screen {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  max-width: 46rem;
+  margin-inline: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.search-screen__form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.search-screen__field {
+  display: grid;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.search-screen__label,
+.filter-bar__label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+}
+
+.search-screen__input,
+.filter-bar__input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  font-size: var(--text-base);
+}
+
+.search-screen__input:focus-visible,
+.filter-bar__input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.search-screen__submit {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-surface);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.search-screen__summary,
+.search-screen__loading {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.search-screen__error {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-error-text);
+}
+
+.search-screen__paging {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.search-screen__paging button {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.search-screen__paging button:disabled {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  opacity: 0.55;
+}
+
+.filter-bar {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.filter-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.filter-bar__field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 8rem;
+  flex: 1;
+}
+
+.filter-bar__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* 页内过滤与主题换查询这两条限制必须看得见，不能是一行灰到看不清的小字。 */
+.filter-bar__note {
+  margin: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--color-sourced-rule);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.result-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.result-list__empty {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.result-row {
+  padding: var(--space-4);
+  background: var(--color-sourced-surface);
+  border: 1px solid var(--color-sourced-border);
+  border-radius: var(--radius-md);
+}
+
+.result-row__open {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+}
+
+.result-row__open:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.result-row__title {
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  color: var(--color-text);
+}
+
+.result-row__meta {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.result-row__snippet {
+  font-family: var(--font-serif);
+  font-size: var(--text-base);
+  line-height: 1.8;
+  letter-spacing: 0.08em;
+  color: var(--color-text);
+}
+
+.highlight__hit {
+  background: var(--color-highlight-bg);
+  color: var(--color-highlight-fg);
+  border-radius: var(--radius-sm);
+  padding-inline: 0.0625rem;
+}
+
+/* 异说标注：无衬线、小一号、带上边界线——它是对数据的说明而不是数据。 */
+.result-row__variants {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-sourced-rule);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  color: var(--color-citation-text);
+}

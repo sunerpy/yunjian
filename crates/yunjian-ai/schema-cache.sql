@@ -10,6 +10,13 @@ CREATE TABLE IF NOT EXISTS appreciation_shipped (
     PRIMARY KEY (stable_id, template_version)
 ) WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS appreciation_shipped_meta (
+    singleton INTEGER PRIMARY KEY NOT NULL CHECK (singleton = 1),
+    corpus_version TEXT NOT NULL,
+    template_version TEXT NOT NULL,
+    record_count INTEGER NOT NULL CHECK (record_count >= 0)
+);
+
 CREATE TABLE IF NOT EXISTS appreciation_cache (
     key BLOB PRIMARY KEY,
     stable_id TEXT NOT NULL,
