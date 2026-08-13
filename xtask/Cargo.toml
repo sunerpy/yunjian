@@ -27,6 +27,11 @@ toml = { workspace = true }
 # 绝不在 xtask 里另写一套判据——出处规则只能有一个实现。
 tracing = { workspace = true }
 ureq = { workspace = true }
+# `verify-icons` 解码 PNG（含 ICO 内嵌层）并写出六档联系表。**只加 `png`，不加
+# `image`**：`png` 已在依赖树里（`tauri-codegen` 经由它读图标），而 `image` 会新拖一整棵
+# 编解码器树。ICO 的目录结构由本模块手工解析——要断言的是**层序**，而图像库的
+# `sizes()` 之类接口返回集合，顺序信息在那里就丢了，断言便永远变不了红。
+png = { workspace = true }
 yunjian-core = { path = "../crates/yunjian-core" }
 yunjian-corpus = { path = "../crates/yunjian-corpus" }
 # `pregenerate` 复用 `yunjian-ai::pregenerate` 的开放权重门禁与溯源结构，绝不在 xtask
