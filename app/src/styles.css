@@ -69,6 +69,40 @@
      `trafficLightPosition`（x = 12）是一对耦合值：红绿灯约 70px 宽，12 + 70 = 82，
      取 5rem = 80px 再靠 `--space-3` 的内边距补足。改一处必须改另一处。 */
   --titlebar-macos-inset: 5rem;
+
+  /* ---- 考据材料 vs AI 生成：两套刻意不同的视觉语域（todo 61） ----
+     这不是配色偏好。产品只分发三类内容：公有领域原文、逐条注出处的前人集评、
+     以及明确标注的 AI 输出。前两类可复核，第三类不可。把它们排成同一个样子本身就是误导
+     （docs/AI.zh.md 的「视觉分区」义务）。所以令牌也分两组，组名就叫 sourced 与 ai，
+     后来者想让 AI 面板「好看点」就得先把它从 ai 组挪到 sourced 组——那是一次可见的决定。 */
+
+  /* 可复核的考据材料：纸本观感，衬线、实线细边、纸白底。 */
+  --color-sourced-surface: #ffffff;
+  --color-sourced-border: #ded8cd;
+  --color-sourced-rule: #b9ab8f;
+  --color-citation-text: #7a6a51;
+
+  /* AI 生成内容：机械观感，无衬线、虚线粗边、冷色底、左侧一道斜纹标尺。 */
+  --color-ai-surface: #eef2f7;
+  --color-ai-border: #7d93ab;
+  --color-ai-text: #33475c;
+  --color-ai-badge-bg: #33475c;
+  --color-ai-badge-fg: #f2f5f8;
+  --color-ai-stripe: #b9c8d8;
+
+  /* 缺出处的集评是硬错误而不是空态，因此用错误色而不是弱化的正文色。 */
+  --color-error-surface: #fdf2f2;
+  --color-error-border: #d98b86;
+  --color-error-text: #8d2820;
+
+  /* 命中高亮。 */
+  --color-highlight-bg: #fbe6a2;
+  --color-highlight-fg: #4a3a10;
+
+  /* 平仄标注 */
+  --color-tone-level: #2f6b46;
+  --color-tone-oblique: #8a4b1f;
+  --color-tone-uncertain: #8a8578;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -84,6 +118,35 @@
     --color-titlebar-hover: #1d2227;
     --color-titlebar-close-hover: #c4342b;
     --color-titlebar-close-fg: #ffffff;
+
+    /* 下面这一组必须与 :root 里的同名令牌**逐个对应**。
+       漏掉任何一个都会得到「深色底 + 浅色卡片 + 浅色文字」的不可读组合，
+       而这个缺陷在单元测试里完全看不见——jsdom 不算颜色。
+       它是目视 QA 抓出来的：第一版只改了 :root，深色下正文与卡片几乎同色。
+       `__tests__/theme.test.ts` 现在断言两处的令牌名集合相等，把这条变成机制。 */
+
+    --color-sourced-surface: #1c2024;
+    --color-sourced-border: #343b42;
+    --color-sourced-rule: #5d6b78;
+    --color-citation-text: #a89a80;
+
+    --color-ai-surface: #1a2430;
+    --color-ai-border: #5f7d9c;
+    --color-ai-text: #c3d4e3;
+    --color-ai-badge-bg: #c3d4e3;
+    --color-ai-badge-fg: #16202b;
+    --color-ai-stripe: #3a4d61;
+
+    --color-error-surface: #2a1b1a;
+    --color-error-border: #8d4a44;
+    --color-error-text: #e8938c;
+
+    --color-highlight-bg: #6b5518;
+    --color-highlight-fg: #f7e6b8;
+
+    --color-tone-level: #7fc09a;
+    --color-tone-oblique: #d9a273;
+    --color-tone-uncertain: #8a8578;
   }
 }
 
