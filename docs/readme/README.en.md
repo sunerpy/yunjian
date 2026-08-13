@@ -267,7 +267,8 @@ Apache-2.0 licence.
 
 ## Development
 
-Requires Rust 1.88+ (`rust-toolchain.toml` is checked in, so `rustup` installs the right version):
+Requires Rust 1.95+. `rust-toolchain.toml` tracks stable for normal development, while CI runs a
+separate compile gate on exactly Rust 1.95:
 
 ```bash
 make hooks   # install pre-commit (format on commit) and pre-push (run make ci) hooks

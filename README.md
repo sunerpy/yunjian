@@ -260,7 +260,8 @@ Whisper 一族可用。
 
 ## 参与开发
 
-需要 Rust 1.88+（仓库里有 `rust-toolchain.toml`，`rustup` 会自动装对版本）：
+需要 Rust 1.95+。`rust-toolchain.toml` 默认跟随 stable，CI 另用精确的 Rust 1.95
+执行最低版本编译门禁：
 
 ```bash
 make hooks   # 装 pre-commit（提交时格式化）与 pre-push（推送前跑 make ci）钩子

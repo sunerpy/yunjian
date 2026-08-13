@@ -172,18 +172,16 @@ deliberate decisions rather than defaults:**
 | `genai` (`0.6`, `rustls-tls`)                | `rig-core` (an agent framework) and `llm-chain` (unmaintained since 2023) are deliberately avoided; hard-coding rustls avoids the OpenSSL C dependency                                              |
 | `ferrous-opencc`                             | Appears only in `yunjian-corpus`, so **no conversion dictionary ships at runtime**; `opencc-rust` and `zhconv` with default features are deliberately avoided                                       |
 | `pinyin` (`default-features = false`)        | **A correctness constraint, not size trimming**: the tone marks produced by `with_tone` are multi-byte non-ASCII and would silently defeat the downstream byte-wise near-homophone criterion        |
-| `inputx-phonetic-edit` (`1`)                 | Resolves to `1.4.0`, whose declared `rust-version = 1.95` is **higher** than the workspace's declared `1.88` — see "known inconsistency" below                                                      |
+| `inputx-phonetic-edit` (`1`)                 | crates.io publishes only `1.4.0`; its declared `rust-version = 1.95` therefore determines the workspace MSRV                                                                                        |
 | `tauri` / `tauri-build`                      | **`tauri-plugin-log` is deliberately avoided**: logging goes through `yunjian_core::init_logger` so all three entry points share one level parser, one redactor and one rolling-file layout         |
 | `sha2`                                       | The manifest field is named `license_sha256` and must genuinely be SHA-256 — switching to blake3 would make it impossible to cross-check against `sha256sum` and GitHub's own digests               |
 
-**A known inconsistency, recorded honestly:** the root `Cargo.toml` declares
-`rust-version = "1.88"`, inherited by every member, and the README states Rust 1.88+; but
-`inputx-phonetic-edit 1.4.0` declares `rust-version = 1.95`. Cargo's behaviour here is a **fallback
-rather than a satisfaction** (it prints `Locking ... to latest Rust 1.88 compatible versions`
-immediately followed by `Adding inputx-phonetic-edit v1.4.0 (requires Rust 1.95)`). CI (stable) and the
-development machine both build, and **no gate reports this**, but a checkout on 1.88–1.94 cannot compile
-`yunjian-recite`. This is an unresolved external-promise question rather than a licensing one, recorded
-here so it is not mistaken for settled.
+**The minimum Rust version is now aligned:** crates.io metadata confirms that
+`inputx-phonetic-edit 1.4.0` is the only published version, so there is no older release that could
+preserve Rust 1.88. The root `Cargo.toml` now declares `rust-version = "1.95"`, and the README states
+Rust 1.95+. In addition to the stable gate, CI runs
+`cargo check --workspace --all-features --locked` on exactly Rust 1.95 so the real minimum cannot drift
+silently again.
 
 ## Frontend dependencies
 

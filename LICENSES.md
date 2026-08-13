@@ -150,16 +150,14 @@ MIT 单向兼容 GPL-3.0，**所以这不是许可冲突**；但一份开启语�
 | `genai`（`0.6`，`rustls-tls`）         | 刻意不引入 `rig-core`（agent 框架）与 `llm-chain`（2023 年起停更）；写死 rustls 免掉 OpenSSL 这个 C 依赖              |
 | `ferrous-opencc`                       | 只出现在 `yunjian-corpus`，**运行期不带转换字典**；刻意不用 `opencc-rust` 与带默认特性的 `zhconv`                     |
 | `pinyin`（`default-features = false`） | **正确性约束而非瘦身**：`with_tone` 的声调符号是多字节非 ASCII，会让下游按字节比对的近音判据静默失效                  |
-| `inputx-phonetic-edit`（`1`）          | 解析到 `1.4.0`，其声明的 `rust-version = 1.95` **高于**工作区声明的 `1.88`，见下文「已知不一致」                      |
+| `inputx-phonetic-edit`（`1`）          | crates.io 仅发布 `1.4.0`，其声明的 `rust-version = 1.95` 决定工作区最低 Rust 版本                                     |
 | `tauri` / `tauri-build`                | **刻意不引入 `tauri-plugin-log`**：日志走 `yunjian_core::init_logger`，三个入口共用同一份级别解析、脱敏与滚动文件布局 |
 | `sha2`                                 | 清单里的字段名是 `license_sha256`，必须真的是 SHA-256——换成 blake3 就无法与 `sha256sum` 及 GitHub 侧摘要互相核对      |
 
-**已知不一致，如实记录：** 根 `Cargo.toml` 声明 `rust-version = "1.88"`，被全部成员继承，
-README 也写「需要 Rust 1.88+」；但 `inputx-phonetic-edit 1.4.0` 声明 `rust-version = 1.95`。
-cargo 的行为是**回落而非满足**（它会打印 `Locking ... to latest Rust 1.88 compatible versions`
-紧接着 `Adding inputx-phonetic-edit v1.4.0 (requires Rust 1.95)`）。CI（stable）与开发机都能构建，
-**没有任何门禁会报这件事**，但停在 1.88–1.94 的检出无法编译 `yunjian-recite`。这是一处
-待裁定的对外承诺问题，不是许可问题，记在此处以免被当作已解决。
+**最低 Rust 版本已对齐：** crates.io 元数据确认 `inputx-phonetic-edit` 只有 `1.4.0` 一个版本，
+没有可保留 Rust 1.88 的旧版本可降级。根 `Cargo.toml` 因此声明 `rust-version = "1.95"`，
+README 同步写明 Rust 1.95+；CI 除 stable 全量门禁外，还用精确 Rust 1.95 执行
+`cargo check --workspace --all-features --locked`，防止真实下限再次静默漂移。
 
 ## 前端依赖
 
