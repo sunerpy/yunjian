@@ -297,19 +297,68 @@ jobs:
 
       # 链接器写死 android26 而不是 24：cpal 的 AAudio 绑定要求 API 26，
       # android24 的 sysroot 里没有 AAudio 符号。这一条是本 todo 记录的产品要求。
+      #
+      # 只导出链接器曾经够用，因为 `capture` 的依赖图里没有需要**为目标**编译的 C。
+      # todo 55（流式识别）给 `yunjian-voice` 加了 `yunjian-core` / `yunjian-recite`
+      # 之后不再成立：`rusqlite` -> `libsqlite3-sys`（C FFI 壳，自带 SQLite 的 C 源码，
+      # 用 cc-rs 编译）成了目标侧普通依赖。**C 依赖现在来自 sqlite，不再来自
+      # sherpa-onnx**——这个工作流仍然不碰 sherpa-onnx，但已经要编 C。
+      #
+      # 缺这几条变量时 cc-rs 找不到目标编译器：它先探 `aarch64-linux-android21-clang`
+      # （NDK bin 不在 PATH 上，探不到），再回落到 `aarch64-linux-android-clang`——
+      # 而**统一工具链时代的 NDK 从未发过这个不带 API 级别的名字**，于是报
+      # `ToolNotFound: failed to find tool "aarch64-linux-android-clang"`。ar/ranlib 走
+      # 同一套回落：先探 PATH 上的 `llvm-ar`，失败则回落到同样不存在的
+      # `aarch64-linux-android-ar`。因此四个工具全部写成 NDK 内的绝对路径，不依赖 PATH。
+      #
+      # 刻意**不**把 `$TC/bin` 加进 PATH：那会让 cc-rs 的自动探测命中 NDK 自带的
+      # `aarch64-linux-android21-clang`，于是哪天这里的 CC 被删掉，C 代码会静默按
+      # API 21 编译而不是报错。
+      #
+      # ar 是不带三元组前缀的 `llvm-ar`：NDK r23 移除了 GNU binutils，
+      # `aarch64-linux-android-ar` 在 r26 里不存在。
       - name: 导出 NDK 环境
         if: matrix.target == 'aarch64-linux-android'
         run: |
           NDK="${{ steps.ndk.outputs.ndk-path }}"
           TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+
+          # 链接器与 CC 取自**同一个**变量，因此两者不可能落在不同 API 级别上——
+          # C 代码与 Rust 代码针对不同 API 编译是这里最难查的一类故障。
+          CLANG="$TC/bin/aarch64-linux-android26-clang"
+          CLANGXX="${CLANG}++"
+          AR="$TC/bin/llvm-ar"
+          RANLIB="$TC/bin/llvm-ranlib"
+
+          # 写死工具名是必需的（自动探测会回落到 NDK 从未发过的名字），但写死的名字
+          # 会随 NDK 升版失效。不断言的话，下次失效仍然表现为那句无从下手的
+          # `ToolNotFound`；断言之后它变成「这个文件没了」加一份目录清单。
+          MISSING=0
+          for TOOL in "$CLANG" "$CLANGXX" "$AR" "$RANLIB"; do
+            if [ ! -x "$TOOL" ]; then
+              echo "::error::NDK 工具不存在或不可执行：$TOOL"
+              MISSING=1
+            fi
+          done
+          if [ "$MISSING" != 0 ]; then
+            echo "$TC/bin 的实际内容："
+            ls "$TC/bin"
+            exit 1
+          fi
+
           {
             echo "ANDROID_NDK_HOME=$NDK"
-            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TC/bin/aarch64-linux-android26-clang"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$CLANG"
+            echo "CC_aarch64_linux_android=$CLANG"
+            echo "CXX_aarch64_linux_android=$CLANGXX"
+            echo "AR_aarch64_linux_android=$AR"
+            echo "RANLIB_aarch64_linux_android=$RANLIB"
           } >> "$GITHUB_ENV"
 
       # 只有 capture 特性，不带 voice：这个工作流不碰 sherpa-onnx，因此 iOS 也能真的
       # `cargo build` 而不是像 voice-build.yml 那样只能 `cargo check`
       #（那条限制来自 sherpa-rs 声明的 cdylib，与采集无关）。
+      # 注意：不碰 sherpa-onnx **不等于**不编 C——见上一步注释里的 libsqlite3-sys。
       - name: 构建采集路径
         run: cargo build -p yunjian-voice --features capture --target ${{ matrix.target }}
 
