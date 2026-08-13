@@ -1,0 +1,253 @@
+/*
+ * 设置页样式。
+ *
+ * # 只用既有令牌，一个新令牌都不加
+ *
+ * `styles.css` 是三个界面共用的令牌层，而 `__tests__/theme.test.ts` 断言浅色与深色的
+ * `--color-*` 集合必须相等。往那里加一组新令牌就意味着要同时改一个共享文件的两处——
+ * 而 todo 63 此刻也在改 `app/src/`。所以本文件的告警态完全用既有的
+ * `--color-error-*` 搭出来（那一组已经有深色对应值），代价是零，收益是不碰共享文件。
+ *
+ * # 告警态的强度对齐 AI 面板
+ *
+ * `poem.css` 用四重手段把 AI 面板与考据材料区分开（无衬线 / 2px 虚线 / 独立底色 /
+ * 左侧斜纹标尺）。明文存储告警的严重性不低于那一处，所以这里也用四重，且各项更重：
+ *
+ * | 手段 | AI 面板 | 明文告警 `.settings-alert` |
+ * | --- | --- | --- |
+ * | 边框 | 2px 虚线 | **3px 实线**，错误色 |
+ * | 左侧 | 斜纹标尺 | **8px 实心色条** |
+ * | 底色 | 冷灰蓝 | 错误色底 |
+ * | 标记 | 一枚小徽标 | **反色徽标 + `role="alert"`** |
+ *
+ * 三处刻意不做：不闪烁（无障碍禁忌，且闪烁会被当成渲染故障）、
+ * 不用 `position: fixed` 抢占视口（用户正在读的是同一块面板）、
+ * 不做可关闭的 `×`（这条状态在密钥仍以明文存放期间一直成立，关掉它等于隐藏事实）。
+ */
+
+.settings-screen {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  max-width: 46rem;
+  margin-inline: auto;
+  font-family: var(--font-sans);
+  /* 设置页里的路径、许可名与体积都要能选中复制：外壳在 body 上关掉了选中。 */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.settings-screen__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-family: var(--font-sans);
+}
+
+/* ============================== 分区容器 ============================== */
+
+.settings-section {
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.settings-section__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.settings-section__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+/* ============================== 表单 ============================== */
+
+.settings-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-field__label {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.settings-field__hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.settings-field__control {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+/* 密钥输入用等宽：粘贴出来的 key 里 l/1/I 与 O/0 必须能分辨。
+   遮罩由 `type="password"` 承担，这里只管字形。 */
+.settings-field__control--secret {
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.settings-button {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.settings-button:disabled {
+  color: var(--color-text-muted);
+}
+
+/* ============================== 存储位置指示 ============================== */
+
+/*
+ * 指示条本身刻意是中性色：它在四种取值下都要出现，把它整体染成告警色
+ * 会让「系统钥匙串（持久）」这条好消息也看起来像出了问题。
+ * 真正的严重性区分交给下面的 `.settings-alert`。
+ */
+.settings-storage {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+}
+
+.settings-storage__indicator {
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.settings-storage__detail,
+.settings-storage__location {
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+/* 后端名是诊断信息，字号最小、颜色最弱：它不是用户要看的结论。
+   把它做得显眼会诱导后来者「反正都显示了，不如直接按它写文案」。 */
+.settings-storage__backend {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ============================== 明文告警 ============================== */
+
+.settings-alert {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-error-surface);
+  border: 3px solid var(--color-error-border);
+  /* 左边这一条刻意换成文字色而不是边框色，并加粗到 8px。
+     实算过：`--color-error-border` 对分区底只有 2.63:1（浅）/ 2.52:1（深），
+     低于 WCAG 1.4.11 对 UI 边界要求的 3:1；换成 `--color-error-text` 是 7.80:1 / 7.07:1。
+     四周那圈 3px 保留 border 色是为了不让整块变成一个色框把正文压住——
+     真正承担「这里有事」的是这条左标尺、错误底色与反色徽标三者。 */
+  border-left: 8px solid var(--color-error-text);
+  border-radius: var(--radius-sm);
+  color: var(--color-error-text);
+}
+
+.settings-alert__badge {
+  justify-self: start;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  /* 反色：底色与文字整体互换，在一屏中性灰白里这是最强的单点信号。 */
+  background: var(--color-error-text);
+  color: var(--color-error-surface);
+  font-size: var(--text-xs);
+}
+
+.settings-alert__text {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.8;
+}
+
+/* ============================== 列表 ============================== */
+
+.settings-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-list__item {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: var(--space-1);
+}
+
+.settings-list__name {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.settings-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* 被许可门禁拒掉的模型仍然列出来，但必须一眼看出它不可用。 */
+.settings-list__refused {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-error-text);
+}
+
+.settings-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.settings-facts dt {
+  color: var(--color-text-muted);
+}
+
+.settings-facts dd {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.settings-facts dd.settings-facts__number {
+  font-family: var(--font-mono);
+}
