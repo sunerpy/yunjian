@@ -16,6 +16,7 @@
 - [项目状态](#项目状态)
 - [为什么是这个设计](#为什么是这个设计)
 - [快速开始](#快速开始)
+- [与 LLM 协作](#与-llm-协作)
 - [功能概览](#功能概览)
 - [内容来源与许可](#内容来源与许可)
 - [文档](#文档)
@@ -64,29 +65,132 @@ AI 功能不是加分项，它是版权墙留下的那个洞的唯一合法填�
 
 ## 快速开始
 
-> 当前只能从源码构建，且构建出来的二进制还没有可用的子命令。这一节现在是**开发者的**快速开始。
-
-需要 Rust 1.88+（仓库里有 `rust-toolchain.toml`，`rustup` 会自动装对版本）：
+三步：装、取语料、查一句。
 
 ```bash
-git clone https://github.com/sunerpy/yunjian.git
-cd yunjian
-cargo build --workspace
+# 1. 装（Linux / macOS）
+curl -fsSL https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.sh | sh
+
+# 2. 取语料（约 211 MiB，首启本机派生检索结构）
+yunjian corpus fetch
+
+# 3. 查一句
+yunjian search 明月
 ```
 
-跑一遍与 CI 相同的门禁（格式检查 + clippy + 测试）：
+Windows 用 PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.ps1 | iex
+```
+
+两个脚本都检测系统与 CPU 架构、挑出对应的发布产物、**校验 SHA-256 之后才落盘**，
+校验不过就一个文件也不装。可用环境变量：
+
+| 变量                  | 缺省               | 作用                                 |
+| --------------------- | ------------------ | ------------------------------------ |
+| `YUNJIAN_VERSION`     | 最新正式发布       | 装指定版本，`v0.1.0` 与 `0.1.0` 都收 |
+| `YUNJIAN_INSTALL_DIR` | `$HOME/.local/bin` | 安装目录                             |
+
+> [!NOTE]
+> 首个正式发布（`v0.1.0`）还没切出来，上面的安装命令要等它。在此之前从源码构建：
+> `cargo build --workspace --release -p yunjian-cli`，可执行文件在
+> `target/release/yunjian`。开发者流程见 [参与开发](#参与开发)。
+
+## 与 LLM 协作
+
+结果只走 stdout，日志只走 stderr，判断成败只看退出码。展开下面这段可以直接交给一个
+AI 助手。
+
+<details>
+<summary>命令、输出契约与 MCP 客户端配置</summary>
+
+### 关键命令
 
 ```bash
-make ci
+yunjian corpus fetch                    # 下载校验并落地语料库；已就位时是空操作
+yunjian corpus status                   # 语料位置、版本、规模、派生结构状态
+yunjian search 明月 --limit 10 --json   # 正文与残句检索；--author/--dynasty 在本页内过滤
+yunjian show <poem-id> --json           # 按 stable_id 读本体、平仄、韵部、出处、历代集评
+yunjian author 李白 --json              # 作者详情与作品列表
+yunjian rhyme 七阳 --book pingshui      # 按韵部检索；--book 必填，没有隐式默认
+yunjian recite <poem-id> --mode cloze   # 一轮打字背诵，作答从 stdin 读
+yunjian recite due                      # 今天到期的复习项；不读语料库
+yunjian models list                     # 语音模型清单与本地缓存状态；不联网
+yunjian mcp                             # 在 stdio 上承载 MCP 服务器
 ```
 
-校验上游语料源的许可与摘要（离线模式，不联网）：
+### stdout / stderr / 退出码
+
+**stdout 只放结果**（人类可读文本，或 `--json` 时**恰好一行** JSON）；**stderr 只放日志**，
+`RUST_LOG=trace` 也不会污染 stdout。退出码只有四个，机器判断只看它：
+
+| 码  | 含义       | 正确反应                              |
+| --- | ---------- | ------------------------------------- |
+| 0   | 成功有结果 | 读 `data`                             |
+| 1   | 结果为空   | 「查过了，没有」——不是错误            |
+| 2   | 用法错误   | 改命令（含请求了未随包的韵书）        |
+| 3   | 数据不可用 | 补数据，通常是 `yunjian corpus fetch` |
+
+**1 和 3 不能混**：把语料缺失读成「诗库里没有李白」是这条边界上最贵的错。
+
+`--json` 信封的固定形状：
+
+```json
+{
+  "schema_version": 1,
+  "command": "search",
+  "status": "ok",
+  "warnings": [],
+  "data": {}
+}
+```
+
+`status` 取 `ok` / `empty` / `error`，与退出码一一对应。`status == "error"` 时 `data`
+换成 `error`，内含稳定 `code`、中文 `message` 和可执行的 `hint`。`warnings` 每条带稳定
+`code`（如 `voice_fallback`）；遇到不认识的 `code`，原样转达 `message` 即可。
+
+### 注册进 MCP 客户端
+
+一条命令就能写好：
 
 ```bash
-cargo run -p xtask -- verify-sources --offline
+yunjian mcp install --client claude     # 或 --client opencode
 ```
 
-看到每个数据源逐资产的许可判定，且退出码为 0，就说明环境是对的。
+要手写也可以。**两种客户端的形态不通用**——顶层键不同，`command` 的类型也不同：
+
+Claude Desktop（`claude_desktop_config.json`）：`command` 是**字符串**，参数另放 `args`。
+
+```json
+{
+  "mcpServers": {
+    "yunjian": {
+      "command": "yunjian",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+OpenCode（`opencode.json`）：`command` 是**含参数的数组**，另有 `type` 与 `enabled`。
+
+```json
+{
+  "mcp": {
+    "yunjian": {
+      "type": "local",
+      "command": ["yunjian", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+把其中一种套到另一种上，客户端读到的是一个语法合法而语义为空的条目：不报错，只是永远
+连不上。`yunjian` 不在 `PATH` 上时，把 `"yunjian"` 换成绝对路径。
+
+</details>
 
 ## 功能概览
 
@@ -98,11 +202,9 @@ cargo run -p xtask -- verify-sources --offline
   应用内可选下载；检索结构在**首启本机派生**（实测约 10 分钟），派生后检索性能与随包
   时完全相同。理由与实测见 [语料与索引](docs/CORPUS.zh.md)。
 - **AI 赏析（自带 key）**。key 存在操作系统钥匙串里，不走环境变量、不进配置文件。
-  没有 key 也完整可用：常见名篇随包带一批预生成的赏析。**随包那批由开放权重模型生成**
-  （MIT 许可的 DeepSeek 权重、Qwen 或同等），不用任何闭源 API——下载下来的权重不附带
-  限制输出再分发的 API 条款，而闭源 API 的条款里有两家我们没能核实。逐条溯源、覆盖范围
-  与披露见 [`dataset/README.md`](dataset/README.md)。你自己 key 生成的赏析只留在本机，
-  永远不会被收进那份数据集。
+  没有 key 也完整可用：常见名篇随包带一批预生成的赏析，**那批只由开放权重模型生成**，
+  不用任何闭源 API。理由、逐条溯源与披露见 [`dataset/README.md`](dataset/README.md)。
+  你自己 key 生成的赏析只留在本机。
 - **背诵训练**。挖空、首字提示、遮挡三种打字模式共用同一个评分内核；语音练习额外给
   完整度与流畅度。语音路径的字准率**永远只是估计值，不是分数**——文言的语音识别不够
   可靠到能给你打分。
@@ -110,10 +212,7 @@ cargo run -p xtask -- verify-sources --offline
   覆盖范围外回落到现代普通话读音。
 - **MCP 服务器**。`yunjian mcp` 跑在 stdio 上，让 Claude Desktop、OpenCode 这类客户端
   直接查你的诗库。生成类工具的输出标注「AI 生成，非古人作品」，永远不写回语料。
-  `yunjian mcp install --client <claude|opencode>` 直接写客户端配置——**两者形态不通用**，
-  Claude 写 `mcpServers` 且 `command` 是字符串加独立 `args`，OpenCode 写 `mcp` 且 `command`
-  是含参数的数组加 `type`/`enabled`。合并而不覆盖：别的服务器条目与注释都原样留着，写前
-  备份，配置解析不了就拒绝而不是替换。逐字形态见 [命令行](docs/CLI.zh.md)。
+  配置形态与 `mcp install` 见 [与 LLM 协作](#与-llm-协作)。
 - **多端**。桌面端 Tauri v2 + React；命令行工具带机器可读输出；移动端框架由真机实测决定。
 
 ## 内容来源与许可
@@ -128,28 +227,21 @@ cargo run -p xtask -- verify-sources --offline
 **赏析文本是 AI 生成的，不是学术成果。** 界面里它与有出处的集评在视觉上分开呈现，并附带
 「未经人工审校」的说明。AI 生成的诗永远标注「AI 生成，非古人作品」，永远不进语料库和赏析表。
 
-**随包预生成的那批赏析只由开放权重模型生成，不用闭源 API。** 这是授权链约束，不是性能
-偏好：Anthropic 的商用条款把 Output 的权利让给客户但禁止训练竞品，OpenAI 的对应条款
-未能核实（站点 403），DeepSeek 的条款完全未核实——三条里两条是未知。下载下来的权重不附带
-任何限制「输出如何再分发」的条款，于是这条不确定性被绕开。约束由代码强制：
-`cargo run -p xtask -- pregenerate` 在生成任何一条记录之前校验权重许可（只认 MIT 与
-Apache-2.0）与运行时，配成闭源 API 供应商即中止并点明开放权重要求。逐条溯源字段、
-显式声明的覆盖范围与完整披露在 [`dataset/README.md`](dataset/README.md)。
+**随包预生成的那批赏析只由开放权重模型生成，不用闭源 API。** 这是授权链约束而非性能
+偏好——三家闭源 API 的输出再分发条款里有两家未能核实，而下载下来的权重不附带这类条款。
+约束由 `xtask pregenerate` 在生成任何一条记录之前强制（只认 MIT 与 Apache-2.0 权重、
+只认本地运行时），逐条溯源与完整披露在 [`dataset/README.md`](dataset/README.md)。
 
-**关于语音功能的许可，请注意：**
+**语音功能的许可分两档。** `voice` cargo 特性**默认关闭**，默认构建是纯 MIT 且实测不
+链接 onnxruntime；开启后预编译的 sherpa-onnx 产物静态包含 GPL-3.0 的 espeak-ng，因此
+**分发一份开启语音的云笺，整体须按 GPL-3.0 条款提供**。发布产物据此分两种，细节见
+[语音构建](docs/VOICE-BUILD.zh.md)。
 
-- `voice` cargo 特性**默认关闭**。默认构建是纯 MIT，实测不链接任何 onnxruntime。
-- 启用 `voice` 后，预编译的 sherpa-onnx 产物**静态包含 GPL-3.0 的 espeak-ng**
-  （实测 50 个 `espeak_*` 导出符号）。MIT 单向兼容 GPL-3.0，所以这不是许可冲突，
-  但**分发一份开启语音的云笺，整体须按 GPL-3.0 条款提供**。
-- 因此发布产物分两种：默认构建标 MIT，语音构建标 GPL-3.0。细节见
-  [语音构建](docs/VOICE-BUILD.zh.md)。
-
-不会随包分发任何模型权重。语音模型按需下载，且只接受经核实的 MIT 或 Apache-2.0 许可——
-逐模型的判定、证据文件与摘要在 [`models.toml`](models.toml)，由 `xtask verify-models`
-强制校验；被拒的模型连同理由在 [`models/DENYLIST.md`](models/DENYLIST.md)。核实推翻了一条
-先前的判断：**FunASR 系（SenseVoice / Paraformer）走的是阿里自家的许可协议，不是 MIT 也
-不是 Apache-2.0**，因此离线识别只剩 Whisper 一族可用。
+不会随包分发任何模型权重。语音模型按需下载，只接受经核实的 MIT 或 Apache-2.0 许可——
+逐模型判定、证据与摘要在 [`models.toml`](models.toml)，由 `xtask verify-models` 强制；
+被拒的模型连同理由在 [`models/DENYLIST.md`](models/DENYLIST.md)。核实推翻了一条先前的
+判断：**FunASR 系（SenseVoice / Paraformer）走阿里自家的许可协议**，因此离线识别只剩
+Whisper 一族可用。
 
 **语音路径上的逐字准确率永远只是参考值，不是分数。** 这不是保守措辞，而是实测结论：
 见 [CER 报告](docs/reports/asr-cer.md)。
@@ -168,10 +260,16 @@ Apache-2.0）与运行时，配成闭源 API 供应商即中止并点明开放�
 
 ## 参与开发
 
+需要 Rust 1.88+（仓库里有 `rust-toolchain.toml`，`rustup` 会自动装对版本）：
+
 ```bash
 make hooks   # 装 pre-commit（提交时格式化）与 pre-push（推送前跑 make ci）钩子
+make ci      # 唯一门禁：格式检查 + clippy + 测试 + MCP 一致性 + 前端测试
 make help    # 列出所有 target
 ```
+
+`cargo run -p xtask -- verify-sources --offline` 离线校验上游语料源逐资产的许可与摘要，
+退出码 0 说明环境是对的。
 
 约定：
 
