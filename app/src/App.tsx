@@ -123,6 +123,9 @@ export default function App() {
           <p
             data-testid="sample-mode-notice"
             style={{
+              // 底色与下边框铺满整宽（它是一条全局状态横幅），但**文字与内容区共用
+              // 同一条对齐基准**：`46rem` 与检索页、阅读页、设置页三处的 `max-width` 相同。
+              // 不这么做的话，横幅文字贴左边缘而下方内容居中，两个对齐基准会同时出现在一屏上。
               margin: 0,
               padding: "var(--space-3) var(--space-6)",
               background: "var(--color-error-surface)",
@@ -132,7 +135,9 @@ export default function App() {
               fontSize: "var(--text-xs)",
               lineHeight: 1.7,
             }}>
-            {SAMPLE_MODE_NOTICE}
+            <span style={{ display: "block", maxWidth: "46rem", marginInline: "auto" }}>
+              {SAMPLE_MODE_NOTICE}
+            </span>
           </p>
         )}
         {view.kind === "search" && (

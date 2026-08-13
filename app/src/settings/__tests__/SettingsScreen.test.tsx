@@ -333,6 +333,77 @@ describe("明文配置文件", () => {
     expect(screen.getByTestId("key-storage-indicator").textContent).toContain("明文配置文件");
     // 明文那一档持久性确实是 persistent，但**不许说成「系统钥匙串」**。
     expect(screen.getByTestId("key-storage-indicator").textContent).not.toContain("系统钥匙串");
+    // 密钥确实在那儿，所以这一次才允许用陈述语气。
+    expect(warning.getAttribute("data-mood")).toBe("actual");
+    expect(warning.textContent).toContain("密钥以明文保存在");
+  });
+
+  it("告警带图标，不只靠颜色与文字承载语义", async () => {
+    const { ports } = createPorts({
+      absentReport: report({
+        backend: "absent",
+        persistence: "none",
+        protection: "plaintext",
+        location: "~/.config/yunjian/keys.toml",
+      }),
+    });
+    render(<SettingsScreen ports={ports} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("plaintext-warning-badge").textContent).toContain("⚠");
+    });
+    // 图标对读屏隐藏：紧邻的文字已经说了同一件事。
+    const icon = screen
+      .getByTestId("plaintext-warning-badge")
+      .querySelector('[aria-hidden="true"]');
+    expect(icon?.textContent).toBe("⚠");
+  });
+
+  it("**尚未存储时告警改用条件式措辞，不得断言密钥已明文保存**", async () => {
+    // 这一条来自一次真实的假话。第一版只看 `protection`，于是无密钥时那一屏同时出现
+    // 「尚未保存任何密钥」与「密钥**以明文保存在** …」——后者在当时是编造的。
+    // 与把 keyutils 报成持久是同一类错误，只是方向相反（夸大风险而非隐瞒风险）。
+    const { ports } = createPorts({
+      absentReport: report({
+        backend: "absent",
+        persistence: "none",
+        protection: "plaintext",
+        location: "~/.config/yunjian/keys.toml",
+      }),
+    });
+    render(<SettingsScreen ports={ports} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("key-storage-indicator").textContent).toContain("尚未存储");
+    });
+    // 告警**仍然显示**：首启就告知代价，比存进去之后才警告有用得多。
+    const warning = screen.getByTestId("plaintext-warning");
+    expect(warning.getAttribute("data-mood")).toBe("prospective");
+    expect(warning.textContent).toContain("若在此保存密钥");
+    // 陈述语气一个字都不许出现。
+    expect(warning.textContent).not.toContain("密钥以明文保存在");
+    // 后果照旧说清楚——换语气不是弱化风险。
+    expect(warning.textContent).toContain("未加密");
+    expect(warning.textContent).toContain("一旦被备份、同步或打包带走");
+  });
+
+  it("整屏文案不自相矛盾：说了「尚未保存」就不许同时说「已保存」", async () => {
+    // 单测各自断言一句话时，每一句单看都是对的——那个缺陷只有看整屏才暴露。
+    // 所以这一条对着**整棵 DOM 的文本**断言，而不是某一个节点。
+    const { ports } = createPorts({
+      absentReport: report({
+        backend: "absent",
+        persistence: "none",
+        protection: "plaintext",
+        location: "~/.config/yunjian/keys.toml",
+      }),
+    });
+    render(<SettingsScreen ports={ports} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("plaintext-warning")).toBeTruthy();
+    });
+    const screenText = screen.getByTestId("settings-screen").textContent ?? "";
+    expect(screenText).toContain("尚未保存任何密钥");
+    expect(screenText).not.toContain("密钥以明文保存在");
   });
 });
 

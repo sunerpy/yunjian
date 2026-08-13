@@ -146,6 +146,15 @@ const SAMPLE_TIERS: Record<string, StorageReport> = {
 /** 默认档：本机无头 Linux 真实会落到的那一档。 */
 const DEFAULT_TIER = "keyutils";
 
+/**
+ * 显式指定档位时预置密钥所用的服务商。
+ *
+ * 取 `PROVIDER_IDS` 里的第一个真实服务商，**不能取 `PROVIDER_NONE`**：
+ * 「在没有服务商的情况下存了一枚密钥」本身是个矛盾状态，而密钥的 account 名就是
+ * 服务商标识。
+ */
+const PRESET_PROVIDER = "deepseek";
+
 function requestedTier(): { report: StorageReport; preset: boolean } {
   if (typeof window === "undefined") {
     return { report: SAMPLE_TIERS[DEFAULT_TIER] as StorageReport, preset: false };
@@ -235,17 +244,28 @@ export function createSampleSettingsPorts(): SettingsPorts {
   // 只写不读的密钥柜。**刻意不导出**，也刻意不提供读取入口：
   // 替身若能读回密钥，「读回的方法不存在」这条契约就只在生产代码里成立。
   const vault = new Map<string, string>();
-  if (preset) {
-    // 预置值本身也读不出来：柜子只被 `has` 查询，从不被 `get`。
-    vault.set("deepseek", "sample-preset");
-  }
   let aiSettings: AiSettings = {
+    // 默认「不配置服务商」，与 `AiConfig::default()` 一致。
     provider: PROVIDER_NONE,
     model: null,
     endpoint: null,
     temperature: 0.0,
     prompt_template_version: "v1",
   };
+  if (preset) {
+    // **两者必须一起设**。第一版只 `vault.set(PRESET_PROVIDER, …)` 而没动
+    // `aiSettings.provider`，于是面板首屏查的是 `keyStatus("none")`——那把柜子里根本没有
+    // 「none」这个 account，指示串永远落在「尚未存储」，`?sample-key-tier=` 看起来完全没生效。
+    //
+    // 那个缺陷没被 9 条档位断言拦住，因为它们硬写了 `keyStatus(PRESET_PROVIDER)`，
+    // **绕过了「面板实际会查哪个 provider」这一段**。密钥的 account 名就是服务商标识
+    // （`ProviderKind::as_str()` 的注释：「同时用作钥匙串里的 account 名」），
+    // 所以「有一枚已存的密钥」与「已选定服务商」在语义上本来就是同一件事，
+    // 分开设置只会造出一个自相矛盾的状态。
+    aiSettings = { ...aiSettings, provider: PRESET_PROVIDER };
+    // 预置值本身也读不出来：柜子只被 `has` 查询，从不被 `get`。
+    vault.set(PRESET_PROVIDER, "sample-preset");
+  }
   let corpus: CorpusStatus = { kind: "absent" };
   let localRows = 2;
 

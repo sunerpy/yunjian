@@ -109,6 +109,28 @@ describe("外壳导航", () => {
     expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBe("page");
   });
 
+  it("**`?sample-key-tier=plaintext` 走完真实导航后必须显示「明文配置文件」**", async () => {
+    // 这一条盯的是一个只有真浏览器发现的缺陷：档位参数解析正确、报告构造正确、
+    // 指示串推导正确，但面板首屏查的是 `keyStatus(aiSettings.provider)`，
+    // 而预置密钥当时写在另一个 account 名下——于是页面显示「尚未存储」。
+    // 档位断言全绿是因为它们硬写了 provider，绕过了这一段。
+    // 因此这里从 `<App />` 出发，只看用户看得到的东西。
+    window.history.replaceState({}, "", "/index.html?sample-key-tier=plaintext");
+    await renderApp();
+    fireEvent.click(screen.getByTestId("nav-settings"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("key-storage-indicator").textContent).toContain("明文配置文件");
+    });
+    // 有密钥，所以告警用陈述语气。
+    const warning = screen.getByTestId("plaintext-warning");
+    expect(warning.getAttribute("data-mood")).toBe("actual");
+    expect(warning.textContent).toContain("密钥以明文保存在");
+    // 且整屏不出现「尚未保存任何密钥」——那正是缺陷时的实际文案。
+    expect(screen.getByTestId("settings-screen").textContent).not.toContain("尚未保存任何密钥");
+    window.history.replaceState({}, "", "/index.html");
+  });
+
   it("导航条在两个视图下都在，不会切走就消失", async () => {
     await renderApp();
     expect(screen.getByTestId("app-nav")).toBeTruthy();

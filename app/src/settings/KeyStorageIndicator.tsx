@@ -28,6 +28,7 @@ export default function KeyStorageIndicator({ report }: KeyStorageIndicatorProps
     protection: report.protection,
   });
   const warning = plaintextWarning({
+    persistence: report.persistence,
     protection: report.protection,
     location: report.location,
   });
@@ -51,11 +52,18 @@ export default function KeyStorageIndicator({ report }: KeyStorageIndicatorProps
       </div>
 
       {warning !== null && (
-        <div className="settings-alert" role="alert" data-testid="plaintext-warning">
+        <div
+          className="settings-alert"
+          role="alert"
+          data-testid="plaintext-warning"
+          data-mood={warning.mood}>
           <span className="settings-alert__badge" data-testid="plaintext-warning-badge">
-            明文存储警告
+            {/* 图标不只是装饰：告警此前**只靠颜色加文字**承载语义，
+                对色觉障碍用户等于少一层冗余。`aria-hidden` 是因为紧邻的文字已经说了同一件事，
+                读屏再念一遍符号只会变成噪音。 */}
+            <span aria-hidden="true">⚠</span> 明文存储警告
           </span>
-          <p className="settings-alert__text">{warning}</p>
+          <p className="settings-alert__text">{warning.text}</p>
         </div>
       )}
     </>
