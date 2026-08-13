@@ -293,14 +293,18 @@ const SAMPLE_HIDDEN: Record<"cloze" | "first-char" | "masked", number[]> = {
 };
 
 /**
- * 样例里语音形态的退化原因。
+ * 样例里语音形态在**打字端点**上的退化原因。
  *
- * 逐字取自 `command.rs:307-320` 的 `VoiceFallback::message`，取
- * `SessionUnavailable` 那一支——因为它就是此刻的真实原因：语音会话（todo 66）
- * 还没接进来。**不自己编一句**，也不报成「理论上可用」。
+ * # 这句话被 todo 66 改过，原因值得记下来
+ *
+ * 它原本写「语音会话尚未接入本版本」，逐字取自当时的 `VoiceFallback::message`。语音会话
+ * 接进来（todo 66）之后那句话就成了假话，而**单元测试不会因此变红**——没有任何断言比对过
+ * 它与产品现状。是亲手 QA 在屏幕上读到它才发现的。
+ *
+ * 现在的口径与 Rust 侧一致：语音跟读有自己的端点（`voice_start_session`），打字端点收到
+ * `voice` 时给一局挖空，理由是两条路径的产出刻意不可互换，而不是「语音没做」。
  */
-const SAMPLE_VOICE_FALLBACK =
-  "语音会话尚未接入本版本；已退化为挖空打字练习并照常计入排程；评分内核与语音路径完全相同";
+const SAMPLE_VOICE_FALLBACK = "语音跟读走独立端点；打字端点已给出一局挖空练习并照常计入排程";
 
 /** 样例的评级阈值，逐字取自 `GradingConfig::default()`（`config.rs:285-294`）。 */
 const SAMPLE_GRADING = {

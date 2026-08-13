@@ -31,6 +31,18 @@ path = "src/lib.rs"
 name = "yunjian-desktop"
 path = "src/main.rs"
 
+[features]
+default = []
+# 原生语音。**这个开关同时是许可边界**：默认构建是纯 MIT 且不链接 onnxruntime，开启后
+# 预编译的 sherpa-onnx 产物静态包含 GPL-3.0 的 espeak-ng，分发物整体须按 GPL-3.0 提供
+# （见 `docs/VOICE-BUILD.zh.md` 与 `problems.md` 的 2026-08-10 一条）。
+#
+# **语音 IPC 模块本身不在这个开关后面。** 线上形状、五条失败原因码、阶段机、
+# 「分数不得来自偏置假设」这几件事都是纯判定，藏到特性后面就意味着一台没有模型、
+# 没有声卡的机器（也就是 `make ci` 跑的那种构建）验证不了它们——而它们恰恰最需要被守住。
+# 开关只决定 `VoiceRig` 的生产实现是真的合成与采集，还是一个恒报「未编译语音能力」的桩。
+voice = ["yunjian-voice/voice"]
+
 [dependencies]
 secrecy = { workspace = true }
 serde = { workspace = true }
@@ -48,6 +60,10 @@ yunjian-voice = { path = "../yunjian-voice" }
 tauri-build = { workspace = true }
 
 [dev-dependencies]
+# `tauri` 的 `test` 特性给出 `MockRuntime` 与 `mock_builder`，于是命令的**外壳**可以按
+# WebView 驱动它的方式真被调用一次，而不是只用类型断言证明它返回了一个 Future。
+# 两者的差别是可测量的：只加类型断言会让新增的命令外壳一行都没执行过。
+tauri = { workspace = true, features = ["test"] }
 # 窗口配置的一致性断言要按 JSON 逐键比对两份配置文件。刻意不反序列化成
 # `tauri_utils::config::Config`：那条路会把缺失的键补成 serde 默认值，于是
 # 「macOS overlay 漏写 minWidth」这个真实陷阱会被默认值抹平成「两边都是 None，相等」，

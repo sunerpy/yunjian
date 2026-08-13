@@ -32,11 +32,14 @@ use yunjian_recite::{
 use yunjian_voice::models::ModelCache;
 
 use crate::APP;
+use yunjian_voice::permission::Practice;
+
+use crate::voice_ipc::{VoiceRig, production_rig};
 
 const RECITE_DATABASE_FILE: &str = "recite.db";
 const AUDIO_SCHEME: &str = "yunjian-audio";
 
-type IpcResult<T> = Result<T, String>;
+pub(crate) type IpcResult<T> = Result<T, String>;
 
 pub(crate) struct AppState {
     config: RwLock<Config>,
@@ -44,6 +47,7 @@ pub(crate) struct AppState {
     key_store: KeyStore,
     operations: OperationRegistry,
     audio: AudioStore,
+    voice: RwLock<Arc<dyn VoiceRig>>,
 }
 
 impl AppState {
@@ -58,10 +62,11 @@ impl AppState {
             key_store,
             operations: OperationRegistry::default(),
             audio: AudioStore::default(),
+            voice: RwLock::new(production_rig()),
         }
     }
 
-    fn config(&self) -> Config {
+    pub(crate) fn config(&self) -> Config {
         self.config
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -73,6 +78,31 @@ impl AppState {
             .config
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = config;
+    }
+
+    /// 当前语音装置。
+    pub(crate) fn voice_rig(&self) -> Arc<dyn VoiceRig> {
+        Arc::clone(
+            &self
+                .voice
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        )
+    }
+
+    /// 换掉语音装置。**只有测试会调它**：命令的外壳要能在一台没有模型、没有声卡的机器上
+    /// 被真的调用一次，否则「权限被拒会切到打字模式并带上原因」这条断言只能靠读代码确认。
+    #[cfg(test)]
+    pub(crate) fn install_voice_rig(&self, rig: Arc<dyn VoiceRig>) {
+        *self
+            .voice
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = rig;
+    }
+
+    /// 把一段音频交给自定义 URI 协议，返回 WebView 可取的地址。
+    pub(crate) fn put_audio(&self, bytes: Vec<u8>, mime: impl Into<String>) -> String {
+        self.audio.put(bytes, mime)
     }
 }
 
@@ -134,9 +164,33 @@ impl OperationRegistry {
     }
 }
 
-struct OperationRegistration<R: Runtime> {
+pub(crate) struct OperationRegistration<R: Runtime> {
     app: AppHandle<R>,
     id: String,
+}
+
+/// 把一个长操作登记进取消表，并返回一枚在作用域结束时自动注销的凭据。
+///
+/// 抽出来是为了让语音命令与赏析命令走**同一条**登记路径：两处各写一遍
+/// 「insert 之后别忘了建 `OperationRegistration`」，忘掉的那一处会留下一个永远无法被
+/// 取消的僵尸条目，而那种泄漏不会报错。
+pub(crate) fn register_operation<R, P, I>(
+    app: &AppHandle<R>,
+    id: String,
+    handle: Arc<OperationHandle<P, I>>,
+) -> OperationRegistration<R>
+where
+    R: Runtime,
+    P: Send + 'static,
+    I: Send + 'static,
+{
+    app.state::<AppState>()
+        .operations
+        .insert(id.clone(), handle);
+    OperationRegistration {
+        app: app.clone(),
+        id,
+    }
 }
 
 impl<R: Runtime> Drop for OperationRegistration<R> {
@@ -158,7 +212,6 @@ struct AudioStore {
 }
 
 impl AudioStore {
-    #[allow(dead_code, reason = "语音命令在后续任务接入；协议存储先在本任务建立")]
     fn put(&self, bytes: Vec<u8>, mime: impl Into<String>) -> String {
         let sequence = self.next.fetch_add(1, Ordering::Relaxed);
         let token = format!("{sequence:016x}");
@@ -208,6 +261,10 @@ pub(crate) fn configure_builder<R: Runtime>(builder: Builder<R>, config: Config)
             recite_commit_grade,
             recite_due,
             recite_stats,
+            crate::voice_ipc::voice_availability,
+            crate::voice_ipc::voice_demonstrate,
+            crate::voice_ipc::voice_start_session,
+            crate::voice_ipc::voice_fetch_model,
         ])
         .register_uri_scheme_protocol(AUDIO_SCHEME, |context, request| {
             audio_response(context.app_handle(), request)
@@ -234,7 +291,7 @@ fn audio_response<R: Runtime>(
         .expect("音频响应合法")
 }
 
-async fn blocking<R, T, F>(app: AppHandle<R>, work: F) -> IpcResult<T>
+pub(crate) async fn blocking<R, T, F>(app: AppHandle<R>, work: F) -> IpcResult<T>
 where
     R: Runtime,
     T: Send + 'static,
@@ -453,13 +510,7 @@ async fn appreciate_poem<R: Runtime>(
         .await
         .map_err(|error| error.to_string())?;
     let handle = Arc::new(handle);
-    app.state::<AppState>()
-        .operations
-        .insert(operation_id.clone(), Arc::clone(&handle));
-    let _registration = OperationRegistration {
-        app: app.clone(),
-        id: operation_id,
-    };
+    let _registration = register_operation(&app, operation_id, Arc::clone(&handle));
 
     let mut completed = None;
     loop {
@@ -505,7 +556,7 @@ async fn appreciate_poem<R: Runtime>(
     })
 }
 
-fn new_operation_id() -> String {
+pub(crate) fn new_operation_id() -> String {
     static NEXT_OPERATION: AtomicU64 = AtomicU64::new(0);
     let sequence = NEXT_OPERATION.fetch_add(1, Ordering::Relaxed);
     let nanos = SystemTime::now()
@@ -515,7 +566,7 @@ fn new_operation_id() -> String {
 }
 
 #[tauri::command]
-fn cancel_operation<R: Runtime>(app: AppHandle<R>, operation_id: String) -> bool {
+pub(crate) fn cancel_operation<R: Runtime>(app: AppHandle<R>, operation_id: String) -> bool {
     app.state::<AppState>().operations.cancel(&operation_id)
 }
 
@@ -934,13 +985,20 @@ fn build_session(state: &AppState, mut request: ReciteSessionRequest) -> IpcResu
             None,
             None,
         ),
+        // 语音跟读有自己的端点（`voice_start_session`），因为它的产出与打字评分刻意不可
+        // 互换。打字端点收到 `voice` 时仍然给一局挖空，但**原因取自语音装置的实测判定**
+        // 而不是一句写死的「尚未接入」——那句话在语音接进来之后就是假的，而假的降级原因
+        // 会把用户指去检查一个并不存在的问题。
         "voice" => (
             PracticeMode::Cloze(ClozeOptions::new(
                 request.ratio.unwrap_or(ClozeOptions::DEFAULT_RATIO),
                 seed,
             )),
             Some("voice"),
-            Some("语音会话尚未接入本版本；已退化为挖空打字练习".to_owned()),
+            Some(match state.voice_rig().probe(&config) {
+                Practice::Voice => "语音跟读走独立端点；打字端点已给出一局挖空练习".to_owned(),
+                Practice::Typed { message, .. } => message,
+            }),
         ),
         other => return Err(format!("未知背诵形态：{other}")),
     };
@@ -1372,6 +1430,21 @@ mod tests {
             .expect("读取 IPC 源码")
     }
 
+    /// 生产源码，即测试模块之前的全部内容。
+    ///
+    /// 切分点是 `#[cfg(test)] mod` 这个**测试模块**标记，不是第一个 `#[cfg(test)]` 属性。
+    /// 后者曾把一个 cfg 在测试下的生产辅助方法当成分界，于是它之后的真生产代码（包括
+    /// 自定义 URI 协议的注册）整段落到切分点之外，让下面几条守卫在**看不见的一半源码上
+    /// 恒真**。守卫悄悄缩小比守卫报错危险得多。
+    fn production() -> String {
+        let source = source();
+        source
+            .split("#[cfg(test)]\nmod ")
+            .next()
+            .expect("存在生产源码")
+            .to_owned()
+    }
+
     #[test]
     fn every_registered_business_command_is_async() {
         let source = source();
@@ -1404,8 +1477,7 @@ mod tests {
 
     #[test]
     fn streaming_uses_channels_without_events_or_eval() {
-        let source = source();
-        let production = source.split("#[cfg(test)]").next().expect("存在生产源码");
+        let production = production();
         assert!(
             production.contains("ipc::Channel"),
             "流式数据必须通过 ipc::Channel"
@@ -1419,8 +1491,7 @@ mod tests {
 
     #[test]
     fn no_command_returns_audio_as_a_byte_vector() {
-        let source = source();
-        let production = source.split("#[cfg(test)]").next().expect("存在生产源码");
+        let production = production();
         assert!(
             !production.lines().any(|line| {
                 line.contains("async fn")

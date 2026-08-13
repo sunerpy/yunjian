@@ -18,6 +18,7 @@ import type {
   ReciteSessionRequest,
 } from "../../data/recitePorts";
 import ReciteScreen from "../ReciteScreen";
+import { createSampleVoicePort } from "../../data/sampleVoicePorts";
 
 const SESSION: ReciteSession = {
   poem_id: "fixture-jingyesi",
@@ -128,7 +129,13 @@ function recorder(session: ReciteSession = SESSION): Recorder {
 
 /** 走到「已出题」那一步。 */
 async function start(recorded: Recorder): Promise<void> {
-  render(<ReciteScreen ports={recorded.ports} defaultPoemId="fixture-jingyesi" />);
+  render(
+    <ReciteScreen
+      ports={recorded.ports}
+      voicePort={createSampleVoicePort()}
+      defaultPoemId="fixture-jingyesi"
+    />,
+  );
   fireEvent.click(screen.getByTestId("start-session"));
   await waitFor(() => {
     expect(screen.getByTestId("session-prompt")).toBeTruthy();
@@ -138,7 +145,7 @@ async function start(recorded: Recorder): Promise<void> {
 describe("整局流程", () => {
   it("四种形态都能选，选中态跟着换", async () => {
     const recorded = recorder();
-    render(<ReciteScreen ports={recorded.ports} />);
+    render(<ReciteScreen ports={recorded.ports} voicePort={createSampleVoicePort()} />);
     for (const mode of ["cloze", "first-char", "masked", "voice"]) {
       fireEvent.click(screen.getByTestId(`mode-${mode}`));
       expect(screen.getByTestId(`mode-${mode}`).getAttribute("aria-pressed")).toBe("true");
@@ -149,7 +156,13 @@ describe("整局流程", () => {
     // 这一条盯的是 todo 62 踩过的坑的同一形态：控件动了但值没传下去。
     // 断言的是端口收到的参数，而不是界面上那个数字。
     const recorded = recorder();
-    render(<ReciteScreen ports={recorded.ports} defaultPoemId="fixture-jingyesi" />);
+    render(
+      <ReciteScreen
+        ports={recorded.ports}
+        voicePort={createSampleVoicePort()}
+        defaultPoemId="fixture-jingyesi"
+      />,
+    );
     fireEvent.change(screen.getByTestId("cloze-ratio"), { target: { value: "0.65" } });
     expect(screen.getByTestId("cloze-ratio-value").textContent).toContain("0.65");
 
@@ -164,7 +177,13 @@ describe("整局流程", () => {
 
   it("遮挡档位改动同样传下去，且比例控件在该形态下不出现", async () => {
     const recorded = recorder();
-    render(<ReciteScreen ports={recorded.ports} defaultPoemId="fixture-jingyesi" />);
+    render(
+      <ReciteScreen
+        ports={recorded.ports}
+        voicePort={createSampleVoicePort()}
+        defaultPoemId="fixture-jingyesi"
+      />,
+    );
     fireEvent.click(screen.getByTestId("mode-masked"));
     expect(screen.queryByTestId("cloze-ratio")).toBeNull();
 
@@ -250,7 +269,13 @@ describe("整局流程", () => {
         "语音会话尚未接入本版本；已退化为挖空打字练习并照常计入排程；评分内核与语音路径完全相同",
     };
     const recorded = recorder(fallback);
-    render(<ReciteScreen ports={recorded.ports} defaultPoemId="fixture-jingyesi" />);
+    render(
+      <ReciteScreen
+        ports={recorded.ports}
+        voicePort={createSampleVoicePort()}
+        defaultPoemId="fixture-jingyesi"
+      />,
+    );
     fireEvent.click(screen.getByTestId("mode-voice"));
     fireEvent.click(screen.getByTestId("start-session"));
 
