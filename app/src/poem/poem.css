@@ -1,0 +1,379 @@
+/*
+ * 阅读页样式。
+ *
+ * 这个文件承担本 todo 的核心验收：**AI 生成内容与考据材料在视觉上不可混淆**。
+ * 手段是两套刻意相反的语域，逐项对照见 `AiAppreciationPanel.tsx` 的文件头表格。
+ * 简言之：`.sourced-block` 是衬线 + 实线细边 + 纸白底；`.ai-panel` 是无衬线 + 虚线粗边 +
+ * 冷灰蓝底 + 左侧斜纹标尺。
+ *
+ * 两条禁止：
+ * 1. **不得让 `.ai-panel` 复用任何 `.sourced-block*` 类。** 快照测试断言两者的容器类不相交。
+ * 2. **不得把 `--color-sourced-*` 令牌用在 `.ai-panel` 上**，反之亦然。令牌分组就是为了让
+ *    「把 AI 面板做得像考据材料」这件事必须先跨过一次显式改名。
+ */
+
+.poem-screen {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  max-width: 46rem;
+  margin-inline: auto;
+  /* 正文要能选中复制：外壳在 body 上关掉了选中（见 styles.css），这里显式恢复。 */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.poem-screen__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.poem-screen__back {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.poem-screen__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.poem-screen__loading,
+.poem-screen__error {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.poem-screen__error {
+  color: var(--color-error-text);
+}
+
+/* ============================ 考据材料：可复核的一切 ============================ */
+
+.sourced-block {
+  padding: var(--space-6);
+  background: var(--color-sourced-surface);
+  border: 1px solid var(--color-sourced-border);
+  border-radius: var(--radius-md);
+  /* 衬线是这一侧的身份标记：整个界面里只有可复核的材料用衬线。 */
+  font-family: var(--font-serif);
+  color: var(--color-text);
+}
+
+.sourced-block__head {
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-sourced-border);
+}
+
+.sourced-block__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.sourced-block__byline {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.sourced-block__caveat {
+  margin: var(--space-4) 0 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.sourced-block__aside {
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.poem-body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.poem-body__line {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.poem-body__text {
+  font-size: var(--text-lg);
+  line-height: 1.9;
+  letter-spacing: 0.12em;
+}
+
+.poem-body--original .poem-body__text {
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+}
+
+/* 平仄记号排在字下方并与字等宽，才能与对应的字对齐。 */
+.poem-body__tones {
+  display: flex;
+  gap: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.poem-body__tone {
+  display: inline-grid;
+  place-items: center;
+  /* 与 `--text-lg` 加 0.12em 字距下一个汉字的推进量对齐。 */
+  width: calc(1.125rem + 0.135rem);
+  color: var(--color-tone-uncertain);
+}
+
+.poem-body__tone[data-tone="level"] {
+  color: var(--color-tone-level);
+}
+
+.poem-body__tone[data-tone="oblique"] {
+  color: var(--color-tone-oblique);
+}
+
+.rhyme-list,
+.attribution-list,
+.commentary-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.commentary-list {
+  /* 集评是有序的：编排顺序本身是编者的判断，所以保留序号。 */
+  list-style: decimal;
+  padding-inline-start: var(--space-6);
+  gap: var(--space-4);
+}
+
+.rhyme {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.rhyme__book {
+  font-weight: 500;
+}
+
+.rhyme__group {
+  font-size: var(--text-base);
+}
+
+.rhyme__tone {
+  color: var(--color-text-muted);
+}
+
+.rhyme__confidence {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* 未能推定的多音字要看得出来，否则「推断」会被读成「事实」。 */
+.rhyme__confidence[data-confidence="unresolved"] {
+  color: var(--color-error-text);
+}
+
+.attribution {
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--color-sourced-rule);
+}
+
+.attribution--current {
+  border-inline-start-color: var(--color-accent);
+}
+
+.attribution__who {
+  margin: 0;
+  font-size: var(--text-base);
+}
+
+.attribution__flag {
+  margin-inline-start: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-sourced-surface);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+}
+
+.attribution__source {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-citation-text);
+}
+
+.commentary__text {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.8;
+}
+
+/* 出处紧跟在评语下方且用同一族衬线：它是评语的一部分，不是脚注。 */
+.commentary__citation {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-citation-text);
+}
+
+.commentary--error {
+  padding: var(--space-3);
+  background: var(--color-error-surface);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-sm);
+}
+
+.commentary__error {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--color-error-text);
+}
+
+/* ==================== 分界：从这里往下不是考据材料 ==================== */
+
+.provenance-divider {
+  margin: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px dashed var(--color-ai-border);
+}
+
+.provenance-divider__caption {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  color: var(--color-ai-text);
+}
+
+/* ============================ AI 生成：机械语域 ============================ */
+
+.ai-panel {
+  position: relative;
+  padding: var(--space-6);
+  padding-inline-start: var(--space-8);
+  background: var(--color-ai-surface);
+  /* 虚线粗边：与考据侧的 1px 实线在一眼之内就能分开。 */
+  border: 2px dashed var(--color-ai-border);
+  border-radius: var(--radius-md);
+  /* 无衬线。在一个通篇衬线排诗的界面里，这本身就是最强的「非原始材料」信号。 */
+  font-family: var(--font-sans);
+  color: var(--color-ai-text);
+}
+
+/* 左侧斜纹标尺。纯装饰，因此不进无障碍树；它的作用是让人在缩略视图里也能认出这一块。 */
+.ai-panel::before {
+  content: "";
+  position: absolute;
+  inset-block: var(--space-4);
+  inset-inline-start: var(--space-3);
+  width: 0.375rem;
+  border-radius: var(--radius-sm);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-ai-border) 0 0.125rem,
+    var(--color-ai-stripe) 0.125rem 0.3125rem
+  );
+}
+
+.ai-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.ai-panel__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.ai-panel__badge {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-ai-badge-bg);
+  color: var(--color-ai-badge-fg);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+}
+
+.ai-panel__provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xs);
+}
+
+.ai-panel__provenance-item {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.ai-panel__provenance dt {
+  color: var(--color-ai-border);
+}
+
+.ai-panel__provenance dd {
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+.ai-panel__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ai-panel__paragraph {
+  margin: 0;
+  /* 比考据正文小一号且行距更紧：视觉重量低于原始材料是刻意的。 */
+  font-size: var(--text-sm);
+  line-height: 1.75;
+}
+
+.ai-panel__status {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.ai-panel__status--failed {
+  color: var(--color-error-text);
+}
+
+.ai-panel__disclosure {
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-ai-border);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-ai-text);
+}
