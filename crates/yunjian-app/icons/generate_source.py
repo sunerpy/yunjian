@@ -11,7 +11,7 @@
 **第三步不是多余的。** `cargo tauri icon` 生成 `icon.ico` 的方式是把 1024 源图
 **降采样**到各层，于是本脚本在 16 px 原生画出来的清晰版本根本进不了 ICO——用户在
 任务栏看到的仍然是一张 1024 缩下来的糊图。实测对照：降采样的 16 px 层有几十种颜色
-（全是边缘抗锯齿混出的中间色），原生渲染的同一层只有 **2** 种。所以 ICO 由本脚本
+（全是边缘抗锯齿混出的中间色），原生渲染的同一层只有 **3** 种。所以 ICO 由本脚本
 自己写字节，在 `cargo tauri icon` 跑完之后覆盖它那一份；`--ico-only` 就是这一步。
 `xtask verify-icons` 有一条颜色数上限断言专门抓「漏跑了第三步」。
 
@@ -25,92 +25,98 @@
 - **`icon.ico`** — 六层 `[32, 16, 24, 48, 64, 256]`，**32 px 在最前**（开发工具与
   任务栏取第一层），每层都是该尺寸的原生渲染。
 
-## 设计：朱色切角方印（第三版）
+## 造型：朱底白文「山」印（第四版）
 
-**一枚朱砂方框，右下角以 45 度整体切掉。** 方框是印章的阳线框（不是承托徽标的圆角
-底板：它四角透明、框内大面积透明，托盘把它合成到自己背景上时不出现硬边色块，而且
-框是**方**的——圆角矩形正是 launcher 底板的形状语言）。右下切角是笺纸的折角。
+**一块实心朱砂方印，印面上以不透明米白刻出一个「山」字。** 朱色是印面主体，米白是
+刻痕（白文印 / 阴刻）。四角透明、印面四周留 1 px 透明气口，没有圆角底板——托盘把它
+合成到自己背景上时不出现硬边色块。
 
-造型只由**一条轮廓**构成，框内**没有任何元素**。这不是偷懒，是前两版失效与本轮
-探针共同逼出来的唯一解，见下节。
+### 方法论：从 16 px 网格反推，而不是先画大图再缩小
 
-### 三条硬约束（每条都由一次真实失效反推出来，且都被 `assert_uniform` 机械校验）
+**前三版全部死在同一个流程错误上：先画 1024 母图，再靠取整规则往下缩。** 缩下来的
+16 px 一律出事——细负空间消失、斜边退化成 1 px 碎阶梯、笔画顶穿框线。第四版把流程
+倒过来：
 
-1. **所有笔画在 16 px 下不小于 2 px。**（v1 的月牙牙尖细到亚像素级而消失。）
-   校验方式：逐行、逐列取连续不透明段，**任何一段的长度都必须 >= 2**。
-2. **框内元素与外框净间距不小于 2 px。** 本版框内为空，故此约束**空成立**——
-   这不是规避，而是第 3 节说明的推论：16 px 下框内根本装不下任何合格元素。
-3. **对称。** 本形关于主对角线（左上→右下）镜像对称，
-   校验方式：`image == image.transpose(TRANSPOSE)`，逐像素相等。
-   （v2 的三竖条长短参差、右条顶穿右框线，正是这一条缺位的后果。）
+1. 先在 **16×16 的像素网格上逐像素把图形定下来**（本文件里的 `MASTER_16`，
+   一张可以直接读的 ASCII 图），逐条确认每一笔恰好 ≥2 px、每处净空恰好 ≥2 px、
+   没有 1 px 碎阶梯、没有贴边、没有开口、左右镜像对称。
+2. 16 px 定稿之后才往上放大。**16 的整数倍档位（32/48/64/128/256/512/1024）用精确
+   整数倍复制**：本形全部由轴对齐矩形构成，没有任何斜边，所以整数倍复制得到的是
+   数学上完全相同的形状——零抗锯齿、零比例漂移，`assert_scales_exactly` 会逐像素复核。
+3. **20 px 与 24 px 不是 16 的整数倍，各自另有一份手调网格**（`MASTER_20` /
+   `MASTER_24`）。这是专业做法而不是补丁：Windows 在通知区域与若干位置按 20 / 24 px
+   取图，靠缩放去凑这两档正是前三版失效的入口。
 
-### 为什么框内必须是空的：三轮探针的逐条淘汰记录
+三张手调网格共用同一套骨架（朱印 + 白文山 + 四周朱边），只在笔画绝对像素数上各自
+取整，因此六档读起来是同一个图标，而不是「粗框 / 细描边」交替出现的两种东西。
 
-全部是「渲成联系表后按真实像素尺寸亲眼看」的结论，不是推理：
+### 为什么是「山」，以及被逐条淘汰的候选
 
-- **「云」字骨架（本任务用户建议的方向一）**：云 = 二 + 厶，骨架**本质上是两道平行横**。
-  在 16 px 上无论怎样调比例、加粗、改厶的写法（对称 ⊔ / L+点 / 三横递宽），
-  一律读作**等号**。这一条否掉了整个「框内放字」的方向，包括加框与不加框两种。
-- **「笺」字**：竹字头 + 戋，笔画密度在 16 px 上连轮廓都合不出来，未进探针。
-- **框内竖行（方向二）**：1 道读作**文本光标**，2 道读作**暂停键**，3 道读作
-  **柱状图 / 均衡器**（v2 正是三道，被否）。竖行数量没有安全值。
-- **等长成列的横线阵列（竖排诗行的字面模拟）**：单条线宽必须 1 px 才排得下，
-  违反约束 1。
-- **白文印（实心块挖出负形字）**：最耐缩放，但它正是 v2 被否时那句
-  「深色行最小档几乎读作实心红方块中间挖了几道缝」。作废。
-- **开卷（对称书页）**：16 px 读作两根柱子；页面弧度在 16 px 全丢，跨档形变最明显。
-- **框内加天头横楣**：16 px 下横楣与上框线之间只剩 1 px，读作**浏览器窗口 / 对话框**。
-- **「云字只在装得下的档位（>=48 px）出现」**：探针里 16/24 px 与 32/64/256 px
-  读作**两个不同的图标**，且 32 px 的字被折角挤到左上、笔画间只剩 1 px。作废。
-- **右上切角**：那是通用「文档」图标的角，语义被占用；改到**右下**后不再撞车。
-- **实心折片（切角处再补一块三角当折起的纸）**：把右下并成一块厚区，
-  四边不再等宽，视觉重心整体歪向右下。作废——「矩形 + 一个切角三角」本来就是
-  把角**切掉**，不需要再补回来。
+全部是「渲成放大对照图后按真实像素亲眼看」的结论，不是推理。本轮扫了 27 个候选，
+按第一读淘汰：
 
-结论：**16 px 下没有任何东西能同时说清「古典诗词」又结构端正。** 因此本版把
-辨识度全部押在**轮廓**上（方 + 右下切角），把文化指向交给**朱砂**与**方印比例**。
-这是诚实的取舍，不是「256 px 下也能读出印章的篆字」——它读不出，本版没有字。
+- **两条全高白竖槽**：第一读**暂停按钮**。加厚朱边只能压低概率，消不掉——暂停键的
+  识别特征就是「两条等长竖条居中」，和这个造型同构。
+- **三条白竖槽**：第一读**柱状图 / 均衡器**。这与 v2 被否的原因是同一条。
+- **三条白横槽（「三」）**：第一读**汉堡菜单**。等长等宽等距的横条是汉堡图标的规范
+  形态，换成朱底只改配色不改拓扑。
+- **白「回」环（同心方框）**：第一读**二维码定位点**（finder pattern 就是这个形状）。
+- **点阵（两列三行 2×2 方格）**：第一读**六点盲文 / 骰子 / 拖拽手柄**。离散孤立的
+  方块没有笔画连续性，模式匹配落不到汉字上。`assert_uniform` 的「刻痕必须四连通」
+  就是把这条淘汰机械化：一个字是连通的，点阵不是。
+- **白「工」/「丁」/「王」**：分别第一读**拉丁字母 I / T**、以及「王」（常见姓氏，
+  与古典诗词无语义关联）。「王」的印章质感其实最好，但它把一个不相关的字印在图标上。
+- **右下 45° 斜切空框（v3）**：16 px 下斜边退化成一串 1 px 碎阶梯，右框被吃掉导致
+  方框读起来是开口的；且框内全空，语义为空而不是错——第一读是「折角文档」。
+- **朱红圆底 + 米白月牙（v1）**：16 px 下牙尖细到亚像素而消失，退化成偏心白斑。
 
-### 逐尺寸取整，而不是缩放母图
+「山」是本轮唯一**第一读就是汉字**的候选：三竖一横的结构有横竖相交（篆刻可读性的
+关键），不撞任何拉丁字母，不撞任何 UI 控件，而且**语义正好落在山水诗上**。
 
-`layout()` 对每个目标尺寸各取整一次，**没有任何逐档手调覆写**——取整规则本身就够了。
-规则不是审美偏好，是两条实测反推的：
+### 三竖必须高度各不相同——左右对称的「山」会被读成柱状图
 
-1. **v2 的框线比例在各档之间反复跳**（16 px 占 12.5%、24 px 占 8.3%，相差 1.5 倍），
-   于是六档读作「粗框 / 细描边」交替出现的两种东西。本版框厚统一按 span 的 3/16
-   **向下**取整，实测 14.3% / 16.7% / 18.2% / 17.9% / 16.7% / 17.9% / 18.8%，
-   最大与最小相差 1.31 倍，且没有交替。
-   **向下取整是关键**：3/16 是上限不是目标。向上取整时 64 px 得到 11 px 框，
-   框内空腔掉到 span² 的 29.5%；16 px 得到 3 px 框，空腔从 90 px² 掉到 58 px²，
-   探针里读作「实心红块被啃掉一角」。向下取整让这两档自然落在 10 px 与 2 px 上。
-2. **切角长度一度被 `max(2 * thick, ...)` 夹住**，导致 1/4、5/16、3/8 三种切角比例
-   在 16 px 与 256 px 上算出**完全相同的像素**——探针里三行同形，正是这个夹逼。
+**这是本轮最后一次目视推翻。** 先做出来的是左右两竖等高的对称「山」，六格（16/24/32
+× 浅底/深底）的**第一读全部是「柱状图 / 信号强度条 / 西里尔字母 Ш」**，不是汉字。
+成因是「两侧等高、中间高」正是「中间峰值」的图表语汇，而左右严格对称把汉字线索抹平
+成了几何图形。
 
-**切角长度取 span 的一半，不取任何分数比例。** 于是切口两端精确落在下框与右框的
-**中点**上；span 恒为偶数（size 与 2 * margin 都是偶数），这个锚点在任何档位都是整数，
-切角比例**零漂移**，是构造保证而非碰巧，`assert_uniform` 会复核 `fold * 2 == span`。
-扫过的更短切角：3/8 与 7/16 在 16 px 上斜边只有 3~4 级台阶，读作「描边没对齐的毛刺」
-而不是一刀；更长的 9/16 越过中点，斜边长度超过残留的下框与右框，方框感被削掉。
+改成真实楷书「山」的形态——**中竖最高、右竖次高、左竖最短**——之后第一读变成
+「一枚红印上刻着一个汉字」。非对称同时排掉了 Ш（要求三竖等高）与柱状图（高度序列
+「矮-高-中」不符合任何数据排序直觉）。这一条不是审美偏好，`assert_uniform` 用
+**逐行刻痕段数序列必须恰好是 `[1, 2, 3, 1]`** 把它钉死：中竖先单独出头（1 段）、
+右竖加入（2 段）、左竖加入（3 段）、底横通宽（1 段）。对称版的序列是 `[1, 3, 1]`，
+会直接变红。
 
-**45 度斜边按垂直于笔画的宽度对齐正交边**：半平面沿 `x + y` 轴的偏移量取
-`round(thick * sqrt(2))`，于是斜带的垂直宽度 = 偏移 / sqrt(2) ≈ 框厚。
-直接用 `thick` 当偏移会让斜边细成 0.71 倍（16 px 上是 1.41 px，违反约束 1）。
+**注意这一条与「左右镜像对称」是互斥的**，而后者曾是 v2 的补救措施（v2 三竖长短参差
+是无意的 bug，于是加了镜像对称断言）。本版把它换成更准的两条：刻痕外接框在印身内
+**左右等距、上下等距**（这才是 v2 「右条顶穿右框线」真正要防的），加上上面那条段数
+序列。对称本身从来不是目的。
 
-## 颜色
+已知残留：不认汉字的用户只能读到「一枚红印章 + 某个东方文字」，读不出「山」。
+这对品牌识别够用，对语义传达不够——是诚实的取舍，候选里没有任何造型两边都占。
 
-朱砂 `#D8452F` 单色。**比 v2 的 `#C0362C` 亮**，这是为了让深色托盘也可用：
+### 为什么刻痕是不透明米白，而不是镂空
 
-| 组合                               | v2 `#C0362C` | 本版 `#D8452F` |
-| ---------------------------------- | ------------ | -------------- |
-| vs Windows 浅色托盘 `#F3F3F3`      | 4.97:1       | 3.93:1         |
-| vs Windows 深色托盘 `#202020`      | **2.95:1**   | **3.73:1**     |
-| vs 纯白 `#FFFFFF`                  | 5.52:1       | 4.36:1         |
+**镂空（透明）在深浅两种底色下读法会漂移。** 实测对照：浅色托盘上镂空显 #F3F3F3，
+读作「纸上未着墨的字口」；深色托盘上同一枚图标的镂空变成 #202020，读作「打穿的孔
+/ 镂雕金属牌」——同一个图标在两种系统主题下读成两个不同的符号。填成不透明米白后，
+两种底色下刻痕都是浅色，读法一致。米白在浅色底上几乎与背景同明度（对比 1.02:1），
+看上去仍是「留白」，这与真实印章盖在白纸上的样子一致，是特性不是缺陷。
 
-v2 那个红把浅色底的对比度拉到 4.97:1，代价是深色底只有 2.95:1——低于 WCAG 1.4.11
-对非文本图形的 3:1 门槛，深色行 16 px 因此发闷。本版**两侧都过 3:1**，
-取的是平衡而不是把浅色底单边拉满。`_contrast()` 可当场复算这张表。
+### 颜色
 
-## macOS squircle：明示不处理，及理由
+| 组合                            | 对比度  |
+| ------------------------------- | ------- |
+| 朱砂 vs Windows 浅色托盘 #F3F3F3 | 3.93:1  |
+| 朱砂 vs Windows 深色托盘 #202020 | 3.73:1  |
+| 米白刻痕 vs 朱砂印面             | 3.91:1  |
+
+朱砂沿用第三版的 `#D8452F`：它让浅色底与深色底**双侧都过 WCAG 1.4.11 对非文本图形
+的 3:1 门槛**（更暗的 `#C0362C` 浅色底能到 4.97:1，代价是深色底只有 2.95:1，深色行
+最小档因此发闷）。米白 `#F5EFE1` 对朱砂 3.91:1，与朱砂对浅色底几乎等值，两行发色
+平衡。`_contrast()` 可当场复算这张表。
+
+### macOS squircle：明示不处理，及理由
 
 Apple 期望 macOS 应用图标是一块 squircle 底板。本图标没有底板，在 Dock 里以字形
 （glyph）形态呈现，比相邻的 squircle 图标视觉上「小一圈」。不处理的理由：
@@ -126,7 +132,6 @@ Apple 期望 macOS 应用图标是一块 squircle 底板。本图标没有底板
 """
 
 import argparse
-import math
 import pathlib
 import struct
 import tempfile
@@ -134,87 +139,147 @@ import tempfile
 from PIL import Image
 
 CINNABAR = (216, 69, 47, 255)
+CREAM = (245, 239, 225, 255)
 TRANSPARENT = (0, 0, 0, 0)
 
-# 框厚以「span（去掉外边距后的边长）」为基准，逐档各取整一次。
-THICK_FRACTION = 3 / 16
+#: ASCII 网格的三种记号。`#` 朱砂印面，`o` 米白刻痕，`.` 透明。
+GLYPH = {"#": CINNABAR, "o": CREAM, ".": TRANSPARENT}
 
 SOURCE_SIZE = 1024
 # Windows 通知区域与多数 Linux 面板按 32 px 取托盘图（高 DPI 下再放大）。
 TRAY_SIZE = 32
 # **顺序即写入顺序**：32 px 在最前，因为开发工具与任务栏取第一层。
 ICO_LAYER_ORDER = (32, 16, 24, 48, 64, 256)
-# 生成时逐档自检的尺寸。20 px 不是 ICO 层，但 Windows 某些位置按 20 px 取图，
-# 而它恰好是取整最容易出岔子的档（span 18，3/16 落在 3.375 上），所以一并校验。
+# 生成时逐档自检的尺寸。20 px 不是 ICO 层，但 Windows 某些位置按 20 px 取图。
 AUDIT_SIZES = (16, 20, 24, 32, 48, 64, 128, 256, SOURCE_SIZE)
 
+# --------------------------------------------------------------------------- #
+# 16 px 定稿网格：本文件的真源。改造型就改这三张图，不改任何公式。
+# --------------------------------------------------------------------------- #
+# 印身 14×14（外留 1 px 透明气口），朱边 2 px，印面内区 10×10。
+# 逐像素账（全部恰好 2 px，没有任何 1 px 的笔画或净空）：
+#   朱边 2 · 三竖各 2 · 竖间朱地 2 · 底横 2 · 中竖上方朱地 2
+# 三竖高度**刻意不等**：中竖 10 行、右竖 8 行、左竖 6 行。等高会读成柱状图，见文件头。
+MASTER_16 = """
+................
+.##############.
+.##############.
+.######oo######.
+.######oo######.
+.######oo##oo##.
+.######oo##oo##.
+.##oo##oo##oo##.
+.##oo##oo##oo##.
+.##oo##oo##oo##.
+.##oo##oo##oo##.
+.##oooooooooo##.
+.##oooooooooo##.
+.##############.
+.##############.
+................
+"""
 
-def _round_half_up(value: float) -> int:
-    """Python 的 `round` 对 .5 取偶，会让 20/32 px 这类档位的取整跳向意料之外的一侧。"""
-    return math.floor(value + 0.5)
+# 20 px：印身 18×18（外气口 1 px），朱边 3 px，内区 12×12；笔画 2 px、竖间朱地 3 px。
+# 20 不是 16 的整数倍，故单独手调而不是缩放——见文件头的方法论一节。
+# 三竖露出底横以上 9 : 7 : 5（中 : 右 : 左），即 16 px 那档 8 : 6 : 4 的同比放大
+# （1 : 0.75 : 0.5）。比例必须跨档一致，否则六档读作字重不同的两种东西。
+MASTER_20 = """
+....................
+.##################.
+.##################.
+.##################.
+.########oo########.
+.########oo########.
+.########oo###oo###.
+.########oo###oo###.
+.###oo###oo###oo###.
+.###oo###oo###oo###.
+.###oo###oo###oo###.
+.###oo###oo###oo###.
+.###oo###oo###oo###.
+.###oooooooooooo###.
+.###oooooooooooo###.
+.###oooooooooooo###.
+.##################.
+.##################.
+.##################.
+....................
+"""
+
+# 24 px：印身 20×20（外气口 2 px），朱边 3 px，内区 14×14；笔画 2 px、竖间朱地 4 px。
+# 外气口取 2 px 而不是 1 px：1 px 时印身占 22/24 = 91.7%，与 16 px 的 87.5%、
+# 32 px 的 87.5% 不一致，目视判为「24 px 那格的印几乎撑满、取景与别档不一样」。
+# 笔画取 2 px 而不是 4 px：4 px 时朱边(3) < 笔画(4)，中竖顶端目视读作「顶穿印面」。
+# **朱边必须不小于笔画**，这是本档取整的硬约束。
+# 三竖露出底横以上 11 : 8 : 6，同为 1 : 0.75 : 0.5 的同比取整。
+MASTER_24 = """
+........................
+........................
+..####################..
+..####################..
+..####################..
+..#########oo#########..
+..#########oo#########..
+..#########oo#########..
+..#########oo####oo###..
+..#########oo####oo###..
+..###oo####oo####oo###..
+..###oo####oo####oo###..
+..###oo####oo####oo###..
+..###oo####oo####oo###..
+..###oo####oo####oo###..
+..###oo####oo####oo###..
+..###oooooooooooooo###..
+..###oooooooooooooo###..
+..###oooooooooooooo###..
+..####################..
+..####################..
+..####################..
+........................
+........................
+"""
+
+#: 手调网格：键是边长。其余档位一律由 `MASTER_16` 整数倍复制得到。
+MASTERS = {16: MASTER_16, 20: MASTER_20, 24: MASTER_24}
 
 
-def layout(size: int) -> dict:
-    """把设计比例在给定尺寸上取整成一组整数几何。"""
-    margin = max(1, size // 16)
-    span = size - 2 * margin
-    # 框厚**向下**取整：3/16 是上限而不是目标值。向上取整过的实测后果是 64 px 得到
-    # 11 px 框（占 19.6%），框内空腔掉到 span² 的 29.5%，读作实心块。向下取整落在 10 px。
-    #
-    # 下限是 **3 px 而不是 2 px**，这是被约束 1（笔画不小于 2 px）逼出来的，不是审美：
-    # 斜带每行占 `slant = thick` 个像素，它**垂直于笔画**的宽度是 thick / sqrt(2)。
-    # thick = 2 时垂直宽度只有 1.41 px，低于 2 px——真实发生过，四轮目视都指着 16 px
-    # 说斜边比正交边弱。而把 slant 单独加到 3 又会让斜带每行比正交边宽一个像素，
-    # 于是「四边等宽」不成立（那一版被判「斜边明显偏粗」）。两条同时满足只有一个解：
-    # thick >= ceil(2 * sqrt(2)) = 3。于是 16 px 与 20 px 都用 3 px 框。
-    thick = max(3, math.floor(span * THICK_FRACTION))
+def parse_master(art: str) -> list[str]:
+    """把 ASCII 网格解析成逐行字符串，并校验它是正方形、只含三种记号。"""
+    rows = [line for line in art.strip("\n").split("\n")]
+    side = len(rows)
+    for index, row in enumerate(rows):
+        assert len(row) == side, f"第 {index} 行长度 {len(row)} != 边长 {side}"
+        unknown = set(row) - set(GLYPH)
+        assert not unknown, f"第 {index} 行出现未知记号 {sorted(unknown)}"
+    return rows
 
-    # 切角长度恰为 span 的一半，于是切口两端**精确落在**下框与右框的中点上。
-    # span 恒为偶数（size 与 2*margin 都是偶数），所以这个锚点在任何档位都是整数，
-    # 切角比例零漂移——这是构造保证，不是碰巧，`assert_uniform` 会复核。
-    # 试过的更短切角：3/8 与 7/16 在 16 px 上只有 3~4 级台阶，读作描边没对齐的毛刺；
-    # 更长的 9/16 越过中点，斜边反客为主，方框感被削掉。
-    fold = span // 2
 
-    # 斜边沿 `x + y` 轴的内移量 = 框厚，于是斜带**每行的连续段长度恰好等于框厚**，
-    # 与正交边逐像素等宽。试过 round(thick * sqrt(2))（让斜带的*垂直*宽度等于框厚）：
-    # 那让斜带每行占 sqrt(2) 倍的像素，16/24/32 px 上两轮目视都判「斜边明显比正交边粗」，
-    # 16 px 更被读成「框内一道斜杠」而不是外轮廓被切掉一角。
-    # 人眼比的是每行的可见段长，不是数学上的垂直宽度；斜线本身还会被感知得更重。
-    slant = thick
-
-    return {
-        "margin": margin,
-        "span": span,
-        "thick": thick,
-        "fold": fold,
-        "slant": slant,
-        "outer0": margin,
-        "outer1": size - margin - 1,
-        "inner0": margin + thick,
-        "inner1": size - margin - 1 - thick,
-    }
+def master_rows(size: int) -> list[str]:
+    """给定尺寸的字符网格。手调档位直接取，其余按 16 px 定稿整数倍复制。"""
+    if size in MASTERS:
+        rows = parse_master(MASTERS[size])
+        assert len(rows) == size, f"{size} px 的手调网格边长是 {len(rows)}"
+        return rows
+    assert size % 16 == 0, (
+        f"{size} px 既不是手调档位 {sorted(MASTERS)}，也不是 16 的整数倍。"
+        "本设计刻意不提供任意尺寸的缩放规则——那正是前三版失效的入口。"
+    )
+    factor = size // 16
+    base = parse_master(MASTER_16)
+    return ["".join(c * factor for c in base[y // factor]) for y in range(size)]
 
 
 def render(size: int) -> Image.Image:
     """按目标尺寸原生渲染，全部几何落在整数像素边界上。
 
     没有超采样、没有降采样：两者都会引入抗锯齿中间色，而 v1 正是死在中间色渗色上。
-    形状 = 外五边形 减去 内五边形，两者的斜边共用同一族 45 度半平面，
-    因此斜边与正交边在拐角处自然成一个干净的斜接（miter），不留 1 px 碎片。
     """
-    spec = layout(size)
-    o0, o1 = spec["outer0"], spec["outer1"]
-    i0, i1 = spec["inner0"], spec["inner1"]
-    cut = o1 + o1 - spec["fold"]
-
+    rows = master_rows(size)
     img = Image.new("RGBA", (size, size), TRANSPARENT)
-    for y in range(size):
-        for x in range(size):
-            outer = o0 <= x <= o1 and o0 <= y <= o1 and (x + y) <= cut
-            inner = i0 <= x <= i1 and i0 <= y <= i1 and (x + y) <= cut - spec["slant"]
-            if outer and not inner:
-                img.putpixel((x, y), CINNABAR)
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch != ".":
+                img.putpixel((x, y), GLYPH[ch])
     return img
 
 
@@ -233,110 +298,223 @@ def _runs(values: list[bool]) -> list[int]:
     return widths
 
 
-def _opaque(image: Image.Image) -> list[list[bool]]:
-    return [
-        [image.getpixel((x, y))[3] > 0 for x in range(image.width)]
-        for y in range(image.height)
-    ]
+def _runs_with_start(values: list[bool]) -> list[tuple[int, int]]:
+    """各段连续 True 的 (起始下标, 长度)。用来定位三竖各自落在哪几列。"""
+    spans: list[tuple[int, int]] = []
+    start = None
+    for index, on in enumerate(values):
+        if on and start is None:
+            start = index
+        elif not on and start is not None:
+            spans.append((start, index - start))
+            start = None
+    if start is not None:
+        spans.append((start, len(values) - start))
+    return spans
+
+
+def _classify(image: Image.Image, size: int) -> list[list[str]]:
+    """把位图还原成字符网格，之后所有断言都在字符网格上做。"""
+    lookup = {v: k for k, v in GLYPH.items()}
+    grid: list[list[str]] = []
+    for y in range(size):
+        row = []
+        for x in range(size):
+            px = image.getpixel((x, y))
+            assert px in lookup, f"{size} px 在 ({x},{y}) 出现中间色 {px}"
+            row.append(lookup[px])
+        grid.append(row)
+    return grid
+
+
+def _components(grid: list[list[str]], mark: str) -> int:
+    """`mark` 记号的四连通分量个数。"""
+    size = len(grid)
+    cells = {(x, y) for y in range(size) for x in range(size) if grid[y][x] == mark}
+    count = 0
+    while cells:
+        count += 1
+        frontier = [cells.pop()]
+        while frontier:
+            x, y = frontier.pop()
+            for nb in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if nb in cells:
+                    cells.remove(nb)
+                    frontier.append(nb)
+    return count
 
 
 def assert_uniform(image: Image.Image, size: int) -> None:
     """机械校验这一档真的达到了设计意图，而不是「看起来生成成功了」。
 
-    每条断言各对应一种已实际发生过的失效，见文件头。
+    每条断言各对应一种**已实际发生过**的失效，逐条见文件头。
     """
-    colors = {image.getpixel((x, y)) for y in range(size) for x in range(size)}
-    assert colors <= {TRANSPARENT, CINNABAR}, f"{size} px 出现中间色：{sorted(colors)}"
+    grid = _classify(image, size)
 
-    corners = [
-        image.getpixel(p)
-        for p in ((0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1))
+    corners = [(0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1)]
+    opaque = [p for p in corners if grid[p[1]][p[0]] != "."]
+    assert not opaque, f"{size} px 四角必须透明，但 {opaque} 不是"
+
+    xs = [x for y in range(size) for x in range(size) if grid[y][x] != "."]
+    ys = [y for y in range(size) for x in range(size) if grid[y][x] != "."]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+
+    # 约束 1：印面必须是**实心**的。v3 的空心细框加内部全空读不出印章，
+    # 用户的原话是「用没有语义替换了错误语义」。这条把「实心朱底」变成可判定的。
+    hollow = [
+        (x, y)
+        for y in range(y0, y1 + 1)
+        for x in range(x0, x1 + 1)
+        if grid[y][x] == "."
     ]
-    assert all(px[3] == 0 for px in corners), f"{size} px 四角必须透明：{corners}"
+    assert not hollow, f"{size} px 印面内出现 {len(hollow)} 个透明像素，首个 {hollow[0]}"
 
-    grid = _opaque(image)
-    # 约束 3：关于主对角线镜像对称。v2 的长短参差与顶穿框线都是这一条缺位的后果。
-    # 直接比 `grid[y][x]` 与 `grid[x][y]`，不走 `Image.getdata()`——后者在 Pillow 13
-    # 上已弃用，而这条断言必须在无警告的情况下长期可跑。
-    asymmetric = [
-        (x, y) for y in range(size) for x in range(size) if grid[y][x] != grid[x][y]
+    # 约束 2：任何一段连续朱色或连续刻痕都不小于 2 px，逐行与逐列各查一遍。
+    # v1 的月牙牙尖细到亚像素而消失，正是这一条缺位的后果。
+    for mark, label in (("#", "朱色"), ("o", "刻痕")):
+        for y in range(size):
+            widths = _runs([c == mark for c in grid[y]])
+            assert all(w >= 2 for w in widths), (
+                f"{size} px 第 {y} 行出现 <2 px 的{label}：{widths}"
+            )
+        for x in range(size):
+            widths = _runs([grid[y][x] == mark for y in range(size)])
+            assert all(w >= 2 for w in widths), (
+                f"{size} px 第 {x} 列出现 <2 px 的{label}：{widths}"
+            )
+
+    # 约束 3：刻痕必须被朱色**完全围合**，一个刻痕像素都不许与透明相邻。
+    # 这一条同时锁住「朱边厚度」与「刻痕不贴边」：印章的识别特征就是
+    # 「实心朱底 + 边框内有内容」，刻痕一旦破口，印面就散成几条独立笔画。
+    for y in range(size):
+        for x in range(size):
+            if grid[y][x] != "o":
+                continue
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                assert 0 <= nx < size and 0 <= ny < size and grid[ny][nx] != ".", (
+                    f"{size} px 的刻痕像素 ({x},{y}) 与透明相邻，朱边被刻穿"
+                )
+
+    # 约束 4：朱边四侧各不小于 2 px。上面那条只保证「不破口」，保不了「够厚」。
+    #
+    # 左右两侧只能在**底横那一行**上量：底横通宽，所以该行的首尾朱段恰好就是朱边。
+    # 在别的行上量会把「竖间朱地」和朱边连成一段（例如 20 px 的中段量出 8 而不是 3）。
+    # 上下两侧在**中竖那一列**上量，同理。
+    base_row = max(y for y in range(size) if any(c == "o" for c in grid[y]))
+    mid_x = (x0 + x1) // 2
+    borders = {
+        "上": _runs([grid[y][mid_x] == "#" for y in range(y0, y1 + 1)])[0],
+        "下": _runs([grid[y][mid_x] == "#" for y in range(y0, y1 + 1)])[-1],
+        "左": _runs([grid[base_row][x] == "#" for x in range(x0, x1 + 1)])[0],
+        "右": _runs([grid[base_row][x] == "#" for x in range(x0, x1 + 1)])[-1],
+    }
+    thin = {k: v for k, v in borders.items() if v < 2}
+    assert not thin, f"{size} px 朱边过薄：{thin}（四侧实测 {borders}）"
+
+    # 约束 5：刻痕外接框在印身内**左右等距、上下等距**。
+    # v2 的「右条顶穿右框线」真正要防的是这个。刻意**不**用逐像素镜像对称：
+    # 那会顺手禁掉真实「山」的三竖不等高，而三竖等高正是本轮读成柱状图的成因。
+    ink_x = [x for y in range(size) for x in range(size) if grid[y][x] == "o"]
+    ink_y = [y for y in range(size) for x in range(size) if grid[y][x] == "o"]
+    insets = {
+        "左": min(ink_x) - x0,
+        "右": x1 - max(ink_x),
+        "上": min(ink_y) - y0,
+        "下": y1 - max(ink_y),
+    }
+    assert insets["左"] == insets["右"], f"{size} px 刻痕左右不等距：{insets}"
+    assert insets["上"] == insets["下"], f"{size} px 刻痕上下不等距：{insets}"
+
+    # 约束 6：刻痕必须是**一个**四连通分量——也就是一个字，而不是一片点阵。
+    # 本轮的点阵候选（两列三行 2×2 方格）第一读是六点盲文 / 骰子 / 拖拽手柄，
+    # 因为离散方块没有笔画连续性。这条把那次目视淘汰机械化。
+    ink_parts = _components(grid, "o")
+    assert ink_parts == 1, f"{size} px 的刻痕有 {ink_parts} 个连通分量，应当只有 1 个（一个字）"
+    # 朱色同理：印面不该被刻痕切出孤立朱岛。
+    red_parts = _components(grid, "#")
+    assert red_parts == 1, f"{size} px 的朱色有 {red_parts} 个连通分量，印面被刻痕切断了"
+
+    # 约束 6.5：印身占整格的比例必须落在 83%~90%，各档取景才是同一个。
+    #
+    # 目标是 16 / 32 px 那两档恰好命中的 87.5%（外气口 1 / 2 px）。**手调的两档都命中
+    # 不了它**，因为等边距只能给出离散的几个值：
+    #   20 px：87.5% 要求印身 17.5 px。可达 90%（气口 1）或 80%（气口 2）→ 取 90%。
+    #   24 px：87.5% 要求印身 21 px，21 是奇数。可达 83.3%（气口 2）或 91.7%（气口 1）
+    #          → 取 83.3%，因为 91.7% 那版目视判「印几乎撑满、取景与别档不一样」。
+    # 区间上下界就是这两个不可命中值，不是拍的。
+    seal = (x1 - x0 + 1) / size
+    assert 0.83 <= seal <= 0.90, f"{size} px 印身占整格 {seal:.1%}，应落在 83%~90%"
+
+    # 约束 7：朱色必须占印面的多数，否则「实心朱底」名不副实（会读成白底红框）。
+    area = (x1 - x0 + 1) * (y1 - y0 + 1)
+    red = sum(1 for y in range(y0, y1 + 1) for x in range(x0, x1 + 1) if grid[y][x] == "#")
+    ratio = red / area
+    assert 0.55 <= ratio <= 0.85, f"{size} px 朱色占印面 {ratio:.1%}，应落在 55%~85%"
+
+    # 约束 8：「山」的骨架，同时钉住「三竖高度各不相同」。
+    #
+    # 逐行数刻痕段数，序列必须**恰好**是 `[1, 2, 3, 1]`：中竖先单独出头（1 段）、
+    # 右竖加入（2 段）、左竖加入（3 段）、底横通宽（1 段）。这一条一次挡掉四种失效：
+    #   `[1, 3, 1]`  → 左右两竖等高的对称「山」，六格第一读全是柱状图 / Ш（本轮实测）
+    #   `[3]`        → 三条平行竖槽，读作柱状图 / 均衡器（v2 的根因）
+    #   `[1]`        → 三条平行横槽，读作汉堡菜单
+    #   出现 `2` 却无 `3` 或段数来回跳 → 点阵 / 散碎笔画
+    profile = [len(_runs([c == "o" for c in grid[y]])) for y in range(size)]
+    seen = [n for n in profile if n]
+    collapsed = [n for i, n in enumerate(seen) if i == 0 or n != seen[i - 1]]
+    assert collapsed == [1, 2, 3, 1], (
+        f"{size} px 刻痕逐行段数序列是 {collapsed}，应为 [1, 2, 3, 1]"
+        "（中竖 → 加右竖 → 加左竖 → 底横）"
+    )
+    # 三竖的高度必须两两不等，且中竖最高。上面那条序列已经隐含了它，
+    # 这里直接量出来当断言，好让失败信息里带着三个具体高度而不是一串段数。
+    widest = next(y for y in range(size) if profile[y] == 3)
+    columns = [x for x, _ in _runs_with_start([c == "o" for c in grid[widest]])]
+    heights = [
+        sum(1 for y in range(size) if grid[y][x] == "o") for x in columns
     ]
-    assert not asymmetric, (
-        f"{size} px 不满足主对角线镜像对称，首个不对称像素 {asymmetric[0]}"
+    left, middle, right = heights
+    assert middle > right > left, (
+        f"{size} px 三竖高度 左={left} 中={middle} 右={right}，"
+        "必须中竖最高、右竖次高、左竖最短——等高会读成柱状图"
     )
-    # 约束 1：任何一段连续笔画都不小于 2 px，逐行与逐列各查一遍。
-    for y, row in enumerate(grid):
-        widths = _runs(row)
-        assert all(w >= 2 for w in widths), f"{size} px 第 {y} 行出现 <2 px 笔画：{widths}"
-    for x in range(size):
-        widths = _runs([grid[y][x] for y in range(size)])
-        assert all(w >= 2 for w in widths), f"{size} px 第 {x} 列出现 <2 px 笔画：{widths}"
-
-    spec = layout(size)
-    thick, o0, o1 = spec["thick"], spec["outer0"], spec["outer1"]
-    i0, i1 = spec["inner0"], spec["inner1"]
-
-    # 四边**与斜边**逐行逐列等宽。凡不是「整条实心」的行/列，其每一段都必须等于框厚。
-    # 只探一行量不出斜边偏粗——v2 的「右边明显比左边厚」就是这样漏过去的。
-    for y, row in enumerate(grid):
-        widths = _runs(row)
-        if len(widths) == 1:
-            continue
-        assert all(w == thick for w in widths), (
-            f"{size} px 第 {y} 行段宽 {widths} 不等于框厚 {thick}"
+    # 三竖露出底横以上的高度比必须跨档一致（16 px 定稿是 8 : 6 : 4 = 1 : 0.75 : 0.5）。
+    # 不一致时六档会读成字重不同的两种东西，与 v2 六档「粗框 / 细描边交替」同类。
+    # 容差 ±0.09 是取整不可避免的余量（例如 20 px 的 7/9 = 0.78 对目标 0.75）。
+    base_thick = sum(1 for y in range(widest + 1, size) if profile[y] == 1)
+    exposed = [h - base_thick for h in heights]
+    for label, actual, want in (
+        ("右", exposed[2] / exposed[1], 0.75),
+        ("左", exposed[0] / exposed[1], 0.50),
+    ):
+        assert abs(actual - want) <= 0.09, (
+            f"{size} px {label}竖露出底横以上 {exposed} 之比为 {actual:.2f}，"
+            f"应约等于 {want}（16 px 定稿 8 : 6 : 4 的同比）"
         )
-    for x in range(size):
-        widths = _runs([grid[y][x] for y in range(size)])
-        if len(widths) == 1:
-            continue
-        assert all(w == thick for w in widths), (
-            f"{size} px 第 {x} 列段宽 {widths} 不等于框厚 {thick}"
-        )
+    # 底横必须真的通宽（顶满内区），否则读作「凵」而不是「山」。
+    last = base_row
+    base = _runs([c == "o" for c in grid[last]])[0]
+    inner = x1 - x0 + 1 - 2 * borders["左"]
+    assert base == inner, f"{size} px 底横宽 {base}，内区宽 {inner}，底横没有通宽"
 
-    # 切口两端必须精确落在下框与右框的中点上，否则切角比例会随档位漂移。
-    assert spec["span"] % 2 == 0, f"{size} px 的 span {spec['span']} 不是偶数"
-    assert spec["fold"] * 2 == spec["span"], (
-        f"{size} px 切角 {spec['fold']} 不是 span {spec['span']} 的一半"
-    )
 
-    # 全部墨色像素必须四连通，即整条轮廓是一笔闭合的、没有游离像素或断口。
-    # 这一条把「斜边与下框之间有缝、斜边悬浮」这类目视指控变成可判定的：
-    # 放大 16 倍看台阶时人眼极容易把 45 度阶梯误读成断开，字节不会。
-    ink = [(x, y) for y in range(size) for x in range(size) if grid[y][x]]
-    reached = {ink[0]}
-    frontier = [ink[0]]
-    while frontier:
-        x, y = frontier.pop()
-        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if (
-                0 <= nx < size
-                and 0 <= ny < size
-                and grid[ny][nx]
-                and (nx, ny) not in reached
-            ):
-                reached.add((nx, ny))
-                frontier.append((nx, ny))
-    assert len(reached) == len(ink), (
-        f"{size} px 轮廓不是单一连通域：{len(ink)} 个墨色像素里只有 {len(reached)} 个连通"
-    )
+def assert_scales_exactly(size: int) -> None:
+    """16 的整数倍档位必须与 16 px 定稿**逐像素**一致，比例零漂移。
 
-    # 约束 1 用在斜带上：斜带**垂直于笔画**的宽度也必须 >= 2 px。
-    # 单看每行段长会漏掉这条——段长 2 px 的 45 度斜带垂直宽度只有 1.41 px。
-    perpendicular = spec["slant"] / math.sqrt(2)
-    assert perpendicular >= 2, (
-        f"{size} px 斜带垂直宽度 {perpendicular:.2f} px < 2 px（框厚 {thick}）"
-    )
-
-    # 空腔不能被框线与切角吃干净：v2 的 16 px 就是这样读成实心块的。
-    cavity = sum(
-        1
-        for y in range(i0, i1 + 1)
-        for x in range(i0, i1 + 1)
-        if not grid[y][x]
-    )
-    ratio = cavity / (spec["span"] ** 2)
-    # 下限 25%：16 px 是最紧的一档（27.6%），因为 3 px 框在 14 px 的 span 上占 21.4%。
-    assert ratio >= 0.25, f"{size} px 框内空腔只占 span² 的 {ratio:.1%}，低于 25%"
+    这是构造保证（整数倍复制轴对齐矩形），但仍要复核：一旦有人把某档改成
+    「缩放母图」，比例就会漂移，而那正是 v2 六档读作两种东西的成因。
+    """
+    if size % 16 or size in MASTERS:
+        return
+    factor = size // 16
+    base, actual = parse_master(MASTER_16), master_rows(size)
+    for y in range(size):
+        for x in range(size):
+            expected = base[y // factor][x // factor]
+            assert actual[y][x] == expected, (
+                f"{size} px 在 ({x},{y}) 与 16 px 定稿的第 "
+                f"({x // factor},{y // factor}) 格不符：{actual[y][x]} != {expected}"
+            )
 
 
 def write_ico(path: pathlib.Path, layers: list[tuple[int, bytes]]) -> None:
@@ -406,7 +584,15 @@ def main() -> None:
     # 先把所有需要过目的档位跑一遍断言，别等写盘之后才发现某一档不合格。
     for size in AUDIT_SIZES:
         assert_uniform(render(size), size)
-    report(f"audited sizes={list(AUDIT_SIZES)}")
+        assert_scales_exactly(size)
+    report(f"audited sizes={list(AUDIT_SIZES)} hand-tuned={sorted(MASTERS)}")
+    report(
+        "contrast 朱砂/浅托盘={:.2f}:1 朱砂/深托盘={:.2f}:1 刻痕/朱砂={:.2f}:1".format(
+            _contrast(CINNABAR[:3], (243, 243, 243)),
+            _contrast(CINNABAR[:3], (32, 32, 32)),
+            _contrast(CREAM[:3], CINNABAR[:3]),
+        )
+    )
 
     if not args.ico_only:
         for size, name in ((SOURCE_SIZE, "source-1024.png"), (TRAY_SIZE, "tray.png")):

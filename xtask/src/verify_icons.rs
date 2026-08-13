@@ -49,16 +49,23 @@ const SOURCE_SIDE: u32 = 1024;
 const REQUIRED_ICO_SIZES: [u32; 6] = [16, 24, 32, 48, 64, 256];
 /// ICO 第一层必须是这个尺寸——开发工具与任务栏取的是第一层。
 const ICO_FIRST_SIZE: u32 = 32;
-/// 联系表输出路径。
+/// 六档联系表输出路径。
 const CONTACT_SHEET: &str = "docs/reports/icon-contact-sheet.png";
+/// 小尺寸专用表输出路径。见 `render_sheet` 上方那段「为什么要两张表」。
+const SMALL_SHEET: &str = "docs/reports/icon-small-sizes.png";
 /// 联系表里每格的边长。取 256 是为了让 256 px 那一层能**按原尺寸单独呈现**，
 /// 而不是被塞进一个更小的格子里降采样——那样看到的就不是它本来的字节了。
 const CELL: u32 = 256;
-/// 联系表格间距。
-const GUTTER: u32 = 8;
+/// 小尺寸表每格的边长。取 240 是为了让整张表宽 720、高 480，
+/// **落在任何看图管道都不会再降采样的量级内**——见 `render_sheet` 的说明。
+const SMALL_CELL: u32 = 240;
 /// 联系表要展示的尺寸。**六档齐备**，与 `REQUIRED_ICO_SIZES` 一致：
 /// 少一档就等于有一档从没被人眼看过，而 16 px 恰恰是最容易失效的那一档。
 const SHEET_SIZES: [u32; 6] = [16, 24, 32, 48, 64, 256];
+/// 小尺寸表要展示的尺寸：造型被推翻过的四轮，问题全部只出在这三档。
+const SMALL_SHEET_SIZES: [u32; 3] = [16, 24, 32];
+/// 两块底板。取 Windows 浅色与深色托盘的实际底色。
+const BACKDROPS: [[u8; 3]; 2] = [[243, 243, 243], [32, 32, 32]];
 /// 小尺寸层允许的最大颜色数（含全透明）。
 ///
 /// 这条断言守的是一个**已实际发生过**的失效：`cargo tauri icon` 生成 ICO 的方式是把
@@ -290,36 +297,70 @@ fn write_png(path: &Path, image: &Rgba) -> Result<()> {
     Ok(())
 }
 
-/// 渲染六档联系表：一行浅色底板、一行深色底板，列为 `SHEET_SIZES`。
+/// 渲染联系表：一行浅色底板、一行深色底板，列为 `sizes`。
 ///
 /// 每格的像素来自 **ICO 里同尺寸的那一层**，即 Windows 真正会取的那份字节。
-/// 256 px 那一列放大倍率为 1，即按原尺寸单独呈现。
-fn render_contact_sheet(layers: &[(u32, Rgba)]) -> Rgba {
-    const BACKDROPS: [[u8; 3]; 2] = [[243, 243, 243], [32, 32, 32]];
-    let cols = SHEET_SIZES.len() as u32;
-    let rows = BACKDROPS.len() as u32;
-    let width = GUTTER + cols * (CELL + GUTTER);
-    let height = GUTTER + rows * (CELL + GUTTER);
+///
+/// # 为什么每一行是一整片连续底色，而不是带间隙的格子
+///
+/// 上一版在格与格之间铺了中灰间隙。整数倍率放大后各档的绘制区大小不一
+/// （16 px 铺进 256 的格子是 16 倍恰好填满，24 px 只能取 10 倍得到 240，两侧各留 8 px），
+/// 于是**有的格子四周有一圈底色、有的格子直接顶到中灰**——同一行里各格呈现的底色
+/// 面积因此不同，人眼读成「各格明度不一致」，而字节层其实完全相同。
+/// 这是一次真实的误判来源：评审据此判定「对比图生成流程有 bug，无法公平比较」。
+/// 去掉间隙后，一行就是一整片均匀底色，每个图标的周围环境完全相同。
+/// `probe_backdrops` 逐格取样复核这一点，把「底色一致」变成可判定的断言而不是承诺。
+///
+/// # 为什么要两张表
+///
+/// 六档表为了让 256 px 那层按原尺寸呈现，格边长必须是 256，整张表宽约 1.5 K。
+/// 看图管道一旦把它整体缩到 1 K 以内，缩放本身会在红白边界混出粉雾，
+/// 而**造型被推翻的四轮，问题全部只出在 16 / 24 / 32 这三档**。
+/// 所以另出一张只含这三档、尺寸 720×480 的小表：它小到不会被任何管道再缩一次，
+/// 看到的就是字节本身。
+fn render_sheet(layers: &[(u32, Rgba)], sizes: &[u32], cell: u32) -> Rgba {
+    let width = sizes.len() as u32 * cell;
+    let height = BACKDROPS.len() as u32 * cell;
     let mut sheet = Rgba {
         width,
         height,
         pixels: vec![0; (width * height * 4) as usize],
     };
-    // 表底铺中灰，让两块底板的边界看得出来。
-    for chunk in sheet.pixels.chunks_exact_mut(4) {
-        chunk.copy_from_slice(&[128, 128, 128, 255]);
-    }
     for (ri, bg) in BACKDROPS.iter().enumerate() {
-        for (ci, size) in SHEET_SIZES.iter().enumerate() {
+        let band = ri as u32 * cell;
+        for y in band..band + cell {
+            for x in 0..width {
+                let i = ((y * width + x) * 4) as usize;
+                sheet.pixels[i..i + 4].copy_from_slice(&[bg[0], bg[1], bg[2], 255]);
+            }
+        }
+        for (ci, size) in sizes.iter().enumerate() {
             let Some((_, layer)) = layers.iter().find(|(s, _)| s == size) else {
                 continue;
             };
-            let ox = GUTTER + ci as u32 * (CELL + GUTTER);
-            let oy = GUTTER + ri as u32 * (CELL + GUTTER);
-            blit_magnified(&mut sheet, layer, ox, oy, CELL, *bg);
+            blit_magnified(&mut sheet, layer, ci as u32 * cell, band, cell, *bg);
         }
     }
     sheet
+}
+
+/// 逐格取样每格左上角的像素，用来复核同一行各格的基准底色**逐字节相同**。
+///
+/// 取左上角是有依据的：图标四角必须透明（另有断言守着），所以该位置合成出来的
+/// 一定是底板色本身。凡取样值与该行底板不等，就说明表里出现了第二种底色——
+/// 那正是让「各档发色」无法公平比较的那个缺陷。
+fn probe_backdrops(sheet: &Rgba, sizes: &[u32], cell: u32) -> Vec<(usize, u32, [u8; 4])> {
+    let mut odd = Vec::new();
+    for (ri, bg) in BACKDROPS.iter().enumerate() {
+        let expected = [bg[0], bg[1], bg[2], 255];
+        for (ci, size) in sizes.iter().enumerate() {
+            let sample = sheet.pixel(ci as u32 * cell, ri as u32 * cell);
+            if sample != expected {
+                odd.push((ri, *size, sample));
+            }
+        }
+    }
+    odd
 }
 
 pub(crate) fn run() -> Result<()> {
@@ -439,16 +480,30 @@ pub(crate) fn run() -> Result<()> {
         tray_corners.map(|px| px[3])
     ));
 
-    // --- 4. 写六档联系表 ---
+    // --- 4. 写联系表 ---
     // 无论断言结果如何都写：图标不合格时，最需要的恰恰是那张能看出哪儿不对的表。
-    let sheet_path = root.join(CONTACT_SHEET);
-    let sheet = render_contact_sheet(&layers);
-    write_png(&sheet_path, &sheet)?;
-    emit(&format!(
-        "  联系表   {CONTACT_SHEET}  {}×{}  列 {:?}  行 [浅色 #F3F3F3, 深色 #202020]",
-        sheet.width, sheet.height, SHEET_SIZES
-    ));
-    emit("  ↑ 这张表必须由人亲眼看：字节断言证不了「16 px 下还认得出是什么」。");
+    for (path, sizes, cell) in [
+        (CONTACT_SHEET, SHEET_SIZES.as_slice(), CELL),
+        (SMALL_SHEET, SMALL_SHEET_SIZES.as_slice(), SMALL_CELL),
+    ] {
+        let sheet = render_sheet(&layers, sizes, cell);
+        write_png(&root.join(path), &sheet)?;
+        let odd = probe_backdrops(&sheet, sizes, cell);
+        failures.check(odd.is_empty(), path, || {
+            format!(
+                "同一行各格的基准底色必须逐字节相同，否则各档发色无法公平比较，\
+                 但这些格取样到了别的颜色（行序号, 尺寸, 实测像素）：{odd:?}"
+            )
+        });
+        emit(&format!(
+            "  联系表   {path}  {}×{}  列 {sizes:?}  行 [浅色 #F3F3F3, 深色 #202020]  \
+             逐格底色一致 = {}",
+            sheet.width,
+            sheet.height,
+            odd.is_empty()
+        ));
+    }
+    emit("  ↑ 这两张表必须由人亲眼看：字节断言证不了「16 px 下还认得出是什么」。");
 
     failures.into_result()?;
     emit("== 全部通过 ==");
@@ -538,30 +593,75 @@ mod tests {
         );
     }
 
+    /// 一层 4×4、四角透明、中央 2×2 不透明红的假层，用于联系表相关的几条测试。
+    ///
+    /// **四角必须透明**，因为真实图标就是这样（另有断言守着），而 `probe_backdrops`
+    /// 正是依赖这个不变量在格子左上角取到纯底板色。夹具违反不变量会让那条测试假红。
+    fn stub_layer() -> Rgba {
+        let clear = [0u8, 0, 0, 0];
+        let red = [255u8, 0, 0, 255];
+        let rows = [
+            [clear, clear, clear, clear],
+            [clear, red, red, clear],
+            [clear, red, red, clear],
+            [clear, clear, clear, clear],
+        ];
+        Rgba {
+            width: 4,
+            height: 4,
+            pixels: rows.iter().flatten().flatten().copied().collect(),
+        }
+    }
+
     /// 联系表必须真的把每格画出来：放大后的格子不能全是底板色，
     /// 否则一张「看起来生成成功」的空白表会让人眼验收退化成形式。
     #[test]
     fn contact_sheet_cells_contain_icon_pixels_not_just_backdrop() {
-        // 一层 2×2、左上角不透明红、其余透明的假 16 px 层。
-        let layer = Rgba {
-            width: 2,
-            height: 2,
-            pixels: vec![
-                255, 0, 0, 255, // 左上：红
-                0, 0, 0, 0, // 右上：透明
-                0, 0, 0, 0, // 左下：透明
-                0, 0, 0, 0, // 右下：透明
-            ],
-        };
-        let sheet = render_contact_sheet(&[(16, layer)]);
-        // 第一行第一列格子的左上像素应当是红，而不是浅色底板。
-        assert_eq!(sheet.pixel(GUTTER, GUTTER), [255, 0, 0, 255]);
-        // 同格右上区域是透明源像素，应当合成出浅色底板。
-        assert_eq!(sheet.pixel(GUTTER + CELL - 1, GUTTER), [243, 243, 243, 255]);
+        let sheet = render_sheet(&[(16, stub_layer())], &[16], CELL);
+        // 4×4 的源铺进 256 的格子是 64 倍，于是中央 2×2 落在 [64, 192) 区间。
+        assert_eq!(sheet.pixel(CELL / 2, CELL / 2), [255, 0, 0, 255]);
+        // 角落是透明源像素，应当合成出浅色底板。
+        assert_eq!(sheet.pixel(0, 0), [243, 243, 243, 255]);
         // 第二行同一位置的底板是深色。
-        assert_eq!(
-            sheet.pixel(GUTTER + CELL - 1, GUTTER + CELL + GUTTER),
-            [32, 32, 32, 255]
+        assert_eq!(sheet.pixel(0, CELL), [32, 32, 32, 255]);
+    }
+
+    /// 同一行各格的基准底色必须逐字节相同，否则各档发色无法公平比较。
+    ///
+    /// 这条守的是一次**真实误判**：上一版在格间铺中灰，而整数倍率让各档绘制区
+    /// 大小不一，于是有的格子四周多一圈底色、有的直接顶到中灰，人眼读成
+    /// 「各格明度不一致」并据此判定生成流程有 bug。取样器必须能抓住这种不一致，
+    /// 所以这里先证它对合格的表不误报，再手工污染一格证它会变红。
+    #[test]
+    fn backdrop_probe_catches_a_single_polluted_cell() {
+        let layers = [(16, stub_layer()), (24, stub_layer())];
+        let mut sheet = render_sheet(&layers, &[16, 24], CELL);
+        assert!(
+            probe_backdrops(&sheet, &[16, 24], CELL).is_empty(),
+            "连续底色的表不该被判为不一致"
+        );
+
+        // 把第二格左上角改成差 4 级的近似底色：肉眼几乎看不出，取样器必须看出来。
+        let i = ((CELL) * 4) as usize;
+        sheet.pixels[i..i + 4].copy_from_slice(&[239, 239, 239, 255]);
+        let odd = probe_backdrops(&sheet, &[16, 24], CELL);
+        assert_eq!(odd.len(), 1, "只污染了一格：{odd:?}");
+        assert_eq!(odd[0].1, 24, "被污染的是 24 px 那一列：{odd:?}");
+    }
+
+    /// 小尺寸表必须小到不会被看图管道再缩一次，否则缩放会在红白边界混出粉雾，
+    /// 而人眼验收看到的就不再是字节本身。720×480 是这条的具体形态。
+    #[test]
+    fn small_sheet_stays_within_native_viewing_budget() {
+        let layers: Vec<(u32, Rgba)> = SMALL_SHEET_SIZES
+            .iter()
+            .map(|s| (*s, stub_layer()))
+            .collect();
+        let sheet = render_sheet(&layers, SMALL_SHEET_SIZES.as_slice(), SMALL_CELL);
+        assert_eq!((sheet.width, sheet.height), (720, 480));
+        assert!(
+            SMALL_SHEET_SIZES.iter().all(|s| SHEET_SIZES.contains(s)),
+            "小表的每一档都必须也是六档表里的一档，否则两张表在验收同一件事时会不一致"
         );
     }
 
