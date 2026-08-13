@@ -6,9 +6,13 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use yunjian_core::{RhymeBook, RhymeTone, ToneFilter};
+use yunjian_recite::{ClozeOptions, FsrsGrade, MaskStage, PracticeMode};
 
 /// `yunjian` 的顶层命令。
-#[derive(Debug, Clone, PartialEq, Eq, Parser)]
+///
+/// 不派生 `Eq`：`recite --ratio` 是一个 `f32`，而 `f32` 没有 `Eq`。测试里的
+/// `assert_eq!` 与 `matches!` 只需要 `PartialEq`。
+#[derive(Debug, Clone, PartialEq, Parser)]
 #[command(
     name = "yunjian",
     version,
@@ -44,7 +48,9 @@ pub struct Global {
 }
 
 /// 子命令。
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+///
+/// 不派生 `Eq`，理由同 [`Cli`]。
+#[derive(Debug, Clone, PartialEq, Subcommand)]
 pub enum Command {
     /// 检索正文或残句。
     Search {
@@ -90,11 +96,19 @@ pub enum Command {
         #[arg(long, value_name = "TONE", value_enum, default_value_t = Tone::Any)]
         tone: Tone,
     },
+    /// 背诵练习与复习排程。作答从 stdin 读入。
+    Recite(ReciteArgs),
     /// 语料库维护。
     Corpus {
         /// 具体动作。
         #[command(subcommand)]
         action: CorpusAction,
+    },
+    /// 统一维护语料与随包赏析种子。
+    Assets {
+        /// 具体动作。
+        #[command(subcommand)]
+        action: AssetsAction,
     },
     /// 语音模型维护。权重不随安装包分发，按需下载并逐个校验许可与摘要。
     Models {
@@ -111,6 +125,135 @@ pub enum Command {
     /// 承载 MCP 服务器。默认 stdio。
     #[cfg(feature = "mcp")]
     Mcp(McpArgs),
+}
+
+/// `recite` 的参数。
+///
+/// 一个位置参数与两个子命令共存，靠 `args_conflicts_with_subcommands` 与
+/// `subcommand_negates_reqs` 消歧：`yunjian recite due` 走子命令，
+/// `yunjian recite <poem-id>` 走位置参数。
+#[derive(Debug, Clone, PartialEq, Args)]
+#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+pub struct ReciteArgs {
+    /// 排程查询动作；省略即按作品稳定标识做一轮练习。
+    #[command(subcommand)]
+    pub action: Option<ReciteAction>,
+    /// 作品的稳定标识（`stable_id`）。
+    #[arg(required = true, value_name = "POEM_ID")]
+    pub poem_id: Option<String>,
+    /// 练习形态。`voice` 在特性或模型缺失时退化为 `cloze`，退出码仍为 0。
+    #[arg(long, value_name = "MODE", value_enum, default_value_t = Mode::Cloze)]
+    pub mode: Mode,
+    /// 挖空比例，取值 (0, 1]。只对 `--mode cloze` 有意义。
+    #[arg(long, value_name = "RATIO", default_value_t = ClozeOptions::DEFAULT_RATIO, value_parser = parse_ratio)]
+    pub ratio: f32,
+    /// 挖空随机种子。省略则按当前时间取一个，并在输出里回显以便复现。
+    #[arg(long, value_name = "N")]
+    pub seed: Option<u64>,
+    /// 遮挡的行数。只对 `--mode masked` 有意义；超出句数时按句数截断。
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub masked_lines: usize,
+    /// 直接指定本次的 FSRS 等级，压过打字评分映射。
+    ///
+    /// 语音路径按裁决不做自动评级，退化成打字练习后若要沿用「用户自选等级」，用这个。
+    #[arg(long, value_name = "GRADE", value_enum)]
+    pub grade: Option<Grade>,
+}
+
+/// `recite` 的排程查询动作。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
+pub enum ReciteAction {
+    // 刻意不打开语料库：复习状态是用户自己的可写数据，按 `stable_id` 存取；为了给队列补上
+    // 题目而去开一份首启派生实测 571.8 s 的语料，会把一条查询变成长任务。这条理由是给维护者
+    // 的，因此用 `//` 而不是 `///`——写进文档注释就会被 clap 原样印到 `--help` 里。
+    /// 列出今天到期的复习项。不读取语料库，缺语料时同样可查。
+    Due {
+        /// 连尚未到期的一并列出，即整份排程。
+        #[arg(long)]
+        all: bool,
+    },
+    /// 报告排程规模、等级分布与本机生效的评级阈值。
+    Stats,
+}
+
+/// 练习形态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum Mode {
+    /// 挖空：按 `--ratio` 挖掉若干字，优先挖韵脚与实词。
+    Cloze,
+    /// 首字提示：每句只留第一个字。
+    FirstChar,
+    /// 遮挡：按 `--masked-lines` 从上往下逐句遮住。
+    Masked,
+    /// 语音：朗读并识别。不可用时退化为挖空。
+    Voice,
+}
+
+impl Mode {
+    /// 写进载荷的稳定标识，与命令行取值逐字一致。
+    #[must_use]
+    pub const fn as_key(self) -> &'static str {
+        match self {
+            Self::Cloze => "cloze",
+            Self::FirstChar => "first-char",
+            Self::Masked => "masked",
+            Self::Voice => "voice",
+        }
+    }
+
+    /// 组出内核认识的练习形态。`Voice` 没有对应值，退化由调用方决定，故这里返回 `None`。
+    #[must_use]
+    pub fn practice(self, ratio: f32, seed: u64, masked_lines: usize) -> Option<PracticeMode> {
+        match self {
+            Self::Cloze => Some(PracticeMode::Cloze(ClozeOptions::new(ratio, seed))),
+            Self::FirstChar => Some(PracticeMode::FirstChar),
+            Self::Masked => Some(PracticeMode::Masked(MaskStage::new(masked_lines))),
+            Self::Voice => None,
+        }
+    }
+}
+
+/// 用户直接指定的 FSRS 等级。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "lower")]
+pub enum Grade {
+    /// 未能回忆。
+    Again,
+    /// 回忆困难。
+    Hard,
+    /// 正常回忆。
+    Good,
+    /// 轻松且准确。
+    Easy,
+}
+
+impl From<Grade> for FsrsGrade {
+    fn from(grade: Grade) -> Self {
+        match grade {
+            Grade::Again => Self::Again,
+            Grade::Hard => Self::Hard,
+            Grade::Good => Self::Good,
+            Grade::Easy => Self::Easy,
+        }
+    }
+}
+
+/// 解析并校验挖空比例。
+///
+/// 内核的 [`ClozeOptions::new`] 会把越界值静默夹到 `[0, 1]`，那是库该有的健壮性；但把
+/// 用户写的 `--ratio 5` 悄悄当成「全挖」是把一次输入错误执行成了另一件事，所以命令行
+/// 这一层直接拒绝。
+fn parse_ratio(raw: &str) -> Result<f32, String> {
+    let value: f32 = raw
+        .parse()
+        .map_err(|_| format!("挖空比例必须是小数，实际收到 `{raw}`"))?;
+    if !value.is_finite() || value <= 0.0 || value > 1.0 {
+        return Err(format!(
+            "挖空比例必须落在 (0, 1] 区间内，实际收到 `{raw}`；0.3 表示挖掉三成字"
+        ));
+    }
+    Ok(value)
 }
 
 /// `mcp` 的参数。
@@ -152,12 +295,27 @@ impl Command {
             Self::Show { .. } => "show",
             Self::Author { .. } => "author",
             Self::Rhyme { .. } => "rhyme",
+            Self::Recite(ReciteArgs { action: None, .. }) => "recite",
+            Self::Recite(ReciteArgs {
+                action: Some(ReciteAction::Due { .. }),
+                ..
+            }) => "recite.due",
+            Self::Recite(ReciteArgs {
+                action: Some(ReciteAction::Stats),
+                ..
+            }) => "recite.stats",
             Self::Corpus {
                 action: CorpusAction::Status,
             } => "corpus.status",
             Self::Corpus {
                 action: CorpusAction::Fetch,
             } => "corpus.fetch",
+            Self::Assets {
+                action: AssetsAction::Status,
+            } => "assets.status",
+            Self::Assets {
+                action: AssetsAction::Fetch,
+            } => "assets.fetch",
             Self::Models { action } => action.envelope_name(),
             Self::Ai { action } => action.envelope_name(),
             #[cfg(feature = "mcp")]
@@ -271,6 +429,15 @@ pub enum CorpusAction {
     Fetch,
 }
 
+/// `assets` 的动作。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
+pub enum AssetsAction {
+    /// 报告语料与随包赏析种子的版本、记录数和失效数。
+    Status,
+    /// 下载并独立校验两件工件，再以单事务导入赏析种子。
+    Fetch,
+}
+
 /// 日志级别。取值与 `yunjian-core` 的日志级别表逐字一致。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "lower")]
@@ -360,7 +527,9 @@ impl From<Tone> for ToneFilter {
 
 #[cfg(test)]
 mod tests {
-    use super::{AiAction, AiCacheAction, Book, Cli, Command, CorpusAction, LogLevel, Tone};
+    use super::{
+        AiAction, AiCacheAction, AssetsAction, Book, Cli, Command, CorpusAction, LogLevel, Tone,
+    };
     #[cfg(feature = "mcp")]
     use super::{McpAction, McpArgs};
     use clap::{CommandFactory, Parser};
@@ -457,6 +626,26 @@ mod tests {
             }
         ));
         Cli::try_parse_from(["yunjian", "corpus", "purge"]).expect_err("未定义的动作必须报错");
+    }
+
+    #[test]
+    fn assets_has_exactly_status_and_fetch() {
+        assert!(matches!(
+            Cli::try_parse_from(["yunjian", "assets", "status"])
+                .expect("解析 assets status")
+                .command,
+            Command::Assets {
+                action: AssetsAction::Status
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["yunjian", "assets", "fetch"])
+                .expect("解析 assets fetch")
+                .command,
+            Command::Assets {
+                action: AssetsAction::Fetch
+            }
+        ));
     }
 
     #[test]
@@ -574,6 +763,14 @@ mod tests {
             .name(),
             Command::Corpus {
                 action: CorpusAction::Fetch,
+            }
+            .name(),
+            Command::Assets {
+                action: AssetsAction::Status,
+            }
+            .name(),
+            Command::Assets {
+                action: AssetsAction::Fetch,
             }
             .name(),
             parse_command(&["yunjian", "ai", "cache", "purge", "--all"]).name(),

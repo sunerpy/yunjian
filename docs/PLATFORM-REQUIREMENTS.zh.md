@@ -1,4 +1,4 @@
-简体中文
+简体中文 · [English](readme/PLATFORM-REQUIREMENTS.md)
 
 # 平台要求
 
@@ -190,5 +190,7 @@ Swift 插件因此按 `.playAndRecord` + `.measurement` 激活会话：`.playAnd
 
 ## 相关文档
 
+- [语音](VOICE.zh.md)——模型与许可、破读词表、v1 反馈契约（不评判读音标准）
 - [语音构建](VOICE-BUILD.zh.md)——五平台原生依赖构建、链接方式、GPL-3.0 影响
 - [架构](ARCHITECTURE.zh.md)——分层与移动端逃生通道
+- [第三方许可](../LICENSES.md)——逐资产的许可与署名

@@ -26,6 +26,13 @@ sha2.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
+# 流式识别的事件流走 `yunjian-core::operation`，与语料派生、AI 流式共用同一份取消与
+# 背压语义；自造一个 sink 只会多一套语义。
+yunjian-core = { path = "../yunjian-core" }
+# 偏置一路复用背诵内核里的 `BiasedHyp`，而不是在这里另造一个同名类型：那个类型已经被
+# `crates/yunjian-recite/tests/ui/biased_hyp_cannot_be_scored.rs` 守住「不得进入打字
+# 评分」，复用它等于让那道现成的门禁直接看住生产路径。
+yunjian-recite = { path = "../yunjian-recite" }
 bzip2 = { workspace = true, optional = true }
 rodio = { workspace = true, optional = true }
 sherpa-rs = { workspace = true, optional = true }
@@ -35,6 +42,7 @@ ureq = { workspace = true, optional = true }
 [dev-dependencies]
 hound.workspace = true
 serde_json.workspace = true
+trybuild.workspace = true
 
 [lints]
 workspace = true
@@ -44,6 +52,12 @@ workspace = true
 [[test]]
 name = "capture"
 required-features = ["capture"]
+
+# 双路流式解码的真实推理。默认构建里 `recognize` 的判定层照样完整可测（类型隔离、
+# 卡顿时序、ITN 取值、降级策略），缺的只有「真的跑推理」与 RTF 实测这两件。
+[[test]]
+name = "streaming"
+required-features = ["voice"]
 
 [[example]]
 name = "capture_probe"

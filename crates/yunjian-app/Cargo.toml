@@ -34,6 +34,7 @@ path = "src/main.rs"
 [dependencies]
 tauri = { workspace = true }
 tracing = { workspace = true }
+yunjian-ai = { path = "../yunjian-ai" }
 yunjian-core = { path = "../yunjian-core" }
 
 [build-dependencies]

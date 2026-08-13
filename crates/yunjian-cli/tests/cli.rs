@@ -19,8 +19,13 @@ use assert_cmd::Command;
 use rusqlite::{Connection, params};
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
+use yunjian_ai::{
+    APPRECIATION_TEMPLATE_VERSION, AppreciationCache, DEFAULT_APPRECIATION_CACHE_CAPACITY,
+};
+use yunjian_core::assets::AppreciationSeedManifest;
 
 /// 随包 schema 的路径。跨 crate 只读一个文件，不引入依赖。
 const CORPUS_SCHEMA_PATH: &str = "../yunjian-corpus/schema.sql";
@@ -630,6 +635,145 @@ fn corpus_fetch_opens_the_configured_corpus_and_reports_it_ready() {
     let value = parse_single_json_line(&utf8(&output.stdout));
     assert_eq!(value["command"], "corpus.fetch");
     assert_eq!(value["data"]["derived_ready"], serde_json::json!(true));
+}
+
+#[test]
+fn assets_status_json_reports_corpus_seed_versions_record_count_and_staleness() {
+    let sandbox = Sandbox::new();
+    let app_data = sandbox.dir.join("app");
+    let seed = sandbox.dir.join("appreciations.json");
+    std::fs::write(
+        &seed,
+        serde_json::to_vec_pretty(&serde_json::json!([{
+            "stable_id": ANCHOR,
+            "title": "静夜思",
+            "author": "李白",
+            "anthology_tags": ["唐诗三百首"],
+            "model": "fixture-open-weight",
+            "model_license": "MIT",
+            "provider": "local-weights",
+            "generated_at": 1,
+            "template_version": APPRECIATION_TEMPLATE_VERSION,
+            "grounding_digest": "fixture-grounding",
+            "reviewed": false,
+            "text": "内置赏析"
+        }]))
+        .expect("序列化种子"),
+    )
+    .expect("写种子");
+    let cache = AppreciationCache::open(
+        &app_data,
+        "cli-fixture-v1",
+        DEFAULT_APPRECIATION_CACHE_CAPACITY,
+    )
+    .expect("打开赏析缓存");
+    cache
+        .replace_shipped_seed(
+            &seed,
+            &AppreciationSeedManifest {
+                url: seed.display().to_string(),
+                sha256: "0".repeat(64),
+                template_version: APPRECIATION_TEMPLATE_VERSION.to_owned(),
+                corpus_version: "cli-fixture-v1".to_owned(),
+                record_count: 1,
+            },
+            APPRECIATION_TEMPLATE_VERSION,
+        )
+        .expect("导入种子");
+    Connection::open(cache.path())
+        .expect("打开赏析库")
+        .execute("UPDATE appreciation_shipped SET stale=1", [])
+        .expect("标记 stale");
+
+    let output = sandbox
+        .command()
+        .args(["assets", "status", "--json"])
+        .output()
+        .expect("运行 yunjian assets status");
+
+    assert!(output.status.success(), "{}", utf8(&output.stderr));
+    let value = parse_single_json_line(&utf8(&output.stdout));
+    assert_eq!(value["command"], "assets.status");
+    assert_eq!(value["data"]["corpus_version"], "cli-fixture-v1");
+    assert_eq!(value["data"]["seed_corpus_version"], "cli-fixture-v1");
+    assert_eq!(
+        value["data"]["seed_template_version"],
+        APPRECIATION_TEMPLATE_VERSION
+    );
+    assert_eq!(value["data"]["record_count"], 1);
+    assert_eq!(value["data"]["stale_count"], 1);
+}
+
+#[test]
+fn corpus_fetch_imports_a_nonempty_seed_and_is_idempotent() {
+    let sandbox = Sandbox::new();
+    let seed = sandbox.dir.join("release-appreciations.json");
+    let seed_bytes = serde_json::to_vec_pretty(&serde_json::json!([{
+        "stable_id": ANCHOR,
+        "title": "静夜思",
+        "author": "李白",
+        "anthology_tags": ["唐诗三百首"],
+        "model": "fixture-open-weight",
+        "model_license": "MIT",
+        "provider": "local-weights",
+        "generated_at": 1,
+        "template_version": APPRECIATION_TEMPLATE_VERSION,
+        "grounding_digest": "fixture-grounding",
+        "reviewed": false,
+        "text": "内置赏析"
+    }]))
+    .expect("序列化种子");
+    std::fs::write(&seed, &seed_bytes).expect("写种子");
+    let manifest = sandbox.dir.join("assets_manifest.json");
+    std::fs::write(
+        &manifest,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "corpus": {
+                "url": sandbox.dir.join("unused-corpus.db.gz").display().to_string(),
+                "sha256": "0".repeat(64),
+                "corpus_version": "cli-fixture-v1",
+                "schema_version": yunjian_core::SCHEMA_VERSION
+            },
+            "appreciation_seed": {
+                "url": seed.display().to_string(),
+                "sha256": Sha256::digest(&seed_bytes)
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>(),
+                "template_version": APPRECIATION_TEMPLATE_VERSION,
+                "corpus_version": "cli-fixture-v1",
+                "record_count": 1
+            }
+        }))
+        .expect("序列化资产清单"),
+    )
+    .expect("写资产清单");
+
+    for _ in 0..2 {
+        let output = sandbox
+            .command()
+            .env("YUNJIAN_ASSETS_MANIFEST", &manifest)
+            .args(["corpus", "fetch", "--json"])
+            .output()
+            .expect("运行统一 corpus fetch");
+        assert!(output.status.success(), "{}", utf8(&output.stderr));
+    }
+
+    let cache = AppreciationCache::open(
+        sandbox.dir.join("app"),
+        "cli-fixture-v1",
+        DEFAULT_APPRECIATION_CACHE_CAPACITY,
+    )
+    .expect("打开导入后的赏析缓存");
+    assert_eq!(cache.counts().expect("统计随包赏析").shipped, 1);
+    assert_eq!(
+        cache
+            .shipped_status()
+            .expect("读取种子状态")
+            .expect("种子已导入")
+            .record_count,
+        1
+    );
 }
 
 #[test]

@@ -182,6 +182,8 @@ pub struct VoiceConfig {
     pub allow_download: bool,
     /// 朗读节奏。
     pub prosody: VoiceProsodyConfig,
+    /// 跟读会话的节奏连贯度参数。
+    pub session: VoiceSessionConfig,
 }
 
 impl Default for VoiceConfig {
@@ -192,6 +194,7 @@ impl Default for VoiceConfig {
             asr_model: None,
             allow_download: true,
             prosody: VoiceProsodyConfig::default(),
+            session: VoiceSessionConfig::default(),
         }
     }
 }
@@ -216,6 +219,40 @@ impl Default for VoiceProsodyConfig {
         Self {
             foot_pause_ms: 120,
             line_pause_ms: 400,
+        }
+    }
+}
+
+/// `[voice.session]`
+///
+/// 跟读会话「节奏连贯度」的全部可调量。**这个指标只由三项信号算出**——语音活动段起始
+/// 间隔的方差、长停顿计数、总时长与示范音期望时长之比——因为识别器只暴露 token 的 start
+/// 时间而没有 stop（sherpa-onnx #985），强制对齐上游明确不做（#3536），且 77% 的文言字
+/// 错率让任何基于转写的量都不可用。它**不是**读音评分：本项目不做、也不宣称做声韵或调型
+/// 判定。三个 `*_tolerance` 是各项的归一尺度，值越大越宽容。
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct VoiceSessionConfig {
+    /// 计入「一次长停顿」的最短静音时长，毫秒。
+    pub long_pause_ms: u32,
+    /// 起始间隔方差的归一尺度，毫秒平方。方差等于此值时该项得 0.5。
+    pub gap_variance_scale_ms2: f64,
+    /// 长停顿的归一尺度，次。长停顿次数等于此值时该项得 0.5。
+    pub long_pause_tolerance: f64,
+    /// 时长比偏离 1 的归一尺度。偏离等于此值时该项得 0.5。
+    pub duration_ratio_tolerance: f64,
+    /// 时长比落在 `1 ± 此值` 内即判为「与示范相近」。
+    pub similar_band: f64,
+}
+
+impl Default for VoiceSessionConfig {
+    fn default() -> Self {
+        Self {
+            long_pause_ms: 700,
+            gap_variance_scale_ms2: 250_000.0,
+            long_pause_tolerance: 2.0,
+            duration_ratio_tolerance: 0.5,
+            similar_band: 0.25,
         }
     }
 }
@@ -470,6 +507,15 @@ easy_accuracy_strict_at_least = {easy_accuracy_strict_at_least:?}
 # 逐音步合成加 Rust 侧插静音得到，这两个值就是那两段静音的时长。
 foot_pause_ms = {voice_foot_pause_ms}
 line_pause_ms = {voice_line_pause_ms}
+
+[voice.session]
+# 跟读会话的「节奏连贯度」参数。这个指标只由三项信号算出：语音活动段起始间隔的方差、
+# 长停顿计数、总时长与示范音期望时长之比。它不评判读音，本项目不做声韵或调型判定。
+long_pause_ms = {session_long_pause_ms}
+gap_variance_scale_ms2 = {session_gap_variance_scale:?}
+long_pause_tolerance = {session_long_pause_tolerance:?}
+duration_ratio_tolerance = {session_duration_ratio_tolerance:?}
+similar_band = {session_similar_band:?}
 "#,
         env_config = ENV_CONFIG,
         env_corpus = ENV_CORPUS_PATH,
@@ -495,6 +541,11 @@ line_pause_ms = {voice_line_pause_ms}
         easy_accuracy_strict_at_least = config.recite.grading.easy_accuracy_strict_at_least,
         voice_foot_pause_ms = config.voice.prosody.foot_pause_ms,
         voice_line_pause_ms = config.voice.prosody.line_pause_ms,
+        session_long_pause_ms = config.voice.session.long_pause_ms,
+        session_gap_variance_scale = config.voice.session.gap_variance_scale_ms2,
+        session_long_pause_tolerance = config.voice.session.long_pause_tolerance,
+        session_duration_ratio_tolerance = config.voice.session.duration_ratio_tolerance,
+        session_similar_band = config.voice.session.similar_band,
     )
 }
 
@@ -598,6 +649,13 @@ easy_accuracy_strict_at_least = 0.99
 [voice.prosody]
 foot_pause_ms = 150
 line_pause_ms = 500
+
+[voice.session]
+long_pause_ms = 800
+gap_variance_scale_ms2 = 160000.0
+long_pause_tolerance = 3.0
+duration_ratio_tolerance = 0.4
+similar_band = 0.2
 "#;
 
     /// 每个字段都填非默认值、且**穷尽**书写字面量（不用 `..Default::default()`）：
@@ -634,6 +692,13 @@ line_pause_ms = 500
                 prosody: VoiceProsodyConfig {
                     foot_pause_ms: 90,
                     line_pause_ms: 333,
+                },
+                session: VoiceSessionConfig {
+                    long_pause_ms: 950,
+                    gap_variance_scale_ms2: 90_000.0,
+                    long_pause_tolerance: 1.5,
+                    duration_ratio_tolerance: 0.35,
+                    similar_band: 0.15,
                 },
             },
             recite: ReciteConfig {
@@ -696,6 +761,11 @@ line_pause_ms = 500
         assert_eq!(config.recite.grading.easy_accuracy_strict_at_least, 0.99);
         assert_eq!(config.voice.prosody.foot_pause_ms, 150);
         assert_eq!(config.voice.prosody.line_pause_ms, 500);
+        assert_eq!(config.voice.session.long_pause_ms, 800);
+        assert!((config.voice.session.gap_variance_scale_ms2 - 160_000.0).abs() < f64::EPSILON);
+        assert!((config.voice.session.long_pause_tolerance - 3.0).abs() < f64::EPSILON);
+        assert!((config.voice.session.duration_ratio_tolerance - 0.4).abs() < f64::EPSILON);
+        assert!((config.voice.session.similar_band - 0.2).abs() < f64::EPSILON);
     }
 
     #[test]

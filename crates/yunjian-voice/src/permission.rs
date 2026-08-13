@@ -161,6 +161,12 @@ pub enum DegradeReason {
     /// 程序」，而 `CaptureFailed` 是「原因未知，换个设备试试」。把两者合并会让界面在
     /// 一半的情形下给出错误的引导。
     DeviceBusy,
+    /// 采集成功但识别拒绝了这一次：识别器报错，或整段录音里一次都没检测到开口。
+    ///
+    /// 与 [`Self::CaptureFailed`] 分开是产品要求：录到了声音而识别不接受，下一步是
+    /// 「再念一次、离麦克风近一点」；采集本身失败的下一步是「检查设备」。归成一条会
+    /// 在用户明明说了话的那一半情形里把他指去查硬件。
+    RecognitionRejected,
     /// 采集本身失败，且原因不在上面任何一条里。
     CaptureFailed,
 }
@@ -237,6 +243,9 @@ pub fn explain(reason: DegradeReason, platform: Option<Platform>) -> String {
         DegradeReason::DeviceBusy => format!(
             "麦克风正被其他程序占用，已切换到打字练习。关闭正在录音或通话的程序后重试，也可以在{where_to_go}换一个输入设备。"
         ),
+        DegradeReason::RecognitionRejected => {
+            "这一次录音没有被识别接受，已切换到打字练习。已完成的部分进度保留着；想继续语音跟读，请回到刚才那一句重念一次，离麦克风近一些、说得响一点。".to_owned()
+        }
         DegradeReason::CaptureFailed => format!(
             "麦克风打开失败，已切换到打字练习。可能是设备被其他程序独占；关闭占用程序或在{where_to_go}换一个输入设备后重试。"
         ),

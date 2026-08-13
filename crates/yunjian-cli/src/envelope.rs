@@ -66,6 +66,11 @@ pub enum WarningCode {
     RhymeBookUnavailable,
     /// 请求的作用域对该客户端不适用，已按它唯一支持的作用域处理。
     ClientScopeIgnored,
+    /// `--mode voice` 不可用，本次已按打字形态完成。
+    ///
+    /// 是**警告而不是错误**：语音不可用的正确反应是照旧练一轮打字，退出码仍为 0。
+    /// 判成失败会让「这台机器没装语音模型」变成一次练不成的背诵。
+    VoiceFallback,
 }
 
 /// 一条面向用户的警告。
@@ -309,6 +314,7 @@ mod tests {
             WarningCode::FilteredPageEmpty,
             WarningCode::RhymeBookUnavailable,
             WarningCode::ClientScopeIgnored,
+            WarningCode::VoiceFallback,
         ] {
             let rendered = serde_json::to_string(&code).expect("序列化 warning code");
             assert!(

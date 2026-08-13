@@ -51,6 +51,7 @@ yunjian-core = { path = "../yunjian-core" }
 [dev-dependencies]
 async-trait = { workspace = true }
 clap = { workspace = true }
+jsonschema = { workspace = true }
 reqwest = { version = "0.13", default-features = false }
 rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest"] }
 rusqlite = { workspace = true }
@@ -71,6 +72,11 @@ harness = false
 # token 值**，libtest 的统计行不含 token，因此不构成干扰，而逐条打印用例名对九条验收更有用。
 [[test]]
 name = "http"
+required-features = ["http"]
+
+[[test]]
+name = "conformance"
+harness = false
 required-features = ["http"]
 
 [lints]

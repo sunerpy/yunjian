@@ -30,6 +30,15 @@ pub enum VoiceError {
     #[error("sherpa-onnx 调用失败：{0}")]
     Backend(String),
 
+    /// 识别器配置自身不自洽。**与 `Backend` 分开是必要的**：这类组合不会让 sherpa-onnx
+    /// 报错，只会让它静默地不按预期工作（hotwords 配在贪心解码上就是如此），
+    /// 而静默失效的偏置路径看起来只像「模型不认识这首诗」。
+    #[error("识别器配置无效：{detail}")]
+    RecognizerConfig {
+        /// 哪一项不自洽。
+        detail: String,
+    },
+
     #[error("没有可用的麦克风：{detail}")]
     NoInputDevice {
         /// 具体是「系统没报告默认设备」还是「指定的名字匹配不到」。
@@ -78,10 +87,13 @@ impl VoiceError {
         match self {
             Self::FeatureDisabled => R::FeatureDisabled,
             Self::NoInputDevice { .. } => R::NoInputDevice,
-            Self::ModelMissing { .. }
-            | Self::AudioRead { .. }
+            // 模型缺失与采集失败刻意不同码：这一条的下一步是 `yunjian models fetch`，
+            // 与麦克风、设备、系统版本都无关，归成采集失败会把用户指去检查硬件。
+            Self::ModelMissing { .. } => R::ModelUnavailable,
+            Self::AudioRead { .. }
             | Self::AudioWrite { .. }
             | Self::Backend(_)
+            | Self::RecognizerConfig { .. }
             | Self::AudioDevice { .. }
             | Self::CaptureStalled { .. }
             | Self::CaptureTruncated { .. } => R::CaptureFailed,

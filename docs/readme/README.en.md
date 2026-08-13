@@ -150,8 +150,15 @@ Apache-2.0 licence.
   mobile escape hatch
 - [Corpus and indexing](CORPUS.md) — build pipeline, the `stable_id` identity model, the measured
   FTS5 index selection
+- [Voice](VOICE.md) — models and licences, the 破读 lexicon, the v1 feedback contract
+  (**pronunciation standard is not assessed**)
+- [AI appreciation](AI.md) — BYOK, the two-tier cache, the pre-generation policy, labelling duty
+- [Platform requirements](PLATFORM-REQUIREMENTS.md) — per-platform floors, the microphone permission
+  chain, behaviour below the floor
 - [Voice build](../VOICE-BUILD.zh.md) — native dependency builds across five targets, linking, and
   the licensing consequences
+- [Third-party licences](LICENSES.md) — every bundled or downloaded third-party asset, its licence
+  and its attribution
 
 ## Development
 

@@ -47,6 +47,9 @@ tokio-util = { workspace = true, optional = true }
 yunjian-ai = { path = "../yunjian-ai" }
 yunjian-core = { path = "../yunjian-core" }
 yunjian-mcp = { path = "../yunjian-mcp", optional = true }
+# 背诵评分内核。CLI 只做呈现：分数、对齐操作列表与 FSRS 等级全部由这里算出，
+# 命令行一侧不许有第二套阈值或对齐实现。
+yunjian-recite = { path = "../yunjian-recite" }
 yunjian-voice = { path = "../yunjian-voice" }
 
 [dev-dependencies]
@@ -55,7 +58,11 @@ assert_cmd = { workspace = true }
 # 任何门禁都不可能等它。
 rusqlite = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 toml = { workspace = true }
+# 集成测试不继承 lib 的普通依赖，而 `recite due` 的「今天到期」这条路需要一条日期在过去
+# 的复习记录，只有内核的 `review_at` 能造出来。
+yunjian-recite = { path = "../yunjian-recite" }
 
 [lints]
 workspace = true
