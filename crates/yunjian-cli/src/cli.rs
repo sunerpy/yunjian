@@ -104,6 +104,12 @@ pub enum Command {
         #[command(subcommand)]
         action: CorpusAction,
     },
+    /// 统一维护语料与随包赏析种子。
+    Assets {
+        /// 具体动作。
+        #[command(subcommand)]
+        action: AssetsAction,
+    },
     /// 语音模型维护。权重不随安装包分发，按需下载并逐个校验许可与摘要。
     Models {
         /// 具体动作。
@@ -304,6 +310,12 @@ impl Command {
             Self::Corpus {
                 action: CorpusAction::Fetch,
             } => "corpus.fetch",
+            Self::Assets {
+                action: AssetsAction::Status,
+            } => "assets.status",
+            Self::Assets {
+                action: AssetsAction::Fetch,
+            } => "assets.fetch",
             Self::Models { action } => action.envelope_name(),
             Self::Ai { action } => action.envelope_name(),
             #[cfg(feature = "mcp")]
@@ -417,6 +429,15 @@ pub enum CorpusAction {
     Fetch,
 }
 
+/// `assets` 的动作。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
+pub enum AssetsAction {
+    /// 报告语料与随包赏析种子的版本、记录数和失效数。
+    Status,
+    /// 下载并独立校验两件工件，再以单事务导入赏析种子。
+    Fetch,
+}
+
 /// 日志级别。取值与 `yunjian-core` 的日志级别表逐字一致。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "lower")]
@@ -506,7 +527,9 @@ impl From<Tone> for ToneFilter {
 
 #[cfg(test)]
 mod tests {
-    use super::{AiAction, AiCacheAction, Book, Cli, Command, CorpusAction, LogLevel, Tone};
+    use super::{
+        AiAction, AiCacheAction, AssetsAction, Book, Cli, Command, CorpusAction, LogLevel, Tone,
+    };
     #[cfg(feature = "mcp")]
     use super::{McpAction, McpArgs};
     use clap::{CommandFactory, Parser};
@@ -603,6 +626,26 @@ mod tests {
             }
         ));
         Cli::try_parse_from(["yunjian", "corpus", "purge"]).expect_err("未定义的动作必须报错");
+    }
+
+    #[test]
+    fn assets_has_exactly_status_and_fetch() {
+        assert!(matches!(
+            Cli::try_parse_from(["yunjian", "assets", "status"])
+                .expect("解析 assets status")
+                .command,
+            Command::Assets {
+                action: AssetsAction::Status
+            }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["yunjian", "assets", "fetch"])
+                .expect("解析 assets fetch")
+                .command,
+            Command::Assets {
+                action: AssetsAction::Fetch
+            }
+        ));
     }
 
     #[test]
@@ -720,6 +763,14 @@ mod tests {
             .name(),
             Command::Corpus {
                 action: CorpusAction::Fetch,
+            }
+            .name(),
+            Command::Assets {
+                action: AssetsAction::Status,
+            }
+            .name(),
+            Command::Assets {
+                action: AssetsAction::Fetch,
             }
             .name(),
             parse_command(&["yunjian", "ai", "cache", "purge", "--all"]).name(),

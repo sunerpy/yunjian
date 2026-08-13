@@ -11,6 +11,7 @@
 #![warn(missing_docs)]
 
 pub mod api;
+pub mod assets;
 pub mod config;
 pub mod corpus;
 pub mod derive;
