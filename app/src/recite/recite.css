@@ -478,3 +478,54 @@
 .recite-queue__number {
   font-family: var(--font-mono);
 }
+
+/* ============================== 语音跟读 ============================== */
+
+.voice-lines {
+  margin: var(--space-3) 0 0;
+  padding: 0 0 0 var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  line-height: 2;
+  color: var(--color-text);
+}
+
+.voice-lines__line[data-listening="true"] {
+  /* 正在复诵的那一行加一条左侧标尺。**不用底色**：底色会和下面两种字级高亮叠在一起，
+     三层颜色相互干扰之后哪一层都读不出来。 */
+  border-left: 2px solid var(--color-accent, var(--color-text));
+  margin-left: calc(-1 * var(--space-3));
+  padding-left: var(--space-3);
+}
+
+.voice-char {
+  padding: 0 1px;
+  border-radius: 2px;
+  transition: background-color 90ms linear;
+}
+
+/* karaoke 高亮：证据是**确定的**（时间戳来自逐音步合成的拼接算术），所以用实底色。 */
+.voice-char[data-karaoke="true"] {
+  background: var(--color-surface-raised);
+  box-shadow: inset 0 -0.5em 0 var(--color-accent-surface, rgb(255 214 102 / 55%));
+}
+
+/* 已匹配前缀：证据只是「识别器认到这里」，而它的字错率实测 77%。所以用**下划虚线**而不是
+   底色——形状与 karaoke 那一种在色觉异常下也能分开，且视觉权重明显更低。 */
+.voice-char[data-matched="true"] {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  color: var(--color-text-muted);
+}
+
+.recite-prompt {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-border);
+  background: var(--color-surface-raised);
+  font-size: var(--text-sm);
+  line-height: 1.8;
+  color: var(--color-text);
+}
