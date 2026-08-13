@@ -212,7 +212,17 @@ fn run_install(server: &MockRelease, tag: &str, version: &str) -> Installed {
 
 // ------------------------------------------------------------------ 安装脚本
 
+// 下面凡是真的去 `sh scripts/install.sh` 的用例，都挂 `cfg_attr(not(unix), ignore)`。
+// `install.sh` 是 POSIX 脚本，Windows runner 上没有语义等价的 `sh`——不门控就会在跨平台
+// 矩阵里必红，而红的原因与被测契约无关。选 `ignore` 而不是 `#[cfg(unix)]`：前者在测试输出
+// 里留下一行 `ignored` 及理由，后者会让用例在 Windows 上凭空消失，看起来像「全都通过了」。
+// Windows 侧的安装路径由 `install.ps1` 单独负责，不拿它来这几条里凑数。
+
 #[test]
+#[cfg_attr(
+    not(unix),
+    ignore = "install.sh 是 POSIX 脚本，非 unix 平台无可用 sh；Windows 侧由 install.ps1 负责"
+)]
 fn a_verified_asset_lands_in_the_default_directory() {
     let (archive, digest) = build_archive("happy");
     let routes = HashMap::from([
@@ -269,6 +279,10 @@ fn a_verified_asset_lands_in_the_default_directory() {
 }
 
 #[test]
+#[cfg_attr(
+    not(unix),
+    ignore = "install.sh 是 POSIX 脚本，非 unix 平台无可用 sh；Windows 侧由 install.ps1 负责"
+)]
 fn a_tampered_asset_aborts_with_exit_three_and_installs_nothing() {
     let (archive, digest) = build_archive("tampered");
     // 摘要照发原件的，归档尾部改一个字节：这正是「传输被换掉」的形状。
@@ -337,6 +351,10 @@ fn a_missing_musl_asset_falls_back_to_the_gnu_build() {
 }
 
 #[test]
+#[cfg_attr(
+    not(unix),
+    ignore = "install.sh 是 POSIX 脚本，非 unix 平台无可用 sh；Windows 侧由 install.ps1 负责"
+)]
 fn an_unset_version_is_not_required_to_be_a_v_prefixed_tag() {
     let (archive, digest) = build_archive("bare-version");
     let routes = HashMap::from([
