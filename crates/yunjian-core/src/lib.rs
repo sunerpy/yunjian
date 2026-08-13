@@ -28,7 +28,8 @@ pub use api::{
     RhymeGroupSearchRequest, TagBrowseRequest, TitleSearchRequest, WorkGroupRequest, Yunjian,
 };
 pub use config::{
-    Config, CorpusConfig, GradingConfig, LoggerConfig, ReciteConfig, get_config, init_config,
+    Config, CorpusConfig, GradingConfig, LoggerConfig, ReciteConfig, VoiceSessionConfig,
+    get_config, init_config,
 };
 pub use corpus::{
     CORPUS_ARCHIVE_NAME, CORPUS_FILE_NAME, CORPUS_MANIFEST_NAME, CorpusHandle, CorpusMeta,
