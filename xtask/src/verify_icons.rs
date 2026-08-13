@@ -53,12 +53,19 @@ const ICO_FIRST_SIZE: u32 = 32;
 const CONTACT_SHEET: &str = "docs/reports/icon-contact-sheet.png";
 /// 小尺寸专用表输出路径。见 `render_sheet` 上方那段「为什么要两张表」。
 const SMALL_SHEET: &str = "docs/reports/icon-small-sizes.png";
-/// 联系表里每格的边长。取 256 是为了让 256 px 那一层能**按原尺寸单独呈现**，
-/// 而不是被塞进一个更小的格子里降采样——那样看到的就不是它本来的字节了。
-const CELL: u32 = 256;
-/// 小尺寸表每格的边长。取 240 是为了让整张表宽 720、高 480，
-/// **落在任何看图管道都不会再降采样的量级内**——见 `render_sheet` 的说明。
-const SMALL_CELL: u32 = 240;
+/// 联系表里每格的边长。取 288 = 256 + 2×16：256 是 256 px 那一层能**按原尺寸单独
+/// 呈现**所需的绘制区（缩小它就看不到它本来的字节了），两侧各留 16 px 是为了让
+/// **每一格的留白都等比**——见 `blit_magnified` 与 `probe_cell_margins`。
+///
+/// 上一版取 256（绘制区恰好填满格子）导致一个真实缺陷：16 / 32 / 64 / 256 四档的
+/// 绘制区正好等于格边长，格内留白只剩图标自己那圈气口放大后的 16 px（占格 6.2%），
+/// 而 24 / 48 两档因为整数倍率取不满还多出居中留白（28 px / 23 px，占 10.9% / 9.0%）。
+/// 同一张表里留白差 1.75 倍，目视读成「有几档的红块顶到画布边、各档 padding 不成
+/// 比例」。逐格实测值记在 `crates/yunjian-app/icons/README.md`。
+const CELL: u32 = 288;
+/// 小尺寸表每格的边长。与 `CELL` 同值：三档表因此是 864×576，
+/// **仍落在任何看图管道都不会再降采样的量级内**——见 `render_sheet` 的说明。
+const SMALL_CELL: u32 = 288;
 /// 联系表要展示的尺寸。**六档齐备**，与 `REQUIRED_ICO_SIZES` 一致：
 /// 少一档就等于有一档从没被人眼看过，而 16 px 恰恰是最容易失效的那一档。
 const SHEET_SIZES: [u32; 6] = [16, 24, 32, 48, 64, 256];
@@ -69,7 +76,12 @@ const BACKDROPS: [[u8; 3]; 2] = [[243, 243, 243], [32, 32, 32]];
 /// 深色补偿对照图输出路径。见 `render_compensation_sheet` 上方那段说明。
 const COMPENSATION_SHEET: &str = "docs/reports/icon-dark-compensation.png";
 /// 深色补偿对照图每格的边长，取值理由同 `SMALL_CELL`。
-const COMPENSATION_CELL: u32 = 240;
+const COMPENSATION_CELL: u32 = 288;
+/// 每格允许的留白占格比例区间。上下界由整数倍率能达到的极值反推，不是拍的：
+/// 六档在 `CELL = 288` 下逐格实测 11.1% / 11.8% / 11.1% / 13.5% / 11.1% / 11.1%
+/// （48 px 那档最大，因为它的整数倍率只能取 5、绘制区 240 比别档小）。
+/// 这条把「各档 padding 等比」变成可判定的，而不是靠目视比较相邻格。
+const CELL_MARGIN_SHARE: std::ops::RangeInclusive<f64> = 0.10..=0.145;
 /// 深色补偿对照图用哪一层做样本。颜色对比与尺寸无关，取最大的清晰层即可。
 const COMPENSATION_SAMPLE_SIZE: u32 = 32;
 /// 朱砂。取值来自「浅深两侧对比相等」的解，推导在 `generate_source.py` 的深色补偿一节。
@@ -105,21 +117,94 @@ enum Cell {
 /// 生成之后、写进 ICO 的路上丢的。这个结构存在的唯一理由就是把那一段补上。
 #[derive(Debug, PartialEq, Eq)]
 struct Geometry {
+    /// 四边透明气口，逐边必须相等。
     margin: u32,
+    /// 印身（外环外沿）边长，恒等于 `size - 2 × margin`。
     mark: u32,
-    border: u32,
-    stroke_w: u32,
-    gap: u32,
-    stroke_h: u32,
+    /// 外环朱色边框的宽度。
+    ring: u32,
+    /// 外环内沿到印文外接框的净距，四向必须相等。
+    clearance: u32,
+    bar_w: u32,
+    bar_h: u32,
+    stem_w: u32,
+    stem_h: u32,
 }
 
-/// 笔宽的期望值：`floor(2 × 该层缩放 + 0.5)`，缩放 = `size / 16`。
+/// 某个骨架量在该档的期望值：`floor(unit × 该层缩放 + 0.5)`，缩放 = `size / 16`。
 ///
 /// 用整数算而不是浮点四舍五入：Rust 的 `f64::round` 与 Python 内建 `round` 在 `.5`
-/// 上行为不同（后者是银行家舍入），而 20 px 档的目标值恰好是 2.5，两侧算法必须给出
+/// 上行为不同（后者是银行家舍入），而 20 px 档的环宽目标恰好是 2.5，两侧算法必须给出
 /// 同一个 3，否则这条断言在唯一需要它的档位上与生成器不一致。
-fn expected_stroke_width(size: u32) -> u32 {
-    (2 * size + 8) / 16
+fn expected_unit(unit: u32, size: u32) -> u32 {
+    (unit * size + 8) / 16
+}
+
+/// 该档骨架的完整期望值，与 `generate_source.py` 的 `SKELETON` 逐项对应。
+///
+/// **刻意在两个语言里各写一份**：生成器那份查渲染前的字符网格，这份查已写进 ICO
+/// 的字节。两份都对才说明「设计意图 → 产物」这条链上没有丢东西——v4 的两档笔画
+/// 变细正是在这两点之间丢的。
+///
+/// 20 与 24 px 不是 16 的整数倍，各有一份手调值；逐条推导在生成器文件头的取整一节。
+fn expected_skeleton(size: u32) -> Option<Geometry> {
+    let (m, r, c, bw, bh, sw, sh) = match size {
+        16 => (1, 2, 2, 6, 2, 2, 4),
+        20 => (1, 3, 2, 8, 3, 2, 5),
+        24 => (2, 3, 3, 8, 3, 2, 5),
+        _ if size.is_multiple_of(16) => {
+            let f = size / 16;
+            (f, 2 * f, 2 * f, 6 * f, 2 * f, 2 * f, 4 * f)
+        }
+        _ => return None,
+    };
+    Some(Geometry {
+        margin: m,
+        mark: size - 2 * m,
+        ring: r,
+        clearance: c,
+        bar_w: bw,
+        bar_h: bh,
+        stem_w: sw,
+        stem_h: sh,
+    })
+}
+
+/// `mark` 记号的四连通分量，每个分量以 `(x, y)` 集合表示。
+fn components(grid: &[Vec<Cell>], mark: Cell) -> Vec<Vec<(u32, u32)>> {
+    let size = grid.len() as u32;
+    let mut seen = vec![vec![false; size as usize]; size as usize];
+    let mut parts = Vec::new();
+    for y in 0..size {
+        for x in 0..size {
+            if grid[y as usize][x as usize] != mark || seen[y as usize][x as usize] {
+                continue;
+            }
+            let mut part = Vec::new();
+            let mut frontier = vec![(x, y)];
+            seen[y as usize][x as usize] = true;
+            while let Some((cx, cy)) = frontier.pop() {
+                part.push((cx, cy));
+                for (nx, ny) in [
+                    (cx.wrapping_sub(1), cy),
+                    (cx + 1, cy),
+                    (cx, cy.wrapping_sub(1)),
+                    (cx, cy + 1),
+                ] {
+                    if nx < size
+                        && ny < size
+                        && grid[ny as usize][nx as usize] == mark
+                        && !seen[ny as usize][nx as usize]
+                    {
+                        seen[ny as usize][nx as usize] = true;
+                        frontier.push((nx, ny));
+                    }
+                }
+            }
+            parts.push(part);
+        }
+    }
+    parts
 }
 
 /// 各段连续 `true` 的 (起始下标, 长度)。
@@ -166,10 +251,38 @@ fn classify(image: &Rgba) -> Result<Vec<Vec<Cell>>> {
     Ok(grid)
 }
 
+/// 一条扫描线折成的段序列 `(记号, 起始下标, 长度)`。
+fn segments(line: &[Cell]) -> Vec<(Cell, u32, u32)> {
+    let mut out: Vec<(Cell, u32, u32)> = Vec::new();
+    for (index, &cell) in line.iter().enumerate() {
+        match out.last_mut() {
+            Some(last) if last.0 == cell => last.2 += 1,
+            _ => out.push((cell, index as u32, 1)),
+        }
+    }
+    out
+}
+
+/// 三层结构必须在中线上量得到的段序：透明 → 朱环 → 内白 → 印文 → 内白 → 朱环 → 透明。
+///
+/// **这条常量是 v5 那次缺陷的直接守卫。** v5 的中线段序在记号上与它一模一样，
+/// 但中间那段朱色是两道竖笔之间的缝而不是印文——层级数看着对、语义完全不同。
+/// 所以除了段序，还必须断言「朱色恰有两个连通分量（外环 + 不贴边的印文）」，
+/// 两条合起来才排除掉「实心朱块被两道白痕切开」的形态。
+const MIDLINE: [Cell; 7] = [
+    Cell::Clear,
+    Cell::Seal,
+    Cell::Ink,
+    Cell::Seal,
+    Cell::Ink,
+    Cell::Seal,
+    Cell::Clear,
+];
+
 /// 从 `Cell` 网格反推骨架几何。
 ///
-/// 「笔行」的判据是**该行恰有两段米白**：印面行有零段，所以这个判据不需要知道
-/// 任何坐标常量，改了设计也不会悄悄量到别的东西上。
+/// 印文的定位方式**不依赖任何坐标常量**：外环必然贴着印身的边，印文必然不贴，
+/// 所以「朱色里不贴边的那个连通分量」就是印文。改了尺寸或比例也不会量到别的东西上。
 fn measure(grid: &[Vec<Cell>]) -> Result<Geometry> {
     let size = grid.len() as u32;
     let occupied = |x: u32, y: u32| grid[y as usize][x as usize] != Cell::Clear;
@@ -187,89 +300,177 @@ fn measure(grid: &[Vec<Cell>]) -> Result<Geometry> {
         ys.first().context("整层全透明")?,
         ys.last().context("整层全透明")?,
     );
-
-    let ink_row = |y: u32| -> Vec<bool> {
-        (0..size)
-            .map(|x| grid[y as usize][x as usize] == Cell::Ink)
-            .collect()
-    };
-    let stroke_rows: Vec<u32> = (0..size)
-        .filter(|&y| runs(&ink_row(y)).len() == 2)
-        .collect();
-    let (&first, &last) = (
-        stroke_rows
-            .first()
-            .context("找不到任何「恰有两段米白」的行——刻痕不是两道竖笔")?,
-        stroke_rows.last().context("找不到笔行")?,
-    );
-    if last - first + 1 != stroke_rows.len() as u32 {
-        bail!("笔行不连续：{stroke_rows:?}");
-    }
-    let spans = runs(&ink_row(first));
-    let (left_x, left_w) = spans[0];
-    let (right_x, right_w) = spans[1];
-    if left_w != right_w {
-        bail!("左笔宽 {left_w} != 右笔宽 {right_w}，两笔必须等宽");
-    }
-    if x1 - (right_x + right_w - 1) != left_x - x0 {
-        bail!(
-            "两笔在印身内左右不等距：左 {} 右 {}",
-            left_x - x0,
-            x1 - (right_x + right_w - 1)
-        );
-    }
-    if first - y0 != y1 - last {
-        bail!("两笔在印身内上下不等距：上 {} 下 {}", first - y0, y1 - last);
-    }
     if x1 - x0 != y1 - y0 {
         bail!("印身不是正方形：{}×{}", x1 - x0 + 1, y1 - y0 + 1);
+    }
+    let margins = [x0, size - 1 - x1, y0, size - 1 - y1];
+    if margins.iter().any(|&m| m != x0) {
+        bail!("四边气口不相等（左, 右, 上, 下）：{margins:?}");
+    }
+
+    let seal_parts = components(grid, Cell::Seal);
+    if seal_parts.len() != 2 {
+        bail!(
+            "朱色有 {} 个连通分量，应为「外环 + 印文」恰好 2 个——\
+             1 个说明印文与外环相连或印面是实心的（v4 / v5 的形态），\
+             3 个以上说明印文散成了多笔",
+            seal_parts.len()
+        );
+    }
+    let glyph = seal_parts
+        .iter()
+        .find(|part| part.iter().all(|&(x, _)| x != x0))
+        .context("朱色的两个分量都贴着印身左边——找不到不贴边的印文")?;
+    let (gx0, gx1) = (
+        glyph.iter().map(|p| p.0).min().expect("印文非空"),
+        glyph.iter().map(|p| p.0).max().expect("印文非空"),
+    );
+    let (gy0, gy1) = (
+        glyph.iter().map(|p| p.1).min().expect("印文非空"),
+        glyph.iter().map(|p| p.1).max().expect("印文非空"),
+    );
+
+    let seal_row = |y: u32| -> Vec<bool> {
+        (0..size)
+            .map(|x| grid[y as usize][x as usize] == Cell::Seal)
+            .collect()
+    };
+    let ring = runs(&seal_row((y0 + y1) / 2))
+        .first()
+        .context("印身中线上没有朱色")?
+        .1;
+
+    let glyph_width = gx1 - gx0 + 1;
+    let row_width = |y: u32| {
+        (gx0..=gx1)
+            .filter(|&x| grid[y as usize][x as usize] == Cell::Seal)
+            .count() as u32
+    };
+    let bar_h = (gy0..=gy1)
+        .take_while(|&y| row_width(y) == glyph_width)
+        .count() as u32;
+    if bar_h == 0 {
+        bail!("印文顶部不是一条满宽的横——它不是「⊤」的形");
+    }
+    let stem_widths: std::collections::BTreeSet<u32> = (gy0 + bar_h..=gy1).map(row_width).collect();
+    if stem_widths.len() != 1 {
+        bail!("印文的竖各行宽度不一：{stem_widths:?}");
+    }
+    let clearances = [
+        gx0 - (x0 + ring),
+        (x1 - ring) - gx1,
+        gy0 - (y0 + ring),
+        (y1 - ring) - gy1,
+    ];
+    if clearances.iter().any(|&c| c != clearances[0]) {
+        bail!("印文四向净距不相等（左, 右, 上, 下）：{clearances:?}");
     }
     Ok(Geometry {
         margin: x0,
         mark: x1 - x0 + 1,
-        border: left_x - x0,
-        stroke_w: left_w,
-        gap: right_x - (left_x + left_w),
-        stroke_h: stroke_rows.len() as u32,
+        ring,
+        clearance: clearances[0],
+        bar_w: glyph_width,
+        bar_h,
+        stem_w: stem_widths.into_iter().next().expect("恰有一个宽度"),
+        stem_h: gy1 - gy0 + 1 - bar_h,
     })
 }
 
-/// 逐层核对骨架：笔宽逐档取整、两笔等宽等高、四边净距相等、全网格双向镜像。
+/// 逐层核对骨架：三层结构真的存在、气口与环宽逐档取整、净距 ≥ 2 px、左右镜像。
 ///
-/// 这一组断言的存在理由是 v4 的一次真实失效：**六档里有两档的中竖笔明显变细、
-/// 印面偏小**，而当时的门禁只查层数、层序、四角 alpha 与颜色数，四项全绿。
-/// 换句话说，那次失效发生在字节里，却没有任何字节断言看着它。
+/// 这一组断言各对应一次真实失效：
+/// - v4 六档里有两档的笔画明显变细，而当时的门禁只查层数、层序、四角 alpha 与
+///   颜色数，四项全绿——失效发生在字节里，却没有任何字节断言看着它；
+/// - v5 把需求方指定的内框整条删掉，于是「外环 / 内白 / 印文」三层从未画出来，
+///   而同样没有断言看着它。`MIDLINE` 与「朱色恰两个连通分量」两条就是补这一段。
 fn check_geometry(failures: &mut Failures, size: u32, image: &Rgba) {
-    let grid = match classify(image).and_then(|grid| measure(&grid).map(|got| (grid, got))) {
+    let measured = match classify(image).and_then(|grid| measure(&grid).map(|got| (grid, got))) {
         Ok(pair) => pair,
         Err(err) => {
             failures.check(false, ICO, || format!("{size} px 层无法量出骨架：{err:#}"));
             return;
         }
     };
-    let (grid, got) = grid;
+    let (grid, got) = measured;
     let what = ICO;
+    let mid = size / 2;
 
-    let want_stroke = expected_stroke_width(size);
-    failures.check(got.stroke_w == want_stroke, what, || {
+    for (label, line) in [
+        (
+            "水平",
+            (0..size)
+                .map(|x| grid[mid as usize][x as usize])
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "竖直",
+            (0..size)
+                .map(|y| grid[y as usize][mid as usize])
+                .collect::<Vec<_>>(),
+        ),
+    ] {
+        let kinds: Vec<Cell> = segments(&line).into_iter().map(|seg| seg.0).collect();
+        failures.check(kinds == MIDLINE, what, || {
+            format!(
+                "{size} px {label}中线段序 {kinds:?} != {MIDLINE:?}——\
+                 「外环 / 内白 / 印文」三层结构没有全部画出来（v5 就是缺了内框那一层）"
+            )
+        });
+    }
+
+    match expected_skeleton(size) {
+        Some(want) => failures.check(got == want, what, || {
+            format!("{size} px 从 ICO 字节反推的骨架 {got:?} 与期望 {want:?} 不符")
+        }),
+        None => failures.check(false, what, || {
+            format!("{size} px 不在骨架期望表内：既不是手调档位，也不是 16 的整数倍")
+        }),
+    }
+
+    let want_margin = expected_unit(1, size);
+    failures.check(got.margin == want_margin, what, || {
         format!(
-            "{size} px 笔宽 {} != floor(2 × {}/16 + 0.5) = {want_stroke}——该档没有按自己的\
-             网格取整，而是浮点缩放来的（v4 就是这样丢了两档笔宽）",
-            got.stroke_w, size
+            "{size} px 气口 {} != floor(1 × {size}/16 + 0.5) = {want_margin}——\
+             该档气口不等比，表现为它的取景与别档不是一套",
+            got.margin
         )
     });
-    failures.check(got.stroke_h == 2 * got.stroke_w + got.gap, what, || {
+    let want_ring = expected_unit(2, size);
+    failures.check(got.ring == want_ring, what, || {
         format!(
-            "{size} px 笔高 {} != 2×{} + {} ，两笔加缝的外接框不是正方形",
-            got.stroke_h, got.stroke_w, got.gap
+            "{size} px 环宽 {} != floor(2 × {size}/16 + 0.5) = {want_ring}——\
+             该档没有按自己的网格取整，而是浮点缩放来的（v4 就是这样丢了两档笔宽）",
+            got.ring
         )
     });
-    failures.check(got.border >= 2 && got.gap >= 2, what, || {
+    failures.check(got.bar_h + got.stem_h == got.bar_w, what, || {
         format!(
-            "{size} px 净间距或缝宽小于 2 px：朱边 {} 缝 {}",
-            got.border, got.gap
+            "{size} px 印文外接框不是正方形：{}×{}",
+            got.bar_w,
+            got.bar_h + got.stem_h
         )
     });
+    failures.check(
+        got.clearance >= 2 && got.ring >= 2 && got.stem_w >= 2 && got.bar_h >= 2,
+        what,
+        || {
+            format!(
+                "{size} px 有小于 2 px 的笔画或净距：环宽 {} 净距 {} 竖宽 {} 横高 {}",
+                got.ring, got.clearance, got.stem_w, got.bar_h
+            )
+        },
+    );
+    failures.check(
+        got.bar_w > got.stem_w && got.stem_h > got.bar_h,
+        what,
+        || {
+            format!(
+                "{size} px 印文不是「⊤」的形：横 {}×{} 竖 {}×{}（要求横比竖宽、竖比横高）",
+                got.bar_w, got.bar_h, got.stem_w, got.stem_h
+            )
+        },
+    );
     let seal_share = f64::from(got.mark) / f64::from(size);
     failures.check((0.83..=0.90).contains(&seal_share), what, || {
         format!(
@@ -282,22 +483,29 @@ fn check_geometry(failures: &mut Failures, size: u32, image: &Rgba) {
     let mirrored_x = (0..size).all(|y| {
         (0..size).all(|x| grid[y as usize][x as usize] == grid[y as usize][(size - 1 - x) as usize])
     });
+    // 上下**必须不**镜像：上下对称的印文在 16 px 下与暂停键 / 柱状图同构，
+    // v5 正是因为「两道等宽等高竖笔」被目视读成暂停键。印文有朝向是本版避开
+    // 那类误读的机制，所以这条是硬约束而不是副作用。
     let mirrored_y = (0..size).all(|y| grid[y as usize] == grid[(size - 1 - y) as usize]);
-    failures.check(mirrored_x && mirrored_y, what, || {
-        format!("{size} px 层不是双向镜像对称：左右={mirrored_x} 上下={mirrored_y}")
+    failures.check(mirrored_x, what, || format!("{size} px 层左右不镜像对称"));
+    failures.check(!mirrored_y, what, || {
+        format!("{size} px 层上下镜像对称——印文没有朝向，会退化成暂停键 / 柱状图同构形态")
     });
 
     emit(&format!(
-        "  骨架     {size:>3} px  气口={:<3} 朱边={:<3} 笔宽={:<3}(期望 {want_stroke}) \
-         缝宽={:<3} 笔高={:<4} 印身={}({:.1}%)  双向镜像={}",
+        "  骨架     {size:>3} px  气口={:<3}(期望 {want_margin}) 环宽={:<3}(期望 {want_ring}) \
+         净距={:<3} 横={}×{} 竖={}×{} 印身={}({:.1}%)  左右镜像={} 上下不对称={}",
         got.margin,
-        got.border,
-        got.stroke_w,
-        got.gap,
-        got.stroke_h,
+        got.ring,
+        got.clearance,
+        got.bar_w,
+        got.bar_h,
+        got.stem_w,
+        got.stem_h,
         got.mark,
         seal_share * 100.0,
-        mirrored_x && mirrored_y
+        mirrored_x,
+        !mirrored_y
     ));
 }
 
@@ -474,10 +682,25 @@ fn read(path: &Path) -> Result<Vec<u8>> {
 ///
 /// 倍率必须是整数，否则源像素会被放成大小不一的方块（例如 24 px 铺进 128 px 的格子
 /// 是 5.33 倍），人眼看到的粗细差异就分不清是图标本身的还是放大引入的。
-/// 因此这里按 `CELL / src.width` 取整倍并**居中**，剩余边缘留底色。
+///
+/// # 倍率按「目标绘制区」四舍五入，而不是向下取整
+///
+/// 目标绘制区取 `side × 8 / 9`，于是每格四周先有约 `side / 18` 的固定留白，
+/// 各档再叠上自己那圈气口放大后的宽度——两项相加逐格落在 11%~13.5%，
+/// 由 `probe_cell_margins` 断言。
+///
+/// **向下取整会毁掉这个等比。** 上一版用 `side / src.width` 向下取整且格边长恰好
+/// 等于最大层的边长，于是能整除格边长的四档（16 / 32 / 64 / 256）绘制区正好填满
+/// 格子、只剩 6.2% 留白，不能整除的两档（24 / 48）反而多出居中留白到 9%~10.9%——
+/// 同一张表里留白差 1.75 倍，目视读成「有几档的红块顶到画布边」。四舍五入让 24 px
+/// 取 11 倍（264，比 256 略大）而不是 10 倍（240），差距因此收敛。
 fn blit_magnified(dst: &mut Rgba, src: &Rgba, ox: u32, oy: u32, side: u32, bg: [u8; 3]) {
-    let factor = (side / src.width).max(1);
-    let drawn = src.width * factor;
+    let target = side * 8 / 9;
+    let mut factor = ((target + src.width / 2) / src.width).max(1);
+    while factor > 1 && src.width * factor > side {
+        factor -= 1;
+    }
+    let drawn = (src.width * factor).min(side);
     let pad = (side - drawn) / 2;
     for dy in 0..side {
         for dx in 0..side {
@@ -627,6 +850,40 @@ fn render_sheet(layers: &[(u32, Rgba)], sizes: &[u32], cell: u32) -> Rgba {
 /// 取左上角是有依据的：图标四角必须透明（另有断言守着），所以该位置合成出来的
 /// 一定是底板色本身。凡取样值与该行底板不等，就说明表里出现了第二种底色——
 /// 那正是让「各档发色」无法公平比较的那个缺陷。
+/// 逐格量出四周留白（连续底色像素数），用来断言六档在表里的**取景等比**。
+///
+/// 这条守的是需求方本轮点名的缺陷：上一版六档表逐格实测留白
+/// 16 / 28 / 16 / 23 / 16 / 16 px（占格 6.2% / 10.9% / 6.2% / 9.0% / 6.2% / 6.2%），
+/// 相差 1.75 倍，于是「顶到画布边的那几档」与「四周有均匀留白的那两档」在同一张
+/// 表里读成两套取景。成因见 `blit_magnified` 的倍率一节。
+///
+/// 取样线走每格的正中：图标四角必须透明（另有断言守着），所以从格边向内扫到的
+/// 第一个非底色像素一定是外环的外沿，量到的就是「印身四周的留白」。
+fn probe_cell_margins(sheet: &Rgba, sizes: &[u32], cell: u32) -> Vec<(usize, u32, [u32; 4])> {
+    let mut out = Vec::new();
+    for (ri, bg) in BACKDROPS.iter().enumerate() {
+        let expected = [bg[0], bg[1], bg[2], 255];
+        for (ci, size) in sizes.iter().enumerate() {
+            let (ox, oy) = (ci as u32 * cell, ri as u32 * cell);
+            let (cx, cy) = (ox + cell / 2, oy + cell / 2);
+            let scan = |probe: &dyn Fn(u32) -> [u8; 4]| {
+                (0..cell).take_while(|&k| probe(k) == expected).count() as u32
+            };
+            out.push((
+                ri,
+                *size,
+                [
+                    scan(&|k| sheet.pixel(ox + k, cy)),
+                    scan(&|k| sheet.pixel(ox + cell - 1 - k, cy)),
+                    scan(&|k| sheet.pixel(cx, oy + k)),
+                    scan(&|k| sheet.pixel(cx, oy + cell - 1 - k)),
+                ],
+            ));
+        }
+    }
+    out
+}
+
 fn probe_backdrops(sheet: &Rgba, sizes: &[u32], cell: u32) -> Vec<(usize, u32, [u8; 4])> {
     let mut odd = Vec::new();
     for (ri, bg) in BACKDROPS.iter().enumerate() {
@@ -774,12 +1031,46 @@ pub(crate) fn run() -> Result<()> {
                  但这些格取样到了别的颜色（行序号, 尺寸, 实测像素）：{odd:?}"
             )
         });
+        let margins = probe_cell_margins(&sheet, sizes, cell);
+        let lopsided: Vec<_> = margins
+            .iter()
+            .filter(|(_, _, m)| m.iter().any(|v| v != &m[0]))
+            .collect();
+        failures.check(lopsided.is_empty(), path, || {
+            format!(
+                "每格四周留白必须逐边相等（左, 右, 上, 下），但这些格不等\
+                 （行序号, 尺寸, 留白）：{lopsided:?}"
+            )
+        });
+        let off_share: Vec<_> = margins
+            .iter()
+            .filter(|(_, _, m)| !CELL_MARGIN_SHARE.contains(&(f64::from(m[0]) / f64::from(cell))))
+            .collect();
+        failures.check(off_share.is_empty(), path, || {
+            format!(
+                "各档留白占格必须落在 {:.0}%~{:.1}%，否则同一张表里读成两套取景，\
+                 但这些格越界（行序号, 尺寸, 留白）：{off_share:?}",
+                CELL_MARGIN_SHARE.start() * 100.0,
+                CELL_MARGIN_SHARE.end() * 100.0
+            )
+        });
         emit(&format!(
             "  联系表   {path}  {}×{}  列 {sizes:?}  行 [浅色 #F3F3F3, 深色 #202020]  \
-             逐格底色一致 = {}",
+             逐格底色一致 = {}  逐格留白 {:?}（占格 {}）",
             sheet.width,
             sheet.height,
-            odd.is_empty()
+            odd.is_empty(),
+            margins
+                .iter()
+                .take(sizes.len())
+                .map(|(_, _, m)| m[0])
+                .collect::<Vec<_>>(),
+            margins
+                .iter()
+                .take(sizes.len())
+                .map(|(_, _, m)| format!("{:.1}%", f64::from(m[0]) / f64::from(cell) * 100.0))
+                .collect::<Vec<_>>()
+                .join(" ")
         ));
     }
     if let Some((_, sample)) = layers
@@ -945,7 +1236,7 @@ mod tests {
     }
 
     /// 小尺寸表必须小到不会被看图管道再缩一次，否则缩放会在红白边界混出粉雾，
-    /// 而人眼验收看到的就不再是字节本身。720×480 是这条的具体形态。
+    /// 而人眼验收看到的就不再是字节本身。864×576 是这条的具体形态。
     #[test]
     fn small_sheet_stays_within_native_viewing_budget() {
         let layers: Vec<(u32, Rgba)> = SMALL_SHEET_SIZES
@@ -953,7 +1244,7 @@ mod tests {
             .map(|s| (*s, stub_layer()))
             .collect();
         let sheet = render_sheet(&layers, SMALL_SHEET_SIZES.as_slice(), SMALL_CELL);
-        assert_eq!((sheet.width, sheet.height), (720, 480));
+        assert_eq!((sheet.width, sheet.height), (864, 576));
         assert!(
             SMALL_SHEET_SIZES.iter().all(|s| SHEET_SIZES.contains(s)),
             "小表的每一档都必须也是六档表里的一档，否则两张表在验收同一件事时会不一致"
@@ -1034,21 +1325,55 @@ mod tests {
         assert_eq!(sheet, required, "联系表列必须覆盖每一个必需的 ICO 层尺寸");
     }
 
-    /// 按骨架参数合成一层，用来把几何断言的正反两面都测到。
+    /// 按骨架参数合成一层朱文方印，用来把几何断言的正反两面都测到。
     ///
-    /// 参数顺序与 `generate_source.py` 的 `SKELETON` 一致：气口 / 朱边 / 笔宽 / 缝宽。
-    /// `stroke_h` 单独给出，好让测试能构造一个「笔高不等于 2×笔宽+缝宽」的坏样本。
-    fn synth(size: u32, m: u32, b: u32, s: u32, g: u32, stroke_h: u32) -> Rgba {
+    /// 参数顺序与 `generate_source.py` 的 `SKELETON` 一致：
+    /// 气口 / 环宽 / 净距 / 横宽 / 横高 / 竖宽 / 竖高。刻意逐项可调，好让测试能
+    /// 构造出各种坏样本（净距 1 px、印文外接框不方、上下对称的印文……）。
+    #[allow(clippy::too_many_arguments)]
+    fn synth(size: u32, m: u32, r: u32, c: u32, bw: u32, bh: u32, sw: u32, sh: u32) -> Rgba {
         let mut pixels = vec![0u8; (size * size * 4) as usize];
+        let (bx, by) = (m + r + c, m + r + c);
+        let sx = bx + (bw - sw) / 2;
+        for y in 0..size {
+            for x in 0..size {
+                let inside = x >= m && x < size - m && y >= m && y < size - m;
+                let in_inner = x >= m + r && x < size - m - r && y >= m + r && y < size - m - r;
+                let in_bar = (bx..bx + bw).contains(&x) && (by..by + bh).contains(&y);
+                let in_stem = (sx..sx + sw).contains(&x) && (by + bh..by + bh + sh).contains(&y);
+                let cell = match (inside, in_inner, in_bar || in_stem) {
+                    (false, _, _) => [0, 0, 0, 0],
+                    (true, false, _) => SEAL,
+                    (true, true, true) => SEAL,
+                    (true, true, false) => INK,
+                };
+                let i = ((y * size + x) * 4) as usize;
+                pixels[i..i + 4].copy_from_slice(&cell);
+            }
+        }
+        Rgba {
+            width: size,
+            height: size,
+            pixels,
+        }
+    }
+
+    /// v5 的形态：实心朱面 + 两道等宽等高米白竖笔，**没有内框**。
+    ///
+    /// 它必须被本轮的门禁判红。这是本轮最重要的一条反向测试：v5 的字节断言全绿
+    /// 而三层结构从未存在，说明那次缺陷本来就是可以被断言抓住的，缺的只是断言。
+    fn synth_v5_solid_with_two_bars(size: u32, m: u32, b: u32, s: u32, g: u32) -> Rgba {
+        let mut pixels = vec![0u8; (size * size * 4) as usize];
+        let stroke_h = 2 * s + g;
         let first = (size - stroke_h) / 2;
         let left = m + b;
         for y in 0..size {
             for x in 0..size {
                 let inside = x >= m && x < size - m && y >= m && y < size - m;
-                let in_stroke_band = y >= first && y < first + stroke_h;
-                let in_left = x >= left && x < left + s;
-                let in_right = x >= left + s + g && x < left + 2 * s + g;
-                let cell = match (inside, in_stroke_band && (in_left || in_right)) {
+                let band = (first..first + stroke_h).contains(&y);
+                let in_left = (left..left + s).contains(&x);
+                let in_right = (left + s + g..left + 2 * s + g).contains(&x);
+                let cell = match (inside, band && (in_left || in_right)) {
                     (false, _) => [0, 0, 0, 0],
                     (true, true) => INK,
                     (true, false) => SEAL,
@@ -1064,97 +1389,167 @@ mod tests {
         }
     }
 
-    /// 笔宽期望值必须与 `generate_source.py` 的 `floor(2×缩放+0.5)` 逐档一致。
+    /// 气口与环宽的期望值必须与 `generate_source.py` 的 `floor(unit×缩放+0.5)` 逐档一致。
     ///
-    /// 20 与 24 px 是这条唯一有区分力的地方：20 px 的目标值是 2.5，用银行家舍入
+    /// 20 与 24 px 是这条唯一有区分力的地方：20 px 的环宽目标值是 2.5，用银行家舍入
     /// 会算出 2，用 `.5` 向上才是 3。这张表就是把两侧算法钉在一起。
     #[test]
-    fn expected_stroke_width_matches_the_generator_per_tier() {
-        for (size, want) in [
-            (16, 2),
-            (20, 3),
-            (24, 3),
-            (32, 4),
-            (48, 6),
-            (64, 8),
-            (128, 16),
-            (256, 32),
-            (1024, 128),
+    fn expected_units_match_the_generator_per_tier() {
+        for (size, margin, ring) in [
+            (16, 1, 2),
+            (20, 1, 3),
+            (24, 2, 3),
+            (32, 2, 4),
+            (48, 3, 6),
+            (64, 4, 8),
+            (128, 8, 16),
+            (256, 16, 32),
+            (1024, 64, 128),
         ] {
-            assert_eq!(expected_stroke_width(size), want, "{size} px");
+            assert_eq!(expected_unit(1, size), margin, "{size} px 气口");
+            assert_eq!(expected_unit(2, size), ring, "{size} px 环宽");
+            let want = expected_skeleton(size).expect("表内档位");
+            assert_eq!((want.margin, want.ring), (margin, ring), "{size} px 期望表");
         }
     }
 
     /// 量骨架必须从像素反推出与 16 px 定稿一致的每一项。
     #[test]
     fn measures_the_shipped_skeleton_from_pixels() {
-        let grid = classify(&synth(16, 1, 4, 2, 2, 6)).expect("只含两种实色");
+        let grid = classify(&synth(16, 1, 2, 2, 6, 2, 2, 4)).expect("只含两种实色");
         assert_eq!(
             measure(&grid).expect("可量"),
-            Geometry {
-                margin: 1,
-                mark: 14,
-                border: 4,
-                stroke_w: 2,
-                gap: 2,
-                stroke_h: 6,
-            }
+            expected_skeleton(16).expect("16 px 在期望表内")
         );
     }
 
-    /// v4 的真实失效：某一档的笔画比该档应有的细。这条断言必须抓住它。
-    ///
-    /// 用 32 px 构造一个笔宽 3 而不是 4 的层——层数、层序、四角 alpha、颜色数
-    /// 四项全绿，只有笔宽是错的，正是当时漏过去的那种形态。
+    /// 合格的 32 px 层不该被判红，而 v4 的失效形态（该档笔画比应有的细）必须被抓住。
     #[test]
-    fn catches_a_tier_whose_stroke_is_thinner_than_its_grid() {
+    fn catches_a_tier_whose_strokes_are_thinner_than_its_grid() {
         let mut failures = Failures::default();
-        check_geometry(&mut failures, 32, &synth(32, 2, 8, 4, 4, 12));
+        check_geometry(&mut failures, 32, &synth(32, 2, 4, 4, 12, 4, 4, 8));
         assert!(failures.into_result().is_ok(), "合格的 32 px 层不该被判红");
 
+        // 环宽 3 而不是 4：层数、层序、四角 alpha、颜色数四项仍全绿。
         let mut failures = Failures::default();
-        check_geometry(&mut failures, 32, &synth(32, 2, 9, 3, 4, 10));
-        let err = failures.into_result().expect_err("笔宽 3 应被判红");
+        check_geometry(&mut failures, 32, &synth(32, 2, 3, 5, 12, 4, 4, 8));
+        let err = failures.into_result().expect_err("环宽 3 应被判红");
         let text = err.to_string();
-        assert!(text.contains("笔宽 3"), "{text}");
+        assert!(text.contains("环宽 3"), "{text}");
         assert!(text.contains("= 4"), "失败信息要带上期望值：{text}");
     }
 
-    /// 两笔不等宽必须在量骨架阶段就被拒——那是 v2「最右竖条顶穿右框线」的同类形态。
+    /// **本轮的核心反向测试**：v5 那枚「实心朱块 + 两道米白竖笔」必须被判红。
+    ///
+    /// v5 的门禁对它全绿，而它的三层结构（外环 / 内白 / 印文）根本不存在。
+    /// 这条既证明新断言真的在看那件事，也钉住「不许退回 v5 造型」。
     #[test]
-    fn rejects_layers_whose_two_strokes_differ() {
-        let mut layer = synth(16, 1, 4, 2, 2, 6);
-        // 把右笔的最右一列改回朱砂，右笔就只剩 1 px。
-        for y in 5..11 {
-            let i = ((y * 16 + 10) * 4) as usize;
-            layer.pixels[i..i + 4].copy_from_slice(&SEAL);
-        }
-        let grid = classify(&layer).expect("仍只含两种实色");
-        let err = measure(&grid).expect_err("两笔不等宽应被拒");
-        assert!(err.to_string().contains("等宽"), "{err}");
+    fn rejects_the_v5_solid_seal_with_two_bars() {
+        let mut failures = Failures::default();
+        check_geometry(
+            &mut failures,
+            16,
+            &synth_v5_solid_with_two_bars(16, 1, 4, 2, 2),
+        );
+        let err = failures
+            .into_result()
+            .expect_err("v5 的实心双竖笔层必须被判红");
+        let text = err.to_string();
+        assert!(
+            text.contains("连通分量") || text.contains("中线段序"),
+            "必须点名三层结构缺失，而不是别的顺带失败：{text}"
+        );
+    }
+
+    /// 上下对称的印文必须进不了门禁：那正是 v5 被目视读成暂停键的骨架特征。
+    ///
+    /// **上下不对称其实已被 `measure` 的结构约束隐含**：竖宽一旦等于横宽，印文退化
+    /// 成矩形，`take_while` 把所有行都算成横、竖行为空而直接 bail。所以
+    /// `check_geometry` 里那条 `!mirrored_y` 是第二道防线，将来若有人放宽 `measure`
+    /// 它仍会拦住 v5 那种骨架。这条测试因此钉两侧：退化矩形被拒，且合格层实测不对称。
+    #[test]
+    fn rejects_a_vertically_symmetric_glyph() {
+        let mut failures = Failures::default();
+        check_geometry(&mut failures, 16, &synth(16, 1, 2, 2, 6, 6, 6, 0));
+        let err = failures
+            .into_result()
+            .expect_err("退化成矩形的印文应被判红");
+        assert!(err.to_string().contains("竖各行宽度不一"), "{err}");
+
+        let grid = classify(&synth(16, 1, 2, 2, 6, 2, 2, 4)).expect("合格层只含两种实色");
+        let flipped: Vec<Vec<Cell>> = grid.iter().rev().cloned().collect();
+        assert_ne!(grid, flipped, "合格层必须上下不对称——印文要有朝向");
+    }
+
+    /// 净距只有 1 px 必须被拒——需求方给的原坐标（横起于 x=4、环内沿在 x=3）就是这种。
+    #[test]
+    fn rejects_a_one_pixel_clearance() {
+        let mut failures = Failures::default();
+        check_geometry(&mut failures, 16, &synth(16, 1, 2, 1, 8, 2, 2, 6));
+        let err = failures.into_result().expect_err("1 px 净距应被判红");
+        assert!(err.to_string().contains("净距"), "{err}");
     }
 
     /// 出现第三种实色即判为降采样产物：`classify` 必须点名那个像素。
     #[test]
     fn classify_rejects_a_third_solid_colour() {
-        let mut layer = synth(16, 1, 4, 2, 2, 6);
-        layer.pixels[(((7 * 16) + 7) * 4) as usize..][..4].copy_from_slice(&[200, 100, 90, 255]);
+        let mut layer = synth(16, 1, 2, 2, 6, 2, 2, 4);
+        layer.pixels[(((4 * 16) + 4) * 4) as usize..][..4].copy_from_slice(&[200, 100, 90, 255]);
         let err = classify(&layer).expect_err("第三种实色应被拒");
-        assert!(err.to_string().contains("(7,7)"), "{err}");
+        assert!(err.to_string().contains("(4,4)"), "{err}");
+    }
+
+    /// 逐格留白必须四边相等且等比。这条守的是上一版六档表 6.2% 与 10.9% 并存的缺陷。
+    #[test]
+    fn cell_margins_are_uniform_across_tiers() {
+        let sizes = SHEET_SIZES;
+        let layers: Vec<(u32, Rgba)> = sizes
+            .iter()
+            .map(|&s| {
+                let want = expected_skeleton(s).expect("六档都在期望表内");
+                (
+                    s,
+                    synth(
+                        s,
+                        want.margin,
+                        want.ring,
+                        want.clearance,
+                        want.bar_w,
+                        want.bar_h,
+                        want.stem_w,
+                        want.stem_h,
+                    ),
+                )
+            })
+            .collect();
+        let sheet = render_sheet(&layers, sizes.as_slice(), CELL);
+        for (row, size, margins) in probe_cell_margins(&sheet, sizes.as_slice(), CELL) {
+            assert!(
+                margins.iter().all(|v| *v == margins[0]),
+                "行 {row} 的 {size} px 格四周留白不等：{margins:?}"
+            );
+            let share = f64::from(margins[0]) / f64::from(CELL);
+            assert!(
+                CELL_MARGIN_SHARE.contains(&share),
+                "行 {row} 的 {size} px 格留白占格 {:.1}%，越出 {CELL_MARGIN_SHARE:?}",
+                share * 100.0
+            );
+        }
     }
 
     /// 深色补偿对照图必须真的并置两套配色，否则它证不了补偿做了什么。
     #[test]
     fn compensation_sheet_places_both_palettes_side_by_side() {
-        let sheet = render_compensation_sheet(&synth(32, 2, 8, 4, 4, 12));
-        assert_eq!((sheet.width, sheet.height), (480, 480));
-        // 每格 240 / 源 32 = 7 倍居中，格中心必然落在印面上。
-        let centre = |ci: u32, ri: u32| sheet.pixel(ci * 240 + 120, ri * 240 + 120);
+        let sheet = render_compensation_sheet(&synth(32, 2, 4, 4, 12, 4, 4, 8));
+        let cell = COMPENSATION_CELL;
+        assert_eq!((sheet.width, sheet.height), (2 * cell, 2 * cell));
+        // 格中心落在印文的竖上，那里是朱砂——两列的差别正是这个朱砂取值。
+        let centre = |ci: u32, ri: u32| sheet.pixel(ci * cell + cell / 2, ri * cell + cell / 2);
         assert_eq!(centre(0, 0), SEAL, "左列必须是本版朱砂");
         assert_eq!(centre(1, 0), LEGACY_SEAL, "右列必须是上一版朱砂");
         assert_ne!(SEAL, LEGACY_SEAL, "两版配色相同则这张表毫无信息量");
         assert_eq!(sheet.pixel(0, 0), [243, 243, 243, 255], "上行是浅底");
-        assert_eq!(sheet.pixel(0, 240), [32, 32, 32, 255], "下行是深底");
+        assert_eq!(sheet.pixel(0, cell), [32, 32, 32, 255], "下行是深底");
     }
 
     /// 门禁必须一次报出全部失败项，而不是第一条就中止。
