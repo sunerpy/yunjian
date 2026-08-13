@@ -158,10 +158,13 @@ Apache-2.0）与运行时，配成闭源 API 供应商即中止并点明开放�
 
 - [架构](docs/ARCHITECTURE.zh.md)——分层、`yunjian-core` 为什么不知道 Tauri 存在、移动端逃生通道
 - [语料与索引](docs/CORPUS.zh.md)——构建管线、`stable_id` 身份模型、FTS5 索引选型实测
+- [语音](docs/VOICE.zh.md)——模型与许可、破读词表、v1 反馈契约（**不评判读音标准**）
+- [AI 赏析](docs/AI.zh.md)——BYOK、两级缓存、预生成策略与标注义务
 - [命令行](docs/CLI.zh.md)——子命令、`--json` 信封 schema、四个退出码、stdout/stderr 分工
 - [语音构建](docs/VOICE-BUILD.zh.md)——五平台原生依赖构建、链接方式、许可影响
 - [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md)——五平台系统最低版本、麦克风授权链、低于底线时的降级行为
 - [CER 报告](docs/reports/asr-cer.md)——文言语音识别字准实测，以及它为什么只能当参考值
+- [第三方许可](LICENSES.md)——逐条列出随包或下载的第三方资产、许可与署名
 
 ## 参与开发
 
