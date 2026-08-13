@@ -4,6 +4,10 @@
 //! 要逐字节审计的协议流。父进程复用当前测试可执行文件启动子进程；子进程只运行服务端，
 //! 父进程则用真实 `rmcp` 客户端完成握手、`tools/list` 与 `tools/call`。
 
+#[allow(dead_code)]
+mod common;
+
+use common::assert_protocol_only;
 use rmcp::{ServiceExt, model::CallToolRequestParams};
 use serde_json::Value;
 use std::pin::Pin;
@@ -189,32 +193,6 @@ async fn run_session(session: Session) -> SessionOutput {
         stderr,
         status,
         call_result,
-    }
-}
-
-fn assert_protocol_only(stdout: &[u8]) {
-    assert!(!stdout.is_empty(), "握手与 tools/list 应产生协议帧");
-    assert_eq!(
-        stdout.last(),
-        Some(&b'\n'),
-        "stdio 协议流必须由换行分隔：{}",
-        String::from_utf8_lossy(stdout)
-    );
-    let text = std::str::from_utf8(stdout).expect("stdout 必须是 UTF-8 JSON-RPC");
-    for (index, line) in text.lines().enumerate() {
-        assert!(!line.is_empty(), "stdout 不得有空行，第 {} 行", index + 1);
-        let frame: Value = serde_json::from_str(line).unwrap_or_else(|error| {
-            panic!(
-                "stdout 第 {} 行不是 JSON-RPC（可能有协议外打印）：{error}\n{line}",
-                index + 1
-            )
-        });
-        assert_eq!(
-            frame["jsonrpc"],
-            "2.0",
-            "stdout 第 {} 行不是 JSON-RPC 2.0：{line}",
-            index + 1
-        );
     }
 }
 
