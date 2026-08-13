@@ -1,0 +1,730 @@
+schema_version = 1
+
+# 这些是用户主动键入的确定性真值，不是 ASR 转写。每条的操作序列均由人工按原文标注；
+# 分数区间只吸收 f32 末位误差，不为实现偏差留模糊空间。
+
+[[case]]
+id = "perfect-jing-ye-si"
+category = "perfect"
+reference = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+attempt = "床前明月光疑是地上霜举头望明月低头思故乡"
+expected_ops = ["normal:床前明月光疑是地上霜举头望明月低头思故乡"]
+is_rejected = false
+expected_grade = "Easy"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "perfect-deng-guan-que-lou"
+category = "perfect"
+reference = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+attempt = "白日依山尽黄河入海流欲穷千里目更上一层楼"
+expected_ops = ["normal:白日依山尽黄河入海流欲穷千里目更上一层楼"]
+is_rejected = false
+expected_grade = "Easy"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "perfect-chun-xiao"
+category = "perfect"
+reference = "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。"
+attempt = "春眠不觉晓处处闻啼鸟夜来风雨声花落知多少"
+expected_ops = ["normal:春眠不觉晓处处闻啼鸟夜来风雨声花落知多少"]
+is_rejected = false
+expected_grade = "Easy"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "perfect-xiang-si"
+category = "perfect"
+reference = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+attempt = "红豆生南国春来发几枝愿君多采撷此物最相思"
+expected_ops = ["normal:红豆生南国春来发几枝愿君多采撷此物最相思"]
+is_rejected = false
+expected_grade = "Easy"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "missing-line-jing-ye-si-third"
+category = "missing_line"
+reference = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+attempt = "床前明月光疑是地上霜低头思故乡"
+expected_ops = ["normal:床前明月光疑是地上霜", "deletion:举头望明月", "normal:低头思故乡"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.749,
+  0.751,
+], accuracy_strict = [
+  0.749,
+  0.751,
+], accuracy_lenient = [
+  0.749,
+  0.751,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "missing-line-deng-guan-que-lou-last"
+category = "missing_line"
+reference = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+attempt = "白日依山尽黄河入海流欲穷千里目"
+expected_ops = ["normal:白日依山尽黄河入海流欲穷千里目", "deletion:更上一层楼"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.749,
+  0.751,
+], accuracy_strict = [
+  0.749,
+  0.751,
+], accuracy_lenient = [
+  0.749,
+  0.751,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "missing-line-chun-xiao-first"
+category = "missing_line"
+reference = "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。"
+attempt = "处处闻啼鸟夜来风雨声花落知多少"
+expected_ops = ["deletion:春眠不觉晓", "normal:处处闻啼鸟夜来风雨声花落知多少"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.749,
+  0.751,
+], accuracy_strict = [
+  0.749,
+  0.751,
+], accuracy_lenient = [
+  0.749,
+  0.751,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "missing-line-xiang-si-second"
+category = "missing_line"
+reference = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+attempt = "红豆生南国愿君多采撷此物最相思"
+expected_ops = ["normal:红豆生南国", "deletion:春来发几枝", "normal:愿君多采撷此物最相思"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.749,
+  0.751,
+], accuracy_strict = [
+  0.749,
+  0.751,
+], accuracy_lenient = [
+  0.749,
+  0.751,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "extra-character-jing-ye-si-after-line"
+category = "extra_character"
+reference = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+attempt = "床前明月光啊疑是地上霜举头望明月低头思故乡"
+expected_ops = ["normal:床前明月光", "insertion:啊", "normal:疑是地上霜举头望明月低头思故乡"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "extra-character-deng-guan-que-lou-prefix"
+category = "extra_character"
+reference = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+attempt = "呀白日依山尽黄河入海流欲穷千里目更上一层楼"
+expected_ops = ["insertion:呀", "normal:白日依山尽黄河入海流欲穷千里目更上一层楼"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "extra-character-chun-xiao-suffix"
+category = "extra_character"
+reference = "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。"
+attempt = "春眠不觉晓处处闻啼鸟夜来风雨声花落知多少兮"
+expected_ops = ["normal:春眠不觉晓处处闻啼鸟夜来风雨声花落知多少", "insertion:兮"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "extra-character-xiang-si-middle"
+category = "extra_character"
+reference = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+attempt = "红豆生南国春来发几枝又愿君多采撷此物最相思"
+expected_ops = ["normal:红豆生南国春来发几枝", "insertion:又", "normal:愿君多采撷此物最相思"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "rerecitation-jing-ye-si-opening"
+category = "rerecitation"
+reference = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+attempt = "床前明月床前明月光疑是地上霜举头望明月低头思故乡"
+expected_ops = ["normal:床前明月", "rerecitation:床前明月", "normal:光疑是地上霜举头望明月低头思故乡"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "rerecitation-deng-guan-que-lou-opening"
+category = "rerecitation"
+reference = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+attempt = "白日依山白日依山尽黄河入海流欲穷千里目更上一层楼"
+expected_ops = ["normal:白日依山", "rerecitation:白日依山", "normal:尽黄河入海流欲穷千里目更上一层楼"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "rerecitation-chun-xiao-opening"
+category = "rerecitation"
+reference = "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。"
+attempt = "春眠不觉春眠不觉晓处处闻啼鸟夜来风雨声花落知多少"
+expected_ops = ["normal:春眠不觉", "rerecitation:春眠不觉", "normal:晓处处闻啼鸟夜来风雨声花落知多少"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "rerecitation-xiang-si-opening"
+category = "rerecitation"
+reference = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+attempt = "红豆生南红豆生南国春来发几枝愿君多采撷此物最相思"
+expected_ops = ["normal:红豆生南", "rerecitation:红豆生南", "normal:国春来发几枝愿君多采撷此物最相思"]
+is_rejected = false
+expected_grade = "Hard"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.999,
+  1.0,
+], accuracy_lenient = [
+  0.999,
+  1.0,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "homophone-zhong-chong"
+category = "homophone_substitution"
+reference = "轻舟已过万重山"
+attempt = "轻舟已过万虫山"
+expected_ops = ["normal:轻舟已过万", "near_homophone:重→虫", "normal:山"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.856,
+  0.858,
+], accuracy_lenient = [
+  0.928,
+  0.930,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "homophone-shan-san-long"
+category = "homophone_substitution"
+reference = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+attempt = "白日依三尽黄河入海流欲穷千里目更上一层楼"
+expected_ops = ["normal:白日依", "near_homophone:山→三", "normal:尽黄河入海流欲穷千里目更上一层楼"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.974,
+  0.976,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "homophone-shan-shang"
+category = "homophone_substitution"
+reference = "国破山河在，城春草木深。"
+attempt = "国破伤河在城春草木深"
+expected_ops = ["normal:国破", "near_homophone:山→伤", "normal:河在城春草木深"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.899,
+  0.901,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "homophone-jing-ting-shan-san"
+category = "homophone_substitution"
+reference = "相看两不厌，只有敬亭山。"
+attempt = "相看两不厌只有敬亭三"
+expected_ops = ["normal:相看两不厌只有敬亭", "near_homophone:山→三"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.899,
+  0.901,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "distinct-substitution-jing-ye-si"
+category = "distinct_substitution"
+reference = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+attempt = "床前明月1疑是地上霜举头望明月低头思故乡"
+expected_ops = ["normal:床前明月", "substitution:光→1", "normal:疑是地上霜举头望明月低头思故乡"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "distinct-substitution-deng-guan-que-lou"
+category = "distinct_substitution"
+reference = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+attempt = "白日依山1黄河入海流欲穷千里目更上一层楼"
+expected_ops = ["normal:白日依山", "substitution:尽→1", "normal:黄河入海流欲穷千里目更上一层楼"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "distinct-substitution-chun-xiao"
+category = "distinct_substitution"
+reference = "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。"
+attempt = "春眠不觉1处处闻啼鸟夜来风雨声花落知多少"
+expected_ops = ["normal:春眠不觉", "substitution:晓→1", "normal:处处闻啼鸟夜来风雨声花落知多少"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "distinct-substitution-xiang-si"
+category = "distinct_substitution"
+reference = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+attempt = "红豆生南1春来发几枝愿君多采撷此物最相思"
+expected_ops = ["normal:红豆生南", "substitution:国→1", "normal:春来发几枝愿君多采撷此物最相思"]
+is_rejected = false
+expected_grade = "Good"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.949,
+  0.951,
+], accuracy_lenient = [
+  0.949,
+  0.951,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "wrong-poem-jing-ye-si-vs-deng-lou"
+category = "wrong_poem"
+reference = "床前明月光，疑是地上霜。"
+attempt = "白日依山尽黄河入海流"
+expected_ops = ["substitution:床→白,前→日,明→依,月→山,光→尽,疑→黄,是→河,地→入,上→海,霜→流"]
+is_rejected = true
+expected_grade = "Again"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.0,
+  0.001,
+], accuracy_lenient = [
+  0.0,
+  0.2,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "wrong-poem-deng-lou-vs-xun-yin-zhe"
+category = "wrong_poem"
+reference = "白日依山尽，黄河入海流。"
+attempt = "松下问童子言师采药去"
+expected_ops = ["substitution:白→松,日→下,依→问,山→童,尽→子,黄→言,河→师,入→采,海→药,流→去"]
+is_rejected = true
+expected_grade = "Again"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.0,
+  0.001,
+], accuracy_lenient = [
+  0.0,
+  0.2,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "wrong-poem-chun-xiao-vs-xun-yin-zhe"
+category = "wrong_poem"
+reference = "春眠不觉晓，处处闻啼鸟。"
+attempt = "松下问童子言师采药去"
+expected_ops = ["substitution:春→松,眠→下,不→问,觉→童,晓→子,处→言,处→师,闻→采,啼→药,鸟→去"]
+is_rejected = true
+expected_grade = "Again"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.0,
+  0.001,
+], accuracy_lenient = [
+  0.0,
+  0.2,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "wrong-poem-xiang-si-vs-min-nong"
+category = "wrong_poem"
+reference = "红豆生南国，春来发几枝。"
+attempt = "锄禾日当午汗滴禾下土"
+expected_ops = ["substitution:红→锄,豆→禾,生→日,南→当,国→午,春→汗,来→滴,发→禾,几→下,枝→土"]
+is_rejected = true
+expected_grade = "Again"
+scores = { completeness = [
+  0.999,
+  1.0,
+], accuracy_strict = [
+  0.0,
+  0.001,
+], accuracy_lenient = [
+  0.0,
+  0.2,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "half-finished-jing-ye-si"
+category = "half_finished"
+reference = "床前明月光，疑是地上霜。举头望明月，低头思故乡。"
+attempt = "床前明月光疑是地上霜"
+expected_ops = ["normal:床前明月光疑是地上霜", "deletion:举头望明月低头思故乡"]
+is_rejected = false
+expected_grade = "Again"
+scores = { completeness = [
+  0.499,
+  0.501,
+], accuracy_strict = [
+  0.499,
+  0.501,
+], accuracy_lenient = [
+  0.499,
+  0.501,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "half-finished-deng-guan-que-lou"
+category = "half_finished"
+reference = "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。"
+attempt = "白日依山尽黄河入海流"
+expected_ops = ["normal:白日依山尽黄河入海流", "deletion:欲穷千里目更上一层楼"]
+is_rejected = false
+expected_grade = "Again"
+scores = { completeness = [
+  0.499,
+  0.501,
+], accuracy_strict = [
+  0.499,
+  0.501,
+], accuracy_lenient = [
+  0.499,
+  0.501,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "half-finished-chun-xiao"
+category = "half_finished"
+reference = "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。"
+attempt = "春眠不觉晓处处闻啼鸟"
+expected_ops = ["normal:春眠不觉晓处处闻啼鸟", "deletion:夜来风雨声花落知多少"]
+is_rejected = false
+expected_grade = "Again"
+scores = { completeness = [
+  0.499,
+  0.501,
+], accuracy_strict = [
+  0.499,
+  0.501,
+], accuracy_lenient = [
+  0.499,
+  0.501,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+[[case]]
+id = "half-finished-xiang-si"
+category = "half_finished"
+reference = "红豆生南国，春来发几枝。愿君多采撷，此物最相思。"
+attempt = "红豆生南国春来发几枝"
+expected_ops = ["normal:红豆生南国春来发几枝", "deletion:愿君多采撷此物最相思"]
+is_rejected = false
+expected_grade = "Again"
+scores = { completeness = [
+  0.499,
+  0.501,
+], accuracy_strict = [
+  0.499,
+  0.501,
+], accuracy_lenient = [
+  0.499,
+  0.501,
+], fluency = [
+  0.999,
+  1.0,
+] }
+
+# 真人重口音没有可再分发且许可合格的朗诵集。以下条目明确记录缺口，不把 TTS 变速、
+# 加噪或错别字伪装成口音真值；它们不进入确定性打字评分的 30+ 可执行 case 计数。
+[[unmeasured]]
+id = "accent-northern-retroflex"
+category = "heavily_accented_reading"
+reason = "缺少经许可且带真人地域口音标签的文言朗诵，TTS 合成音不能代表真人卷舌差异"
+
+[[unmeasured]]
+id = "accent-southern-nasal"
+category = "heavily_accented_reading"
+reason = "缺少经许可且带真人地域口音标签的文言朗诵，信道加噪不能代表前后鼻音差异"
+
+[[unmeasured]]
+id = "accent-min-influenced"
+category = "heavily_accented_reading"
+reason = "缺少经许可且带真人地域口音标签的文言朗诵，错别字文本不能冒充闽语影响口音"
+
+[[unmeasured]]
+id = "accent-cantonese-influenced"
+category = "heavily_accented_reading"
+reason = "缺少经许可且带真人地域口音标签的文言朗诵，变速不变调不能代表粤语影响口音"

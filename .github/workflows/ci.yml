@@ -73,7 +73,7 @@ jobs:
       - name: clippy
         run: make lint
 
-      - name: 测试
+      - name: 测试（含背诵评分黄金契约）
         run: make test
 
       # 自绘标题栏的时序缺陷（StrictMode 下卸载后写状态、订阅泄漏）与非 Tauri 降级
