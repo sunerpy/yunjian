@@ -970,5 +970,13 @@ pub(crate) async fn voice_fetch_model<R: Runtime>(
     })
 }
 
-#[cfg(test)]
+/// `App` 驱动的验收断言。
+///
+/// **Windows 上整段不编译**，理由与后续覆盖层写在 [`wire_tests`] 的模块文档里：在
+/// `MockRuntime` 上构造 `tauri::App` 会让 Windows 的测试二进制在加载期失败，而 `#[ignore]`
+/// 挡不住加载期（它仍然链接那段代码）。线上形状那一半在 `wire_tests` 里，三平台都跑。
+#[cfg(all(test, not(windows)))]
 mod tests;
+
+#[cfg(test)]
+mod wire_tests;

@@ -35,10 +35,10 @@ use yunjian_voice::session::{
 };
 
 use super::{
-    ASR_PARTIAL_NOTE, AsrPartialOut, Coupling, MARK_TIMEBASE_HZ, ModelFetchOut, PartialSink,
-    VoiceDemonstrateRequest, VoiceFetchModelRequest, VoiceModelOutcomeOut, VoiceOutcomeOut,
-    VoiceRig, VoiceSessionRequest, WIRE_DEGRADE_REASONS, degrade_reason_key, voice_availability,
-    voice_demonstrate, voice_fetch_model, voice_start_session,
+    ASR_PARTIAL_NOTE, AsrPartialOut, Coupling, ModelFetchOut, PartialSink, VoiceDemonstrateRequest,
+    VoiceFetchModelRequest, VoiceModelOutcomeOut, VoiceOutcomeOut, VoiceRig, VoiceSessionRequest,
+    degrade_reason_key, voice_availability, voice_demonstrate, voice_fetch_model,
+    voice_start_session,
 };
 use crate::ipc::AppState;
 
@@ -398,21 +398,6 @@ fn asr_partials_arrive_over_the_channel() {
     }
 }
 
-/// 流式路径不得改用 Tauri event 或 `eval`。
-#[test]
-fn voice_streaming_never_uses_events_or_eval() {
-    let production = production_source();
-    assert!(
-        production.contains("ipc::Channel"),
-        "流式数据必须通过 ipc::Channel"
-    );
-    assert!(
-        !production.contains(".emit("),
-        "流式路径不得使用 Tauri event"
-    );
-    assert!(!production.contains(".eval("), "不得通过 eval 传输数据");
-}
-
 /// 模拟权限被拒时，界面状态必须切到打字模式**并带上那一条独有的原因**。
 #[test]
 fn a_denied_microphone_switches_to_typed_practice_with_the_reason() {
@@ -680,42 +665,6 @@ fn model_download_reports_progress_and_lands() {
     }
 }
 
-/// 四段进度的线上串与模型层的枚举逐项对应。
-///
-/// 与上一条分工明确：上一条验「进度到得了界面」（受可合并协议约束，只能验存在性），
-/// 这一条验「映射没写错」（纯函数，可逐项断言）。合成一条会让其中一半失去判据。
-#[test]
-fn every_fetch_stage_maps_onto_a_distinct_wire_string() {
-    let mapped = [
-        (
-            yunjian_voice::models::FetchProgress::Downloading {
-                bytes_done: 7,
-                bytes_total: 9,
-            },
-            "downloading",
-        ),
-        (
-            yunjian_voice::models::FetchProgress::Verifying { bytes: 9 },
-            "verifying",
-        ),
-        (yunjian_voice::models::FetchProgress::Verified, "verified"),
-        (yunjian_voice::models::FetchProgress::Unpacking, "unpacking"),
-    ];
-    for (source, expected) in mapped {
-        let value = serde_json::to_value(ModelFetchOut::from(source)).expect("可序列化");
-        assert_eq!(value["stage"], Value::from(expected));
-    }
-    let downloading = serde_json::to_value(ModelFetchOut::from(
-        yunjian_voice::models::FetchProgress::Downloading {
-            bytes_done: 7,
-            bytes_total: 9,
-        },
-    ))
-    .expect("可序列化");
-    assert_eq!(downloading["bytes_done"], Value::from(7));
-    assert_eq!(downloading["bytes_total"], Value::from(9));
-}
-
 /// 模型下载可取消，且取消之后给出**具体原因**而不是一句「失败了」。
 #[test]
 fn model_download_is_cancellable() {
@@ -766,102 +715,4 @@ fn model_download_is_cancellable() {
         events.iter().any(|event| event["type"] == "cancelled"),
         "取消必须在流上可见：{events:?}"
     );
-}
-
-// ---------------------------------------------------------------------------
-// 源码守卫
-// ---------------------------------------------------------------------------
-
-fn production_source() -> String {
-    let source = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/voice_ipc.rs"),
-    )
-    .expect("读取语音 IPC 源码");
-    source
-        .split("#[cfg(test)]\nmod ")
-        .next()
-        .expect("存在生产源码")
-        .to_owned()
-}
-
-const VOICE_COMMANDS: &[&str] = &[
-    "voice_availability",
-    "voice_demonstrate",
-    "voice_start_session",
-    "voice_fetch_model",
-];
-
-/// 四条语音命令都必须是 `async`。同步命令的函数体在 WebView 主线程上跑，采集与识别放进去
-/// 就是一次窗口冻结，而那种冻结在开发机上看不见——数据小、机器快。
-#[test]
-fn every_voice_command_is_async() {
-    let source = production_source();
-    for command in VOICE_COMMANDS {
-        assert!(
-            source.contains(&format!("async fn {command}")),
-            "语音命令 `{command}` 必须是 async"
-        );
-    }
-}
-
-/// 命令不得返回 `Vec<u8>`：实测 6.3 MB 的音频当返回值序列化会在线上膨胀到 22.5 MB。
-#[test]
-fn no_voice_command_returns_audio_as_a_byte_vector() {
-    let source = production_source();
-    assert!(
-        !source.lines().any(|line| {
-            line.contains("async fn") && (line.contains("Vec<u8>") || line.contains("Vec < u8 >"))
-        }),
-        "命令不得返回 Vec<u8>；音频必须通过自定义 URI 协议读取"
-    );
-}
-
-/// async 命令体内不得出现阻塞式睡眠。
-///
-/// `std::thread::sleep` 会占住一个运行时 worker 而不是把它让出去。多线程运行时下这不会
-/// 立刻表现为界面冻结（[`a_running_session_does_not_serialize_other_commands`] 的文档记了
-/// 这次实测），但它会在运行时线程数被占满时突然变成一次真的冻结，而那时症状与原因隔得
-/// 很远。**这条守卫已验证会为该缺陷变红。**
-#[test]
-fn async_command_bodies_never_block_the_runtime() {
-    let source = production_source();
-    assert!(
-        !source.contains("std::thread::sleep"),
-        "async 命令体内不得阻塞运行时；让出线程请用 tokio::time::sleep"
-    );
-}
-
-/// `spawn_blocking` 的闭包里不得 await，也不得构造嵌套运行时。
-///
-/// 前者会把长任务钉在阻塞线程池上并让 drop 取消失效，后者会造出第二个运行时。
-#[test]
-fn blocking_workers_neither_await_nor_nest_a_runtime() {
-    let source = production_source();
-    for body in source.split("blocking(").skip(1) {
-        let closure = body.split(".await").next().expect("存在闭包体");
-        assert!(
-            !closure.contains("Runtime::new") && !closure.contains("Builder::new_"),
-            "阻塞闭包不得构造嵌套 async runtime"
-        );
-    }
-}
-
-/// 十条降级原因各有一个互不相同的线上串。
-#[test]
-fn every_degrade_reason_has_a_distinct_wire_key() {
-    let mut keys: Vec<&str> = WIRE_DEGRADE_REASONS
-        .iter()
-        .copied()
-        .map(degrade_reason_key)
-        .collect();
-    keys.sort_unstable();
-    let count = keys.len();
-    keys.dedup();
-    assert_eq!(keys.len(), count, "原因码的线上串必须互不相同");
-}
-
-/// 标记时基是毫秒。写成断言而不是只写在注释里：换算比例错了会让高亮整体拉偏。
-#[test]
-fn marks_use_a_millisecond_timebase() {
-    assert_eq!(MARK_TIMEBASE_HZ, 1_000);
 }

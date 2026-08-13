@@ -92,7 +92,11 @@ impl AppState {
 
     /// 换掉语音装置。**只有测试会调它**：命令的外壳要能在一台没有模型、没有声卡的机器上
     /// 被真的调用一次，否则「权限被拒会切到打字模式并带上原因」这条断言只能靠读代码确认。
-    #[cfg(test)]
+    ///
+    /// `cfg` 里带 `not(windows)` 与 `voice_ipc::tests` 的门同步：那半边测试在 Windows 上整段
+    /// 不编译（见 `voice_ipc/wire_tests.rs` 的模块文档），只写 `cfg(test)` 会在 Windows 上留下
+    /// 一个没人调用的方法，而 `-D warnings` 会把那条 dead_code 变成一次失败。
+    #[cfg(all(test, not(windows)))]
     pub(crate) fn install_voice_rig(&self, rig: Arc<dyn VoiceRig>) {
         *self
             .voice
