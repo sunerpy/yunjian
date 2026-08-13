@@ -7842,6 +7842,8 @@ dependencies = [
  "inputx-phonetic-edit",
  "pinyin",
  "rusqlite",
+ "serde",
+ "serde_json",
  "toml 0.8.23",
  "trybuild",
  "yunjian-core",

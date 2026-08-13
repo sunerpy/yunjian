@@ -73,7 +73,7 @@ jobs:
       - name: clippy
         run: make lint
 
-      - name: 测试
+      - name: 测试（含背诵评分黄金契约）
         run: make test
 
       # 默认工作区测试不会启用 `yunjian-mcp/http`，而一致性 harness 需要同时编译可选传输，
