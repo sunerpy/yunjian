@@ -7605,6 +7605,7 @@ dependencies = [
  "yunjian-ai",
  "yunjian-core",
  "yunjian-mcp",
+ "yunjian-recite",
  "yunjian-voice",
 ]
 
