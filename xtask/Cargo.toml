@@ -11,6 +11,8 @@ publish = false
 
 [dependencies]
 anyhow = { workspace = true }
+# `provider-calls` 要实现 `AppreciationProvider`，那是一个 `#[async_trait]` trait。
+async-trait = { workspace = true }
 clap = { workspace = true }
 # `corpus-measure` 量 gzip 后的工件体积。必须与 todo 21 打包用的是同一个实现，
 # 否则量出来的数不是将来真正发出去的那个数。

@@ -48,7 +48,7 @@ FRONTEND_DIST := app/dist/index.html
 NPM := npm
 
 .PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test mcp-conformance build check ci corpus-gate \
-	corpus-artifact hooks frontend frontend-test
+	corpus-artifact clean-install hooks frontend frontend-test
 
 help: ## 列出全部可用目标
 	@echo "云笺 · make 目标"
@@ -213,6 +213,57 @@ corpus-artifact: ## 构建并打包语料工件（需三个上游检出，约 25
 		'.schema_version and .corpus_version and .min_app_version and .sha256' \
 		manifest.json > /dev/null
 	@echo "语料工件就绪：corpus/build/package/"
+
+# 净机安装验收。刻意**不**属于 `ci`：它要 docker、一份已打包的语料工件、一次约 10 分钟的
+# 首启派生，而且断网段必须是**另一个**容器（同一个容器不可能既能下载又没有网络）。
+#
+# 三段：联网容器跑安装与全流程 -> 断网容器（`--network none`）只跑字典命令 ->
+# 宿主裁决并写报告。断言集在 `xtask clean-install-report` 里预声明，少交一条观测即中止。
+#
+# `MIRROR_BASE` 指向一个提供发布资产的 HTTP 前缀。用本地镜像而不是 GitHub 是刻意的：
+# 验的是安装脚本与工件，不是 GitHub 的可用性；且切 tag 之前就能先验一遍。
+CLEAN_INSTALL_IMAGE := ubuntu:24.04
+CLEAN_INSTALL_PROFILE := $(CURDIR)/target/clean-install-profile
+CLEAN_INSTALL_OBS := $(CURDIR)/target/clean-install-observed
+
+clean-install: ## 在净容器里验收安装、取数、离线可用与 provider 计数（需 docker + MIRROR_BASE）
+	@test -n "$(MIRROR_BASE)" -a -n "$(ARTIFACTS_DIR)" || { \
+		echo "用法：make clean-install MIRROR_BASE=http://<host>:<port> ARTIFACTS_DIR=<资产目录>" >&2; \
+		echo "MIRROR_BASE 下需有 v<版本>/ 与 corpus-v<版本>/ 两个前缀；ARTIFACTS_DIR 是后者的本地路径。" >&2; \
+		exit 1; \
+	}
+	@command -v docker >/dev/null 2>&1 || { echo "缺少 docker：净机验收无法在宿主上就地跑" >&2; exit 1; }
+	@echo "==> provider 调用计数（宿主，fixture 种子）"
+	@$(CARGO) run -p xtask --release -- provider-calls \
+		--out docs/reports/clean-install-provider-calls.json
+	@mkdir -p "$(CLEAN_INSTALL_OBS)"
+	@rm -f "$(CLEAN_INSTALL_OBS)"/*.tsv
+	@echo "==> 清空净机 profile（用容器清，里面的文件是 root 所有）"
+	@mkdir -p "$(CLEAN_INSTALL_PROFILE)"
+	@docker run --rm -v "$(CLEAN_INSTALL_PROFILE)":/p $(CLEAN_INSTALL_IMAGE) \
+		sh -c 'rm -rf /p/* /p/.[!.]* 2>/dev/null; test "$$(ls -A /p | wc -l)" = 0'
+	@echo "==> 联网净机容器"
+	@docker run --rm -v "$(CURDIR)":/work:ro -v "$(CLEAN_INSTALL_OBS)":/observed \
+		-v "$(CLEAN_INSTALL_PROFILE)":/root \
+		-e YUNJIAN_PHASE=online -e YUNJIAN_MIRROR_BASE="$(MIRROR_BASE)" \
+		-e YUNJIAN_OBSERVED=/observed/online.tsv \
+		$(CLEAN_INSTALL_IMAGE) sh -c 'export HOME=/root; sh /work/scripts/clean-install-verify.sh'
+	@echo "==> 断网净机容器（--network none）"
+	@docker run --rm --network none -v "$(CURDIR)":/work:ro -v "$(CLEAN_INSTALL_OBS)":/observed \
+		-v "$(CLEAN_INSTALL_PROFILE)":/root \
+		-e YUNJIAN_PHASE=offline -e YUNJIAN_MIRROR_BASE="$(MIRROR_BASE)" \
+		-e YUNJIAN_OBSERVED=/observed/offline.tsv \
+		$(CLEAN_INSTALL_IMAGE) sh -c 'export HOME=/root; sh /work/scripts/clean-install-verify.sh'
+	@echo "==> 裁决并写报告"
+	@$(CARGO) run -p xtask --release -- clean-install-report \
+		--observed "$(CLEAN_INSTALL_OBS)/online.tsv" \
+		--observed "$(CLEAN_INSTALL_OBS)/offline.tsv" \
+		--artifacts-dir "$(ARTIFACTS_DIR)" \
+		--image "$(CLEAN_INSTALL_IMAGE)" \
+		--image-digest "$$(docker image inspect $(CLEAN_INSTALL_IMAGE) --format '{{.Id}}')" \
+		--offline-isolation 'docker run --network none' \
+		--date "$$(date -u +%Y-%m-%d)" \
+		--commit-sha "$$(git rev-parse HEAD)"
 
 hooks: ## 安装 git hooks：pre-commit 做格式化，pre-push 跑门禁
 	@command -v $(PRE_COMMIT) >/dev/null 2>&1 || { \

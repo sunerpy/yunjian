@@ -52,3 +52,8 @@ Thumbs.db
 /dataset/appreciations.json.sha256
 /dataset/appreciations.manifest.json
 /dataset/.work/
+
+# 净机验收的容器侧产物：一个 root 所有的临时 profile 与观测行。产物是
+# `docs/reports/clean-install-<date>.{md,json}`，那两个入库；过程物不入库。
+/target/clean-install-profile/
+/target/clean-install-observed/

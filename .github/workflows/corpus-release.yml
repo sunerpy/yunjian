@@ -115,6 +115,47 @@ jobs:
           # 对不上说明 manifest 描述的不是这个文件。
           test "$(stat -c%s ./*.db.gz)" = "$(jq -r '.size_bytes' manifest.json)"
 
+      # 随包赏析种子与语料是**同一次数据发布里的两件独立工件**（todo 76）：它们各有版本，
+      # 而 `corpus fetch` 要靠一份统一清单同时拿到两者。少了这一步，发布出去的语料没有
+      # 任何代码路径能把种子送到用户机器上，「无 key 也有赏析」在净机上就不成立。
+      #
+      # **不给 `--endpoint`**：CI 里没有开放权重推理运行时。此时管线、门禁与溯源字段照常
+      # 校验，每条正文写入未生成标记，清单标 `generation_executed=false`。这是如实降级，
+      # 不是失败——但发布说明里必须写清楚，见下面的 `notes`。
+      - name: 生成随包赏析种子
+        run: |
+          cargo run -p xtask --release -- pregenerate \
+            --corpus-db corpus/build/release/corpus.db
+
+      # 清单里的下载地址必须指向**本次这个 tag** 的资产。写死 `latest` 会让一次新发布
+      # 悄悄改掉旧清单指向的文件。
+      - name: 合成统一资产清单
+        env:
+          TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cp dataset/appreciations.json dataset/appreciations.json.sha256 corpus/build/package/
+          cargo run -p xtask --release -- assets-manifest \
+            --corpus-manifest corpus/build/package/manifest.json \
+            --seed-manifest dataset/appreciations.manifest.json \
+            --seed corpus/build/package/appreciations.json \
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}" \
+            --out corpus/build/package/assets_manifest.json
+
+      # 统一清单的两个摘要都当场重算一遍。清单由 xtask 写、资产由 packager 写，
+      # 两条代码路径对不上意味着清单描述的不是即将上传的那两个文件。
+      - name: 独立复核统一清单
+        working-directory: corpus/build/package
+        run: |
+          set -euo pipefail
+          sha256sum -c ./appreciations.json.sha256
+          test "$(jq -r '.corpus.sha256' assets_manifest.json)" \
+            = "$(cut -d' ' -f1 <./*.db.gz.sha256)"
+          test "$(jq -r '.appreciation_seed.sha256' assets_manifest.json)" \
+            = "$(cut -d' ' -f1 <./appreciations.json.sha256)"
+          test "$(jq -r '.corpus.corpus_version' assets_manifest.json)" \
+            = "$(jq -r '.appreciation_seed.corpus_version' assets_manifest.json)"
+
       - name: 上传审计库（CI 工件，不进 Release）
         uses: actions/upload-artifact@v4
         with:
@@ -133,9 +174,11 @@ jobs:
           # `--clobber` 让重挂（workflow_dispatch）可以覆盖上一次上传失败留下的资产，
           # 而不必为了修一次发布去升语料版本号。
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" ./*.db.gz ./*.db.gz.sha256 manifest.json --clobber
+            gh release upload "$TAG" ./*.db.gz ./*.db.gz.sha256 manifest.json \
+              appreciations.json appreciations.json.sha256 assets_manifest.json --clobber
           else
             gh release create "$TAG" ./*.db.gz ./*.db.gz.sha256 manifest.json \
+              appreciations.json appreciations.json.sha256 assets_manifest.json \
               --title "语料工件 $TAG" \
               --notes "$(printf '%s\n' \
                 "由 \`xtask corpus-package\` 产出，六条中止断言全部通过。" \
@@ -147,5 +190,20 @@ jobs:
                 "" \
                 "\`ngram\` / \`poem_fts\` / \`poem_last_char\` 三张检索结构**不随包**，" \
                 "由应用首启在本机派生（实测 $(jq -r '.measurement.first_launch_seconds' manifest.json) 秒）。" \
-                "构建期审计台账拆入 \`corpus-audit.db\`，作为 CI 工件而非用户工件。")"
+                "构建期审计台账拆入 \`corpus-audit.db\`，作为 CI 工件而非用户工件。" \
+                "" \
+                "## 随包赏析种子" \
+                "" \
+                "- \`appreciations.json\`：$(jq -r '.record_count' ../../../dataset/appreciations.manifest.json) 条，模板版本 $(jq -r '.template_version' ../../../dataset/appreciations.manifest.json)" \
+                "- 覆盖集：$(jq -r '.coverage_tags | join("、")' ../../../dataset/appreciations.manifest.json)（筛选途径 $(jq -r '.coverage_selector' ../../../dataset/appreciations.manifest.json)）" \
+                "- 生成模型：$(jq -r '.model' ../../../dataset/appreciations.manifest.json)（许可 $(jq -r '.model_license' ../../../dataset/appreciations.manifest.json)，运行时 $(jq -r '.provider' ../../../dataset/appreciations.manifest.json)）" \
+                "- **是否真的执行了推理：$(jq -r '.generation_executed' ../../../dataset/appreciations.manifest.json)**" \
+                "$(jq -r 'if .generation_executed then "" else "" end' ../../../dataset/appreciations.manifest.json)" \
+                "$(jq -r 'if .generation_executed | not then "> [!WARNING]\n> 本次发布的种子**不是模型输出**：" + .not_executed_reason + "。每条正文是未生成标记，\n> 管线、门禁与溯源字段照常校验。不要把它当成可供阅读的赏析内容。" else "" end' ../../../dataset/appreciations.manifest.json)" \
+                "" \
+                "## 统一资产清单" \
+                "" \
+                "\`assets_manifest.json\` 同时声明上面两件工件，是 \`yunjian corpus fetch\` 的入口。" \
+                "两件工件版本独立，但 \`corpus_version\` 必须一致——不一致时导入会被兼容矩阵拒绝，" \
+                "因此发布前已在 \`xtask assets-manifest\` 里比过一次。")"
           fi
