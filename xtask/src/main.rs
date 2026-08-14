@@ -13,6 +13,7 @@
 use clap::{Parser, Subcommand};
 
 // 子命令模块在此注册（每个任务追加一行）。
+mod acceptance;
 mod cer_spike;
 mod commentary_index;
 mod corpus_build;
@@ -243,6 +244,27 @@ enum Commands {
         #[arg(long, conflicts_with_all = ["refresh_fixtures", "force_cer", "limit"])]
         render_only: bool,
     },
+
+    /// 桌面端真机验收：在**交互式桌面会话**里安装并拉起应用，逐条判定一张
+    /// **执行之前就已声明**的断言集，写出 `docs/reports/desktop-qa-<日期>.{json,md}`
+    /// 与每条 UI 断言的截图。
+    ///
+    /// 绿色构建只证明某个缺陷没有复现，不证明产品能用；session 0 里再绿也证不了
+    /// WebView 能显示。因此 UI 断言走真实 WebDriver（Linux 上 `tauri-driver` +
+    /// `WebKitWebDriver`），WebDriver 到不了的操作系统级事实（原生窗口控件、输入法
+    /// 组字、任务栏图标）走 `enigo` 合成输入加 X11 属性观测。
+    ///
+    /// **不用 mock 顶替**：做不到的一律标 `NOT EXECUTED` 并写明原因与可执行条件。
+    /// `all_pass` 取最严格语义（零 FAIL 且零 NOT EXECUTED），因为终验会消费它，
+    /// 而它最容易造成的误读是「三平台都过了」。
+    Acceptance {
+        /// 目标平台：`win` | `mac` | `linux`。
+        #[arg(long)]
+        platform: String,
+        /// 断言集名。目前只有 `desktop`。
+        #[arg(long, default_value = "desktop")]
+        set: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -322,6 +344,7 @@ fn main() -> anyhow::Result<()> {
             dump_transcripts,
             render_only,
         ),
+        Some(Commands::Acceptance { platform, set }) => acceptance::run(&platform, &set),
         None => Ok(()),
     }
 }

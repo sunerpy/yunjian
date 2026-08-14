@@ -50,6 +50,10 @@ corpus/reports/*.json
 docs/reports/asr-cer.md
 docs/reports/asr-cer.json
 docs/reports/asr-cer-transcripts.jsonl
+# `xtask acceptance` 的报告同理：Markdown 含 CJK 表格，JSON 由 `to_string_pretty` 写出。
+# 文件名带日期，所以是通配而非逐个列出。
+docs/reports/desktop-qa-*.md
+docs/reports/desktop-qa-*.json
 crates/yunjian-voice/tests/fixtures/cer-poems.toml
 target/
 .omo/

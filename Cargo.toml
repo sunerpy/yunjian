@@ -180,6 +180,17 @@ png = "0.18"
 flate2 = "1"
 # 统计基准框架。精确锁定，避免基准输出格式和采样默认值随次版本漂移。
 criterion = "=0.8.2"
+# `xtask acceptance` 合成真实的鼠标与键盘输入，驱动那些 WebDriver 到不了的操作系统级
+# 断言（原生窗口控件、拖动、输入法输入）。**只开 `x11rb` 特性，不开默认的 `xdo`**：
+# `xdo` 后端要链接 libxdo 并要求 `xdo.h`，而本机只有运行时的 `libxdo.so.3`、没有开发头，
+# 于是默认特性构建会失败；`x11rb` 后端是纯 Rust，直接说 X11 协议。
+# 该后端只从进程环境读 `XAUTHORITY`，这决定了验收用的虚拟显示不能启用 X 授权——
+# 详见 `xtask/src/acceptance/linux.rs` 里 `Session0::acquire` 上方那段。
+enigo = { version = "0.6", default-features = false, features = ["x11rb"] }
+# `xtask acceptance` 用它查窗口属性（`_NET_WM_STATE` / `_NET_FRAME_EXTENTS` /
+# `_NET_WM_ICON`）并用 `GetImage` 截图。**刻意不调 `scrot` / `xprop` 子进程**：
+# 那会把「有没有截到图」变成宿主机装了哪些工具的函数，而这两件事本来就各是一次 X11 请求。
+x11rb = "0.14"
 # 仅 `yunjian-mcp` 的 `http` 特性使用（默认关闭）：把 `rmcp` 的 `StreamableHttpService`
 # 挂成一个 tower service，并在它前面叠一层 bearer + Origin 守卫。**刻意选 axum 而不是
 # 裸 hyper**：守卫必须是一层无法被绕过的中间件，而 `Router::nest_service` + `layer` 是
