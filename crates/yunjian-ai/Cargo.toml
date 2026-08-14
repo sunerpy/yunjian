@@ -26,6 +26,7 @@ toml.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+url.workspace = true
 yunjian-core = { path = "../yunjian-core" }
 zeroize.workspace = true
 

@@ -7730,6 +7730,7 @@ dependencies = [
  "tokio-util",
  "toml 0.8.23",
  "tracing",
+ "url",
  "windows-native-keyring-store",
  "yunjian-core",
  "zbus-secret-service-keyring-store",

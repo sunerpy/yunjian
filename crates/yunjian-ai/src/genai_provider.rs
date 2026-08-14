@@ -46,6 +46,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use url::Url;
 use yunjian_core::operation::{OperationHandle, start_operation};
 use yunjian_core::{Error, Result};
 
@@ -207,12 +208,86 @@ impl fmt::Display for ProviderKind {
 /// 刻意不含密钥字段：密钥只能经 [`GenAiProvider::from_keystore`] 从钥匙串取，或经
 /// [`GenAiProvider::with_secret`] 由已持有它的调用方交进来。这样「把 key 粘进配置文件」
 /// 在类型层面无法表达。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct GenAiProviderConfig {
     kind: ProviderKind,
-    base_url: Option<String>,
+    base_url: Option<ValidatedEndpoint>,
+    endpoint_error: Option<EndpointValidationError>,
     model_override: Option<String>,
     extra_body: Option<Value>,
+}
+
+impl fmt::Debug for GenAiProviderConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GenAiProviderConfig")
+            .field("kind", &self.kind)
+            .field("base_url_configured", &self.base_url.is_some())
+            .field("base_url_valid", &self.endpoint_error.is_none())
+            .field("model_override", &self.model_override)
+            .field("extra_body_configured", &self.extra_body.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct ValidatedEndpoint(String);
+
+impl ValidatedEndpoint {
+    fn parse(value: String) -> std::result::Result<Self, EndpointValidationError> {
+        let parsed = Url::parse(&value).map_err(|_| EndpointValidationError::InvalidUrl)?;
+        if has_url_userinfo(&value) || !parsed.username().is_empty() || parsed.password().is_some()
+        {
+            return Err(EndpointValidationError::UserInfo);
+        }
+        if parsed
+            .query_pairs()
+            .any(|(key, _)| is_sensitive_query_key(&key))
+        {
+            return Err(EndpointValidationError::SensitiveQuery);
+        }
+        Ok(Self(value))
+    }
+
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EndpointValidationError {
+    InvalidUrl,
+    UserInfo,
+    SensitiveQuery,
+}
+
+impl EndpointValidationError {
+    const fn message(self) -> &'static str {
+        match self {
+            Self::InvalidUrl => "AI endpoint 必须是合法 URL",
+            Self::UserInfo => "AI endpoint 不得包含 URL userinfo 凭据",
+            Self::SensitiveQuery => "AI endpoint 不得包含凭据形状的 query 参数",
+        }
+    }
+}
+
+fn has_url_userinfo(value: &str) -> bool {
+    value
+        .split_once("://")
+        .map(|(_, remainder)| {
+            remainder
+                .split(['/', '?', '#'])
+                .next()
+                .is_some_and(|authority| authority.contains('@'))
+        })
+        .unwrap_or(false)
+}
+
+fn is_sensitive_query_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "api_key" | "apikey" | "key" | "token" | "access_token" | "secret" | "password"
+    )
 }
 
 impl GenAiProviderConfig {
@@ -222,14 +297,27 @@ impl GenAiProviderConfig {
         Self {
             kind,
             base_url: None,
+            endpoint_error: None,
             model_override: None,
             extra_body: None,
         }
     }
 
     /// 覆盖 base URL。用于自建反代、企业网关与本地 Ollama 改端口。
+    ///
+    /// 原始字符串在此边界立即解析；配置内部只保留已校验的 endpoint。为兼容 workspace
+    /// 已有 builder 调用，本方法不返回 `Result`，校验失败会在 provider 构造时以脱敏错误返回。
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = Some(base_url.into());
+        match ValidatedEndpoint::parse(base_url.into()) {
+            Ok(endpoint) => {
+                self.base_url = Some(endpoint);
+                self.endpoint_error = None;
+            }
+            Err(error) => {
+                self.base_url = None;
+                self.endpoint_error = Some(error);
+            }
+        }
         self
     }
 
@@ -262,8 +350,15 @@ impl GenAiProviderConfig {
     #[must_use]
     pub fn effective_base_url(&self) -> &str {
         self.base_url
-            .as_deref()
+            .as_ref()
+            .map(ValidatedEndpoint::as_str)
             .unwrap_or_else(|| self.kind.default_base_url())
+    }
+
+    fn validate(&self) -> Result<()> {
+        self.endpoint_error.map_or(Ok(()), |error| {
+            Err(Error::Config(error.message().to_owned()))
+        })
     }
 }
 
@@ -300,8 +395,9 @@ impl fmt::Debug for GenAiProvider {
             .debug_struct("GenAiProvider")
             .field("provider", &self.provider)
             .field("adapter", &self.config.kind.adapter_kind())
-            .field("base_url", &self.config.effective_base_url())
+            .field("base_url_configured", &self.config.base_url.is_some())
             .field("model_override", &self.config.model_override)
+            .field("extra_body_configured", &self.config.extra_body.is_some())
             .field("key_configured", &self.has_key)
             .finish()
     }
@@ -314,6 +410,7 @@ impl GenAiProvider {
     /// [`crate::keystore`] 的降级链）。因此需要密钥的供应商在此返回
     /// [`Error::AiKeyNotConfigured`]，让调用方走重新索要，而不是把它当异常。
     pub fn from_keystore(config: GenAiProviderConfig, store: &KeyStore) -> Result<Self> {
+        config.validate()?;
         let kind = config.kind;
         let lookup = store.get(kind.as_str())?;
         match lookup {
@@ -327,6 +424,7 @@ impl GenAiProvider {
 
     /// 以已持有的密钥构造。
     pub fn with_secret(config: GenAiProviderConfig, key: Option<SecretString>) -> Result<Self> {
+        config.validate()?;
         let kind = config.kind;
         if key.is_none() && kind.requires_key() {
             return Err(Error::AiKeyNotConfigured {
@@ -715,13 +813,13 @@ fn auth_resolver(kind: ProviderKind, key: Option<Arc<SecretString>>) -> AuthReso
 /// 重建了 `ServiceTarget`——照抄会连 `auth` 一起替换，把注入的密钥丢掉。故此处按字段
 /// 改写传入的 target。
 fn service_target_resolver(
-    base_url: Option<String>,
+    base_url: Option<ValidatedEndpoint>,
     model_override: Option<String>,
 ) -> ServiceTargetResolver {
     ServiceTargetResolver::from_resolver_fn(
         move |mut target: ServiceTarget| -> std::result::Result<ServiceTarget, genai::resolver::Error> {
             if let Some(base_url) = base_url.clone() {
-                target.endpoint = Endpoint::from_owned(base_url);
+                target.endpoint = Endpoint::from_owned(base_url.0);
             }
             if let Some(model) = model_override.clone() {
                 target.model = ModelIden::new(target.model.adapter_kind, model);
@@ -872,6 +970,61 @@ mod tests {
             !rendered.contains("TESTKEY"),
             "Debug 输出泄露了密钥：{rendered}"
         );
+    }
+
+    #[test]
+    fn endpoint_rejects_userinfo_and_sensitive_query_keys() {
+        let invalid_endpoints = [
+            "https://user:password@example.com/v1",
+            "https://example.com/v1?api_key=PROBE",
+            "https://example.com/v1?APIKEY=PROBE",
+            "https://example.com/v1?Key=PROBE",
+            "https://example.com/v1?TOKEN=PROBE",
+            "https://example.com/v1?Access_Token=PROBE",
+            "https://example.com/v1?SeCrEt=PROBE",
+            "https://example.com/v1?PASSWORD=PROBE",
+        ];
+
+        for endpoint in invalid_endpoints {
+            let error = GenAiProvider::with_secret(
+                probe_config(endpoint),
+                Some(SecretString::from(PROBE_KEY.to_owned())),
+            )
+            .expect_err("携带凭据的 endpoint 必须在构造 provider 前被拒绝");
+            let rendered = error.to_string();
+            assert!(
+                !rendered.contains("PROBE") && !rendered.contains("password@example"),
+                "endpoint 校验错误不得回显凭据：{rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn config_debug_only_reports_non_secret_shape() {
+        let config = probe_config("https://debug-endpoint-probe.example/v1")
+            .with_model_override("debug-model-probe")
+            .with_extra_body(serde_json::json!({"debug-extra-body-probe": "secret-value"}));
+
+        let rendered = format!("{config:?}");
+        assert!(rendered.contains("OpenAI"));
+        assert!(rendered.contains("debug-model-probe"));
+        assert!(!rendered.contains("debug-endpoint-probe"));
+        assert!(!rendered.contains("debug-extra-body-probe"));
+        assert!(!rendered.contains("secret-value"));
+    }
+
+    #[test]
+    fn provider_debug_does_not_render_endpoint_or_extra_body() {
+        let config = probe_config("https://provider-endpoint-probe.example/v1")
+            .with_extra_body(serde_json::json!({"provider-extra-body-probe": "secret-value"}));
+        let provider =
+            GenAiProvider::with_secret(config, Some(SecretString::from(PROBE_KEY.to_owned())))
+                .expect("构造 provider");
+
+        let rendered = format!("{provider:?}");
+        assert!(!rendered.contains("provider-endpoint-probe"));
+        assert!(!rendered.contains("provider-extra-body-probe"));
+        assert!(!rendered.contains("secret-value"));
     }
 
     /// HTTP 401 的错误必须点名供应商与状态码，但**不得含任何密钥материал**。
