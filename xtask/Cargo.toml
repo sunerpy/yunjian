@@ -47,6 +47,10 @@ ferrous-opencc = { workspace = true }
 # `cer-spike` 的实测路径。默认不开：`voice` 会拉入静态含 GPL-3.0 espeak-ng 的
 # 预编译原生产物，默认构建必须保持纯 MIT 且不链接 onnxruntime。
 yunjian-voice = { path = "../crates/yunjian-voice" }
+# `acceptance` 合成真实输入并观测真实窗口。这两条是真机验收的执行手段，不是便利设施：
+# 「点下去之后窗口真的最大化了」只能由窗口管理器维护的 `_NET_WM_STATE` 回答。
+enigo = { workspace = true }
+x11rb = { workspace = true }
 
 [features]
 default = []
