@@ -22,6 +22,7 @@ mod corpus_package;
 mod corpus_quality;
 mod index_spike;
 mod pregenerate;
+mod verify_icons;
 mod verify_models;
 mod verify_sources;
 
@@ -200,6 +201,14 @@ enum Commands {
         endpoint: Option<String>,
     },
 
+    /// 验收图标集：解析 `icon.ico` 的字节确认六种尺寸齐备且 32 px 层在最前、断言源图为
+    /// 1024×1024 RGBA 且四角透明、断言托盘图标四角 alpha 为 0、断言小尺寸层未被降采样，并写出六档联系表
+    /// （`docs/reports/icon-contact-sheet.png`）供人眼裁决。
+    ///
+    /// **生成器退出 0 不算验收**：`cargo tauri icon` 会把 `icons/icon.png` 覆写成 512×512，
+    /// 且层序由它内部决定——两者都只能靠解析字节发现。
+    VerifyIcons,
+
     /// 校验 `models.toml`：SPDX 允许列表（只认 MIT 与 Apache-2.0）、锁定 revision 的
     /// 许可证据摘要、证据文件里真的写着那个许可、`models/DENYLIST.md` 的拒绝清单，
     /// 以及夹带产物的分发影响声明。最后写出 `models.lock.json` 供 `jq` 断言。
@@ -297,6 +306,7 @@ fn main() -> anyhow::Result<()> {
             provider,
             endpoint,
         ),
+        Some(Commands::VerifyIcons) => verify_icons::run(),
         Some(Commands::VerifyModels { offline }) => verify_models::run(offline),
         Some(Commands::CerSpike {
             refresh_fixtures,
