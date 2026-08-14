@@ -114,10 +114,12 @@
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
+  cursor: pointer;
 }
 
 .settings-button:disabled {
   color: var(--color-text-muted);
+  cursor: not-allowed;
 }
 
 /* ============================== 存储位置指示 ============================== */
