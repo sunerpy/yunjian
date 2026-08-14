@@ -43,6 +43,7 @@
 use yunjian_core::{Config, LoggerConfig, init_config, init_logger};
 
 mod ipc;
+mod tray;
 pub mod voice_ipc;
 
 /// 配置发现与用户配置目录使用的应用名。与命令行共用同一个名字，
@@ -77,7 +78,9 @@ pub fn run() {
 
     let startup_config = config.clone();
     ipc::configure_builder(tauri::Builder::default(), config)
-        .setup(move |_| {
+        .on_window_event(tray::handle_window_event)
+        .setup(move |app| {
+            tray::setup(app)?;
             start_asset_sync(startup_config.clone());
             Ok(())
         })
