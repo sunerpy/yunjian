@@ -176,6 +176,24 @@ describe("外壳导航", () => {
   });
 });
 
+describe("外壳导航到内置字典", () => {
+  it("从侧栏进入字典并完成双字逐字查询", async () => {
+    await renderApp();
+    const entry = screen.getByTestId("nav-dictionary") as HTMLButtonElement;
+    expect(entry.disabled).toBe(false);
+    fireEvent.click(entry);
+
+    expect(await screen.findByTestId("dictionary-panel")).toBeTruthy();
+    expect(entry.getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBeNull();
+    fireEvent.click(screen.getByTestId("dictionary-submit"));
+    await waitFor(() => {
+      expect(screen.getByTestId("dictionary-character-斜")).toBeTruthy();
+      expect(screen.getByTestId("dictionary-character-阳")).toBeTruthy();
+    });
+  });
+});
+
 /**
  * 背诵界面（todo 63）的入口。
  *

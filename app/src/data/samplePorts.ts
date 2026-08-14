@@ -22,6 +22,8 @@ import type { AppreciationState } from "../contracts/ai";
 import type {
   Attribution,
   CommentaryEntry,
+  DictionaryCharacter,
+  DictionaryLookup,
   DynastyLabel,
   MetaHit,
   MetaPage,
@@ -37,6 +39,8 @@ import type {
 } from "../contracts/core";
 import type {
   AppreciationPort,
+  DictionaryLookupRequest,
+  DictionaryPort,
   PoemDetailRequest,
   PoemPort,
   SearchPort,
@@ -364,6 +368,7 @@ function detail(poem: SamplePoem): PoemDetail {
 export function createSamplePorts(): {
   search: SearchPort;
   poem: PoemPort;
+  dictionary: DictionaryPort;
   appreciation: AppreciationPort;
 } {
   const search: SearchPort = {
@@ -406,5 +411,78 @@ export function createSamplePorts(): {
     },
   };
 
-  return { search, poem, appreciation };
+  const dictionary: DictionaryPort = {
+    lookupDictionary: (request: DictionaryLookupRequest): Promise<DictionaryLookup> => {
+      const query = Array.from(request.query)
+        .filter((character) => !/[\s，。、；：？！,.!?]/u.test(character))
+        .join("");
+      if (Array.from(query).length < 1 || Array.from(query).length > 2) {
+        return Promise.reject(new Error("内置字典只接受一字或双字查询"));
+      }
+      const entries: Record<string, DictionaryCharacter> = {
+        斜: {
+          character: "斜",
+          normalized: "斜",
+          variants: [],
+          pronunciation: { kind: "attested", reading: "xiá" },
+          poyin: {
+            reading: "xiá",
+            confidence: "rhyme_attested",
+            evidence: "《平水韵》下平声部 六麻；样例数据，仅用于界面调试",
+            source_locator: "sample:data/poyin.tsv:斜",
+          },
+          rhymes: [
+            {
+              book: "pingshui",
+              rhyme_group: "六麻",
+              tone: "level",
+              tone_raw: "下平声部",
+              source_locator: "sample:corpus.db:rhyme:pingshui:六麻:斜",
+            },
+            {
+              book: "cilin",
+              rhyme_group: "第三部",
+              tone: "level",
+              tone_raw: "平声",
+              source_locator: "sample:corpus.db:rhyme:cilin:第三部:斜",
+            },
+          ],
+        },
+        阳: {
+          character: "阳",
+          normalized: "阳",
+          variants: [],
+          pronunciation: { kind: "general", reading: "yáng" },
+          poyin: null,
+          rhymes: [
+            {
+              book: "pingshui",
+              rhyme_group: "七阳",
+              tone: "level",
+              tone_raw: "下平声部",
+              source_locator: "sample:corpus.db:rhyme:pingshui:七阳:阳",
+            },
+          ],
+        },
+      };
+      const characters = Array.from(query).map(
+        (character): DictionaryCharacter =>
+          entries[character] ?? {
+            character,
+            normalized: character,
+            variants: [],
+            pronunciation: { kind: "unavailable" },
+            poyin: null,
+            rhymes: [],
+          },
+      );
+      return Promise.resolve({
+        query,
+        kind: characters.length === 1 ? "character" : "character_sequence",
+        characters,
+      });
+    },
+  };
+
+  return { search, poem, dictionary, appreciation };
 }

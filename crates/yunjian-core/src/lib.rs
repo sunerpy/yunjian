@@ -23,9 +23,10 @@ pub mod search;
 pub mod text;
 
 pub use api::{
-    AuthorDetailRequest, AuthorSearchRequest, CharacterRhymesRequest, DynastyBrowseRequest,
-    FirstLineSearchRequest, LastCharacterSearchRequest, PoemDetailRequest, RhymeCheckRequest,
-    RhymeGroupSearchRequest, TagBrowseRequest, TitleSearchRequest, WorkGroupRequest, Yunjian,
+    AuthorDetailRequest, AuthorSearchRequest, CharacterRhymesRequest, DictionaryLookupRequest,
+    DynastyBrowseRequest, FirstLineSearchRequest, LastCharacterSearchRequest, PoemDetailRequest,
+    RhymeCheckRequest, RhymeGroupSearchRequest, TagBrowseRequest, TitleSearchRequest,
+    WorkGroupRequest, Yunjian,
 };
 pub use config::{
     Config, CorpusConfig, GradingConfig, LoggerConfig, ReciteConfig, ReciteSchedulingConfig,
@@ -44,6 +45,10 @@ pub use derive::{
 pub use error::{AiError, Error, Result, redact_credentials};
 pub use logger::{current_log_level, init_logger, init_stdio_logger, set_log_level};
 pub use rhyme::{RhymeBook, RhymeConfidence, RhymeTone};
+pub use search::dictionary::{
+    DictionaryCharacter, DictionaryLookup, DictionaryPronunciation, DictionaryQueryKind,
+    DictionaryRhymeFact, PoyinConfidence, PoyinEvidence, VariantRelation, lookup_dictionary,
+};
 pub use search::meta::{
     Attribution, AttributionConflict, AuthorDetail, DynastyLabel, META_PAGE_LIMIT, MetaHit,
     MetaMatch, MetaPage, TITLE_SEPARATORS, author_detail, browse_by_dynasty, find_by_author,
