@@ -47,10 +47,15 @@ voice = ["yunjian-voice/voice"]
 secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tauri = { workspace = true }
+tauri = { workspace = true, features = ["tray-icon"] }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-updater = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
+# updater 内部关闭了 reqwest 默认特性；这里显式合并 system-proxy，确保 GUI 进程能读取
+# Windows/macOS 系统代理，而不是只认桌面应用通常继承不到的 HTTP_PROXY 环境变量。
+reqwest = { version = "=0.13.4", default-features = false, features = ["system-proxy"] }
 yunjian-ai = { path = "../yunjian-ai" }
 yunjian-core = { path = "../yunjian-core" }
 yunjian-recite = { path = "../yunjian-recite" }

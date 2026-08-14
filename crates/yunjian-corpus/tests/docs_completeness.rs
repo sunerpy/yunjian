@@ -226,3 +226,180 @@ fn voice_doc_states_that_pronunciation_standard_is_not_assessed() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// 四、两份 README 的实现状态必须与代码事实一致
+// ---------------------------------------------------------------------------
+
+/// 一项功能在两份 README 里的名字，以及判定它是否已落地的**代码见证**。
+///
+/// 见证必须是产品代码里的路径，不能是文档或计划文件：文档与文档对照永远自洽，
+/// 而漂移恰恰是「代码有了、文档没跟上」（实测：AI、背诵、voice、桌面端四项落地后
+/// README 仍把它们写成一行产品代码都没有）与它的反向（把没做的写成做了）。
+struct FeatureWitness {
+    zh: &'static str,
+    en: &'static str,
+    witnesses: &'static [&'static str],
+}
+
+const FEATURES: &[FeatureWitness] = &[
+    FeatureWitness {
+        zh: "核心检索",
+        en: "Core search",
+        witnesses: &["crates/yunjian-core/src/search/topic.rs"],
+    },
+    FeatureWitness {
+        zh: "命令行",
+        en: "Command line",
+        witnesses: &["crates/yunjian-cli/src/main.rs"],
+    },
+    FeatureWitness {
+        zh: "MCP 服务器",
+        en: "MCP server",
+        witnesses: &["crates/yunjian-mcp/src/lib.rs"],
+    },
+    FeatureWitness {
+        zh: "AI 赏析",
+        en: "AI appreciation",
+        witnesses: &[
+            "crates/yunjian-ai/src/provider.rs",
+            "crates/yunjian-ai/src/keystore.rs",
+            "crates/yunjian-ai/src/cache.rs",
+            "crates/yunjian-ai/src/stream.rs",
+        ],
+    },
+    FeatureWitness {
+        zh: "背诵训练",
+        en: "Recitation practice",
+        witnesses: &[
+            "crates/yunjian-recite/src/align.rs",
+            "crates/yunjian-recite/src/modes.rs",
+            "crates/yunjian-recite/src/schedule.rs",
+            "crates/yunjian-recite/src/score.rs",
+        ],
+    },
+    FeatureWitness {
+        zh: "朗读与识别",
+        en: "Read-aloud and ASR",
+        witnesses: &[
+            "crates/yunjian-voice/src/tts.rs",
+            "crates/yunjian-voice/src/recognize.rs",
+            "crates/yunjian-voice/src/capture.rs",
+            "crates/yunjian-voice/src/lexicon.rs",
+        ],
+    },
+    FeatureWitness {
+        zh: "桌面端",
+        en: "Desktop app",
+        witnesses: &[
+            "crates/yunjian-app/src/ipc.rs",
+            "app/src/App.tsx",
+            "app/src/recite/ReciteScreen.tsx",
+            "app/src/settings/KeyStoragePanel.tsx",
+        ],
+    },
+    FeatureWitness {
+        zh: "移动端",
+        en: "The mobile app",
+        witnesses: &["crates/yunjian-mobile/Cargo.toml"],
+    },
+];
+
+/// 取 `## <标题>` 到下一个二级标题之间的正文。
+fn section(markdown: &str, heading: &str) -> String {
+    let start = markdown
+        .find(heading)
+        .unwrap_or_else(|| panic!("文档里找不到标题 `{heading}`"));
+    let rest = &markdown[start + heading.len()..];
+    let end = rest.find("\n## ").unwrap_or(rest.len());
+    rest[..end].to_owned()
+}
+
+/// 已实现表的首列。表头由 `skip(1)` 丢掉，分隔行按字符集合识别。
+fn table_first_column(part: &str) -> Vec<String> {
+    part.lines()
+        .filter(|line| line.starts_with('|'))
+        .filter(|line| !line.chars().all(|ch| matches!(ch, '|' | '-' | ':' | ' ')))
+        .filter_map(|line| line.split('|').nth(1))
+        .map(|cell| cell.trim().to_owned())
+        .skip(1)
+        .collect()
+}
+
+/// 未实现清单里每条 `- **标题**` 的标题。
+///
+/// 判**整个加粗标题**而不是子串，否则「桌面端」会被「桌面端真机验收」这条同时命中，
+/// 于是「已实现的不得同时出现在未实现清单里」这半条断言永远失败。
+fn bold_bullet_labels(part: &str) -> Vec<String> {
+    part.lines()
+        .filter_map(|line| line.trim_start().strip_prefix("- **"))
+        .filter_map(|rest| rest.split("**").next())
+        .map(|label| label.trim().to_owned())
+        .collect()
+}
+
+fn assert_status_matches_code(
+    path: &str,
+    heading: &str,
+    pending_marker: &str,
+    name_of: fn(&FeatureWitness) -> &'static str,
+) {
+    let markdown = read(path);
+    let status = section(&markdown, heading);
+    let split = status.find(pending_marker).unwrap_or_else(|| {
+        panic!("{path} 的「{heading}」一节里找不到未实现清单的起始标记 `{pending_marker}`")
+    });
+    let shipped_table = table_first_column(&status[..split]);
+    let pending_list = bold_bullet_labels(&status[split..]);
+
+    assert!(
+        shipped_table.len() >= 10 && !pending_list.is_empty(),
+        "{path} 的状态一节解析出 {} 行实现表、{} 条未实现条目——\
+         本测试的解析口径与文档格式脱节了，再断言下去只会得到一条永真的测试",
+        shipped_table.len(),
+        pending_list.len()
+    );
+
+    for feature in FEATURES {
+        let name = name_of(feature);
+        let missing: Vec<&&str> = feature
+            .witnesses
+            .iter()
+            .filter(|witness| !repo_root().join(witness).exists())
+            .collect();
+        let shipped = missing.is_empty();
+        let claimed_shipped = shipped_table.iter().any(|row| row == name);
+        let claimed_pending = pending_list.iter().any(|row| row == name);
+
+        assert!(
+            claimed_shipped ^ claimed_pending,
+            "{path} 里「{name}」既不在实现表里、也不是未实现清单里的一条\
+             （或者两处都写了）。每一项功能都必须**恰好**出现在其中一处，\
+             否则读者无从判断它到底做没做。",
+        );
+        assert_eq!(
+            shipped, claimed_shipped,
+            "{path} 里「{name}」的状态与代码不符：代码见证 {:?}，缺失 {missing:?}。\
+             见证齐备就必须列进实现表，缺一个就必须留在未实现清单里——\
+             文档漂移应当在这里变红，而不是等人读出来。",
+            feature.witnesses,
+        );
+    }
+}
+
+#[test]
+fn readme_status_matches_code_facts() {
+    assert_status_matches_code("README.md", "## 项目状态", "**尚未实现", |feature| {
+        feature.zh
+    });
+}
+
+#[test]
+fn english_readme_status_matches_code_facts() {
+    assert_status_matches_code(
+        "docs/readme/README.en.md",
+        "## Project status",
+        "**Not implemented",
+        |feature| feature.en,
+    );
+}
