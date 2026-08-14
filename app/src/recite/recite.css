@@ -98,6 +98,11 @@
   font-size: var(--text-sm);
 }
 
+/* `disabled={busy}` 也禁掉输入框与两个滑块，而 UA 对滑块禁用前后给的是同一个光标（实测）。 */
+.recite-field__control:disabled {
+  cursor: not-allowed;
+}
+
 /* 作答框用衬线：键入的是诗，与提示文本同一种字形才看得出行的形状。 */
 .recite-field__control--answer {
   font-family: var(--font-serif);
@@ -122,6 +127,8 @@
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
+  /* UA 默认是箭头且这里没有 preflight，不写就一处都补不到。见 cursorAffordance.test.ts。 */
+  cursor: pointer;
 }
 
 .recite-button[aria-pressed="true"] {
@@ -133,6 +140,7 @@
 
 .recite-button:disabled {
   color: var(--color-text-muted);
+  cursor: not-allowed;
 }
 
 /* ============================== 提示文本 ============================== */

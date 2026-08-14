@@ -59,6 +59,7 @@
   color: var(--color-surface);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
+  cursor: pointer;
 }
 
 .search-screen__summary,
@@ -89,12 +90,14 @@
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
+  cursor: pointer;
 }
 
 .search-screen__paging button:disabled {
   color: var(--color-text-muted);
   border-color: var(--color-border);
   opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .filter-bar {
@@ -171,6 +174,7 @@
   color: inherit;
   text-align: start;
   font: inherit;
+  cursor: pointer;
 }
 
 .result-row__open:focus-visible {

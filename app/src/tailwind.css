@@ -1,0 +1,139 @@
+/*
+ * Tailwind v4 的接入点。
+ *
+ * # 为什么是「共存」而不是「迁移」
+ *
+ * 这个仓库里有约 1700 行手写 CSS，其中**多处被断言逐条钉死**，而那些断言钉的正是
+ * jsdom 看不见、只能靠读源码验证的东西：
+ *
+ * - `recite/__tests__/opMark.test.ts` 断言六条 `.recite-op--*` 规则的**声明集合两两不同**，
+ *   且每一类至少同时改变颜色 / 边框 / 文字装饰 / 底色四维中的三维。utility 类是共享的，
+ *   `text-[var(--color-op-deletion)]` 与另一类的同名 utility 在产物里是同一条规则
+ *   ——「六条规则两两不同」这条要求在 utility 世界里无从表达，也无从验证。
+ * - `poem/__tests__/provenanceSeparation.test.tsx` 断言 `.ai-panel` 与 `.sourced-block`
+ *   的**规则体**不混用对方语域的令牌、字体族刻意相反、边框一虚一实。同理，
+ *   这要求两个语域各有一条**具名规则**可供读取。那条区分是本产品的许可立足点。
+ * - `settings.css` 的明文告警靠四重手段叠出严重性，其中 8px 左标尺与 3px 边框是实算过
+ *   对比度的决定，写在一条具名规则里比散在 className 字符串里可审计得多。
+ *
+ * 所以取舍是：**既有的、被断言钉住的样式一律保留原生 CSS；新写的外壳组件用 Tailwind。**
+ * 削弱那些断言来换取「全站 utility」不是升级，是把已经付过学费的可验证性退回去。
+ *
+ * # 分层顺序让这条共存是安全的，不是碰运气
+ *
+ * Tailwind 的全部产出都在 `@layer` 里，而既有手写 CSS **完全不在任何 layer 里**。
+ * CSS 的级联规则是：**无层样式胜过一切有层样式，与选择器特异性无关**。于是：
+ *
+ * - utility（`utilities` 层）改不动任何一条既有规则。**新组件因此必须是新元素**，
+ *   往既有具名类的元素上叠 utility 会静默失效。这条限制写在这里，免得后来者花一小时
+ *   查「为什么 `bg-[var(--color-surface)]` 没生效」。
+ *
+ * # preflight 刻意不引入
+ *
+ * 这不是图省事，是它会静默改掉一批既有渲染而**313 条前端测试一条都不会红**
+ * （jsdom 不算样式，构建也不会因为两个数不同而失败）。实测清点了三类：
+ *
+ * 1. `h1,h2,h3 { font-weight: inherit }`。`.settings-screen__title`、
+ *    `.recite-screen__title`、`.settings-section__title`、`.recite-section__title`
+ *    四条规则只写了 `font-size`，字重一直靠浏览器默认的 bold。preflight 一进来
+ *    它们全变成常规字重——**标题层级当场塌掉一维**。
+ * 2. `* { margin: 0; padding: 0 }`。三十余个 `<p>` 与四处 `<dd>` 没有显式 margin，
+ *    靠的是 UA 默认值（`<dd>` 是 40px 的 `margin-inline-start`）。
+ * 3. `* { border: 0 solid }`、`ol,ul,menu { list-style: none }`。
+ *
+ * 而 preflight 想解决的问题，本项目**已经自己解决了**：`styles.css` 里有
+ * `* { box-sizing: border-box }`、`html,body,#root` 的高度归零、`body` 的 `user-select`
+ * 关闭。两者职责重叠，引入它只会新增上面那三类回归。
+ *
+ * 代价比预想的大，而且是**目视 QA 才发现的**：preflight 里那条针对表单元素的归一化
+ * （`font: inherit` / `background-color: transparent` / `border-radius: 0`）与
+ * `* { border: 0 solid }` 恰好是新组件依赖的东西。少了它们，浏览器的 UA 默认值原样生效，
+ * 实测浅色下每个新按钮拿到的是：
+ *
+ * - `background-color: rgb(240,240,240)`（UA 的 `buttonface`）——侧栏里每个未选中项
+ *   都成了一块浅灰实心方块，而深色下它同样是浅灰，在暗底上非常刺眼；
+ * - `border: 2px outset`——`border-l-2` 只设左边宽度，另外三边保留 UA 的 2px 立体边框，
+ *   于是「左侧一条标尺」变成「一个 2px 的立体方框」；
+ * - `font-family: Arial`——按钮不继承应用的无衬线栈，中文逐字回落，与全局字体不一致。
+ *
+ * 所以下面补一条**作用域限定在外壳自绘部件上**的复位，放在 `@layer base` 里。
+ * 层级选得很关键：`base` 输给 `utilities`（所以 `text-sm`、`bg-[var(--color-surface)]`
+ * 这类 utility 照旧生效），也输给既有的无层手写 CSS（所以那 1700 行一个字都不受影响）。
+ * 换句话说它只填 UA 默认值那个坑，谁都不抢。
+ *
+ * 剩下的代价只落在新代码上：新组件里的 `<ul>` 要显式写 `list-none`，按钮要显式写
+ * `cursor-pointer`（后者本来就得写，见下）。`__tests__/tailwind.test.ts` 有断言钉住
+ * 「preflight 没有被引入」与「这条复位在 `@layer base` 里且进了产物」，
+ * 把「哪天有人顺手加回来 / 顺手删掉」变成一次红而不是一次静默回归。
+ *
+ * # 按钮的手型光标必须逐个显式写
+ *
+ * 浏览器对 `<button>` 的默认光标是 `default`（不是手型），而 Tailwind v4 的 preflight
+ * 也不再补 `cursor: pointer`——这里连 preflight 都没有，所以**一个都补不到**。
+ * 少写一处的症状是「鼠标移到按钮上没有任何反馈」，用户会以为界面卡住了。
+ * 禁用态要写 `cursor-not-allowed`。
+ *
+ * # 令牌：值只有一处，Tailwind 这边只做对齐
+ *
+ * `styles.css` 是唯一的取值来源。下面的 `@theme` 块**只覆盖 Tailwind 默认刻度与
+ * `styles.css` 取值不同的那几档**，让 `text-xl`、`rounded-md` 这类 utility 与
+ * `var(--text-xl)`、`var(--radius-md)` 指同一个数。两处取值必须一致这件事由
+ * `__tests__/tailwind.test.ts` 逐个比对——它同时也是 Tailwind 升级改了默认刻度时
+ * 唯一会响的警报。
+ *
+ * 颜色**刻意不桥接**：一律写 `bg-[var(--color-surface)]` 这种形式。
+ * 理由是重命名会让「这个颜色属于哪个语域」这条信息在 className 里消失，而考据 / AI
+ * 两个语域的区分正是本产品的许可立足点。同一个测试里另有一条守卫扫 Tailwind 自带的
+ * 调色板 utility（`bg-slate-800` 之类），把「绕开令牌层」变成一次红。
+ */
+
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  /* Tailwind 默认 1.25rem / 1.5rem，`styles.css` 是 1.5rem / 2rem。 */
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+
+  /* Tailwind 默认 0.375rem / 0.5rem，`styles.css` 是 0.5rem / 0.75rem。 */
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* 字体族：`styles.css` 的三族原样搬进 Tailwind 命名空间，于是
+     `font-serif` / `font-sans` / `font-mono` 与 `var(--font-*)` 等价。
+     值必须与 `styles.css` 逐字相同，测试比对整串。 */
+  --font-serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+  --font-sans:
+    system-ui, -apple-system, "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+}
+
+/*
+ * 外壳自绘部件的 UA 默认值复位。见顶部「preflight 刻意不引入」。
+ *
+ * `[data-shell-chrome]` 只标在侧栏的 `<nav>` 与设置弹窗的 `<dialog>` 上。弹窗内的
+ * 设置面板也在作用域里，但它自己的 `settings.css` 是无层的，把 background / border /
+ * font 三项都写全了，因此照旧胜出——已逐条核对。
+ */
+@layer base {
+  [data-shell-chrome] button {
+    /* UA 的 `buttonface` 底色与 `2px outset` 边框都要清掉；`border: 0 solid` 保留
+       `solid` 是为了让 `border-l-2` 这类只设宽度的 utility 画出实线而不是 UA 的 outset。 */
+    appearance: none;
+    background-color: transparent;
+    border: 0 solid;
+    border-radius: 0;
+    /* UA 给 `<button>` 的是 `padding: 1px 6px`，左右不对称。没有这一条时，任何**没有显式
+       写全 padding** 的按钮都会带上那 6px：折叠态的侧栏图标因此左 6px、右 2px，
+       视觉上偏出中心 3px（目视 QA 量到 31 对 28）。preflight 的 `* { padding: 0 }`
+       本来负责这件事。 */
+    padding: 0;
+    /* 字体与颜色改成继承，才能跟着 `--font-sans` 与各自的 `text-*` utility 走。
+       不写的话按钮是 Arial 13.3px，中文逐字回落。 */
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+  }
+}
