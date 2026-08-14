@@ -40,7 +40,12 @@ describe("外壳导航", () => {
     // 初始态：检索屏在，设置屏不在。
     expect(screen.queryByTestId("settings-screen")).toBeNull();
     expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBe("page");
+    // 设置改成弹窗之后，它的状态是「展开 / 收起」而不是「是不是当前页」。
+    // 原先这里验 `aria-current` 为 null；现在验 `aria-expanded` 为 "false"，
+    // 两者验的是同一件事——此刻还没进设置——但后者同时钉住了「弹窗语义没被写成页面语义」。
     expect(entry.getAttribute("aria-current")).toBeNull();
+    expect(entry.getAttribute("aria-expanded")).toBe("false");
+    expect(entry.getAttribute("aria-haspopup")).toBe("dialog");
   });
 
   it("点设置入口后设置页出现，且带上密钥存储指示条", async () => {
@@ -56,9 +61,14 @@ describe("外壳导航", () => {
     });
     // 首启是空柜，所以指示条说「尚未存储」——这是真实的首次运行态，不是缺陷。
     expect(screen.getByTestId("key-storage-indicator").textContent).toContain("尚未存储");
-    // 选中态跟着换。
-    expect(screen.getByTestId("nav-settings").getAttribute("aria-current")).toBe("page");
-    expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBeNull();
+    // 原先这里验「设置成了当前页、检索不再是当前页」。设置改成弹窗之后那句话本身不再成立：
+    // 弹窗打开时底下那一屏**仍然是当前页**，给设置也写上 `aria-current="page"` 会让读屏
+    // 用户同时听到两个「当前页」。所以改成验：设置按钮报告自己展开了，
+    // 而检索**仍然**是当前页——这一条比原来那条更强，它顺带钉住了「底下那一屏没有被切走」，
+    // 而那正是「关掉弹窗要回到原处」的前提。
+    expect(screen.getByTestId("nav-settings").getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByTestId("nav-settings").getAttribute("aria-current")).toBeNull();
+    expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBe("page");
   });
 
   it("走完导航再保存密钥，诚实链在端到端路径上依然成立", async () => {
@@ -96,17 +106,41 @@ describe("外壳导航", () => {
     }
   });
 
-  it("能从设置页回到检索", async () => {
+  it("关掉设置弹窗后回到原来那一屏", async () => {
+    // 原先这一条叫「能从设置页回到检索」，做法是点检索那个导航项。设置改成弹窗之后
+    // 那个做法验不到要验的东西了：检索本来就没离开过，点它是个空操作。
+    // 现在改成点弹窗自己的关闭按钮，并确认关掉之后检索屏还在、设置屏没了、
+    // 设置按钮回报收起。这一条与原条目的意图相同（用户能离开设置回到内容），
+    // 但走的是弹窗真正的退出路径。
     await renderApp();
     fireEvent.click(screen.getByTestId("nav-settings"));
     await waitFor(() => {
       expect(screen.getByTestId("settings-screen")).toBeTruthy();
     });
-    fireEvent.click(screen.getByTestId("nav-search"));
+    fireEvent.click(screen.getByTestId("settings-dialog-close"));
     await waitFor(() => {
       expect(screen.queryByTestId("settings-screen")).toBeNull();
     });
     expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("nav-settings").getAttribute("aria-expanded")).toBe("false");
+    // 检索屏没有被卸载重挂：标签选项还在，说明它一直挂着。
+    expect(screen.getByRole("option", { name: /思乡/ })).toBeTruthy();
+  });
+
+  it("**按 Esc 也能关掉设置弹窗**", async () => {
+    // jsdom 没有实现 `HTMLDialogElement` 的方法（`showModal`/`close` 都是 undefined，
+    // 已实测），所以原生的 Esc 行为在这里根本不存在。这条断言验的是
+    // `SettingsDialog` 自己实现的那一份——也正因为原生那份在测试里不可见，
+    // 自己实现的这一份才是唯一能被钉住的。
+    await renderApp();
+    fireEvent.click(screen.getByTestId("nav-settings"));
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-screen")).toBeTruthy();
+    });
+    fireEvent.keyDown(screen.getByTestId("settings-dialog"), { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("settings-screen")).toBeNull();
+    });
   });
 
   it("**`?sample-key-tier=plaintext` 走完真实导航后必须显示「明文配置文件」**", async () => {
@@ -223,7 +257,12 @@ describe("外壳导航到背诵界面", () => {
     expect(screen.getByTestId("commit-grade-label").textContent).toBe("良好");
   });
 
-  it("能从背诵页回到检索，也能切到设置", async () => {
+  it("**能从背诵页回到检索；在背诵页开设置，关掉后仍在背诵页**", async () => {
+    // 前半段与原条目相同。后半段那句断言原先是
+    // `expect(screen.queryByTestId("recite-screen")).toBeNull()`——因为设置当时是第三屏，
+    // 进设置就意味着离开背诵。设置改成弹窗之后那句话反过来了：**背诵屏必须还在**，
+    // 否则「关掉弹窗回到原处」就实现不了（回不到一个已经被卸载的屏）。
+    // 所以这里把它改成正向断言，并补上关掉之后仍在背诵页——那才是这条改动的用户可见收益。
     await renderApp();
     fireEvent.click(screen.getByTestId("nav-recite"));
     await waitFor(() => {
@@ -237,10 +276,20 @@ describe("外壳导航到背诵界面", () => {
     await waitFor(() => {
       expect(screen.getByTestId("recite-screen")).toBeTruthy();
     });
+
     fireEvent.click(screen.getByTestId("nav-settings"));
     await waitFor(() => {
       expect(screen.getByTestId("settings-screen")).toBeTruthy();
     });
-    expect(screen.queryByTestId("recite-screen")).toBeNull();
+    expect(screen.getByTestId("recite-screen")).toBeTruthy();
+    expect(screen.getByTestId("nav-recite").getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(screen.getByTestId("settings-dialog-close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("settings-screen")).toBeNull();
+    });
+    expect(screen.getByTestId("recite-screen")).toBeTruthy();
+    expect(screen.getByTestId("nav-recite").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBeNull();
   });
 });

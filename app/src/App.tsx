@@ -2,21 +2,27 @@
  * 外壳骨架。
  *
  * 标题栏来自 todo 60，检索与阅读来自 todo 61，设置来自 todo 62，背诵来自 todo 63。
- * 后两者各自往内容区里挂，入口都在下面那一条导航里。
  *
  * 路由刻意是一个多态的 `view` 而不是引入路由库：一个 URL 路由器要连带解决深链、返回栈与
  * Tauri 下的 history 行为，那些问题在一个只有几屏的桌面外壳里没有对应的用户需求。
  *
- * # 导航条为什么在这里，而不在 `TitleBar` 里
+ * # `view` 从四态收成三态
  *
- * 入口做成 `<main>` 上方独立的一行，而不是往 `chrome/TitleBar.tsx` 里加按钮。两个理由：
+ * 设置改成了模态弹窗（`shell/SettingsDialog.tsx`），于是它**不再是一个 `view`**：
+ * 弹窗打开时底下那一屏仍然挂载着，`view` 不变，关掉就回到原处。若继续把设置放在 `view` 里，
+ * 「关掉弹窗回到刚才那屏」就得额外记一个「上一屏是谁」，而那个状态与真实语义不符——
+ * 弹窗从来没有离开过任何一屏。
  *
- * 1. 标题栏的拖动区用 `data-tauri-drag-region="deep"`，往里加交互元素要同时顾及注入脚本的
- *    排除名单；导航是应用内容，不是窗口控件，混进去会让那个组件同时负责两件事。
- * 2. `TitleBar` 是 todo 60 的交付物，而设置（62）与背诵（63）都要加入口。**把入口集中在
- *    `App.tsx` 一处，冲突面就只有这一个文件的这一段**，不会波及标题栏。
+ * # 导航为什么搬进 `shell/Sidebar.tsx`，而不是留在这里
  *
- * 样式沿用本文件既有的内联写法（样例模式横幅就是这么写的），同样是为了把改动收在一处。
+ * 原先的横排导航是内联样式直接写在本文件里的。改成侧栏之后它有了自己的状态（折叠）、
+ * 自己的选中态规则（检索吸收阅读页）与自己的无障碍语义（`aria-current` 对
+ * `aria-haspopup="dialog"`），这些都需要独立的断言。留在这里就只能靠 `App.test.tsx`
+ * 从整棵树出发去验，那组断言会同时承担「导航对不对」与「屏接没接上」两件事。
+ *
+ * 但**入口的 testid 仍然由 `App.test.tsx` 从 `<App />` 出发去点**：那一组存在的理由是一次
+ * 真实缺口（设置 14 个文件全实现、37 条断言全绿，页面上却没有入口能到它），
+ * 组件级断言绕不过这一段。
  */
 import { useMemo, useState } from "react";
 import TitleBar from "./chrome/TitleBar";
@@ -24,54 +30,26 @@ import { useWindowChrome } from "./chrome/useWindowChrome";
 import PoemDetailScreen from "./poem/PoemDetailScreen";
 import ReciteScreen from "./recite/ReciteScreen";
 import SearchScreen from "./search/SearchScreen";
-import SettingsScreen from "./settings/SettingsScreen";
+import Sidebar, { type ShellSection } from "./shell/Sidebar";
+import SettingsDialog from "./shell/SettingsDialog";
 import { SAMPLE_MODE_NOTICE, createSamplePorts } from "./data/samplePorts";
 import { createTauriPorts } from "./data/tauriPorts";
 import { createSampleSettingsPorts, createTauriSettingsPorts } from "./data/sampleSettingsPorts";
 import { createSampleRecitePorts, createTauriRecitePorts } from "./data/sampleRecitePorts";
 import { createSampleVoicePort, createTauriVoicePort } from "./data/sampleVoicePorts";
 
-type View =
-  | { kind: "search" }
-  | { kind: "poem"; poemId: string }
-  | { kind: "settings" }
-  | { kind: "recite" };
+type View = { kind: "search" } | { kind: "poem"; poemId: string } | { kind: "recite" };
 
-/** 选中态不另设 `data-active`：读屏与测试共用 `aria-current` 这一个信号。 */
-function NavButton({
-  label,
-  active,
-  testId,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  testId: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      aria-current={active ? "page" : undefined}
-      onClick={onClick}
-      style={{
-        padding: "var(--space-1) var(--space-3)",
-        border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-sm)",
-        background: active ? "var(--color-surface-raised)" : "transparent",
-        color: active ? "var(--color-text)" : "var(--color-text-muted)",
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--text-sm)",
-      }}>
-      {label}
-    </button>
-  );
+/** 侧栏的选中态：阅读页归「检索」那一支，它是从检索进去的。 */
+function sectionOf(view: View): ShellSection {
+  return view.kind === "recite" ? "recite" : "search";
 }
 
 export default function App() {
   const chrome = useWindowChrome();
   const [view, setView] = useState<View>({ kind: "search" });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // 端口只解析一次。反复解析会在每次渲染时重建对象，而 `SearchScreen` 的 effect
   // 以 port 为依赖——那会变成一个每帧重跑的 `listTags`。
@@ -98,93 +76,64 @@ export default function App() {
   const voicePort = useMemo(() => createTauriVoicePort() ?? createSampleVoicePort(), []);
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateRows: "var(--titlebar-height) auto 1fr",
-        height: "100%",
-      }}>
+    <div className="grid h-full grid-rows-[var(--titlebar-height)_1fr]">
       <TitleBar title="云笺" chrome={chrome} />
-      <nav
-        aria-label="主导航"
-        data-testid="app-nav"
-        style={{
-          display: "flex",
-          gap: "var(--space-2)",
-          padding: "var(--space-2) var(--space-6)",
-          borderBottom: "1px solid var(--color-border)",
-          background: "var(--color-surface)",
-        }}>
-        <NavButton
-          label="检索"
-          testId="nav-search"
-          // 详情页也归「检索」这一支：它是从检索进去的，把它算作第三个并列项
-          // 会让导航出现一个用户无法直接抵达的条目。
-          active={view.kind === "search" || view.kind === "poem"}
-          onClick={() => {
-            setView({ kind: "search" });
+      {/* `min-h-0` 不可省：网格项的默认 `min-height: auto` 会让下面那个滚动容器
+          按内容高度撑开，于是整页出现第二根滚动条而内容区自己不滚。 */}
+      <div className="grid min-h-0 grid-cols-[auto_1fr]">
+        <Sidebar
+          section={sectionOf(view)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => {
+            setSidebarCollapsed((collapsed) => !collapsed);
+          }}
+          onSelect={(section) => {
+            setView(section === "recite" ? { kind: "recite" } : { kind: "search" });
+          }}
+          settingsOpen={settingsOpen}
+          onOpenSettings={() => {
+            setSettingsOpen(true);
           }}
         />
-        <NavButton
-          label="背诵"
-          testId="nav-recite"
-          active={view.kind === "recite"}
-          onClick={() => {
-            setView({ kind: "recite" });
-          }}
-        />
-        <NavButton
-          label="设置"
-          testId="nav-settings"
-          active={view.kind === "settings"}
-          onClick={() => {
-            setView({ kind: "settings" });
-          }}
-        />
-      </nav>
-      <main style={{ overflowY: "auto" }}>
-        {sample && (
-          <p
-            data-testid="sample-mode-notice"
-            style={{
+        <main className="min-h-0 overflow-y-auto">
+          {sample && (
+            <p
+              data-testid="sample-mode-notice"
               // 底色与下边框铺满整宽（它是一条全局状态横幅），但**文字与内容区共用
               // 同一条对齐基准**：`46rem` 与检索页、阅读页、设置页三处的 `max-width` 相同。
               // 不这么做的话，横幅文字贴左边缘而下方内容居中，两个对齐基准会同时出现在一屏上。
-              margin: 0,
-              padding: "var(--space-3) var(--space-6)",
-              background: "var(--color-error-surface)",
-              borderBottom: "1px solid var(--color-error-border)",
-              color: "var(--color-error-text)",
-              fontFamily: "var(--font-sans)",
-              fontSize: "var(--text-xs)",
-              lineHeight: 1.7,
-            }}>
-            <span style={{ display: "block", maxWidth: "46rem", marginInline: "auto" }}>
-              {SAMPLE_MODE_NOTICE}
-            </span>
-          </p>
-        )}
-        {view.kind === "search" && (
-          <SearchScreen
-            port={ports.search}
-            onOpen={(poemId) => {
-              setView({ kind: "poem", poemId });
-            }}
-          />
-        )}
-        {view.kind === "poem" && (
-          <PoemDetailScreen
-            poemId={view.poemId}
-            poemPort={ports.poem}
-            appreciationPort={ports.appreciation}
-            onBack={() => {
-              setView({ kind: "search" });
-            }}
-          />
-        )}
-        {view.kind === "recite" && <ReciteScreen ports={recitePorts} voicePort={voicePort} />}
-        {view.kind === "settings" && <SettingsScreen ports={settingsPorts} />}
-      </main>
+              className="m-0 border-b border-[var(--color-error-border)] bg-[var(--color-error-surface)] px-6 py-3 text-xs leading-[1.7] text-[var(--color-error-text)]">
+              <span className="mx-auto block max-w-[46rem]">{SAMPLE_MODE_NOTICE}</span>
+            </p>
+          )}
+          {view.kind === "search" && (
+            <SearchScreen
+              port={ports.search}
+              onOpen={(poemId) => {
+                setView({ kind: "poem", poemId });
+              }}
+            />
+          )}
+          {view.kind === "poem" && (
+            <PoemDetailScreen
+              poemId={view.poemId}
+              poemPort={ports.poem}
+              appreciationPort={ports.appreciation}
+              onBack={() => {
+                setView({ kind: "search" });
+              }}
+            />
+          )}
+          {view.kind === "recite" && <ReciteScreen ports={recitePorts} voicePort={voicePort} />}
+        </main>
+      </div>
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => {
+          setSettingsOpen(false);
+        }}
+        ports={settingsPorts}
+      />
     </div>
   );
 }
