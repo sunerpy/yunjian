@@ -360,7 +360,7 @@ fn select_by_roster(source: &Connection) -> Result<Vec<String>> {
     Ok(picked.into_iter().collect())
 }
 
-fn prepare_workspace(workspace: &Path) -> Result<()> {
+pub(crate) fn prepare_workspace(workspace: &Path) -> Result<()> {
     if workspace.exists() {
         std::fs::remove_dir_all(workspace)?;
     }
@@ -372,7 +372,11 @@ fn prepare_workspace(workspace: &Path) -> Result<()> {
 ///
 /// schema 从源库的 `sqlite_master` 原样复制，而不是在这里重抄一份 DDL——重抄的那份
 /// 必然会与语料 schema 漂移，而漂移出来的差异只会在生成期才暴露。
-fn extract_subset(source_path: &Path, dest_path: &Path, picked: &[String]) -> Result<()> {
+pub(crate) fn extract_subset(
+    source_path: &Path,
+    dest_path: &Path,
+    picked: &[String],
+) -> Result<()> {
     let dest = Connection::open_with_flags(
         dest_path,
         OpenFlags::SQLITE_OPEN_READ_WRITE

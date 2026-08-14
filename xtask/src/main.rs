@@ -14,7 +14,9 @@ use clap::{Parser, Subcommand};
 
 // 子命令模块在此注册（每个任务追加一行）。
 mod acceptance;
+mod assets_manifest;
 mod cer_spike;
+mod clean_install_report;
 mod commentary_index;
 mod corpus_build;
 mod corpus_contract;
@@ -23,6 +25,7 @@ mod corpus_package;
 mod corpus_quality;
 mod index_spike;
 mod pregenerate;
+mod provider_calls;
 mod verify_icons;
 mod verify_models;
 mod verify_sources;
@@ -202,6 +205,88 @@ enum Commands {
         endpoint: Option<String>,
     },
 
+    /// 把容器里的观测行裁决成净机验收报告（`docs/reports/clean-install-<date>.{md,json}`）。
+    ///
+    /// 断言集是**预声明**的：少一条观测即中止，多一条断言集之外的 id 也中止。
+    /// 这样一条难验的断言不能靠「不交观测」从报告里消失。
+    CleanInstallReport {
+        /// 容器写出的观测文件，可给多次（联网段与断网段各一份）。
+        #[arg(long = "observed", value_name = "PATH", required = true)]
+        observed: Vec<std::path::PathBuf>,
+        /// `xtask provider-calls` 的输出。
+        #[arg(long, default_value = "docs/reports/clean-install-provider-calls.json")]
+        provider_calls: std::path::PathBuf,
+        /// `pregenerate` 的数据集清单，用来裁决「正文是否为模型输出」。
+        #[arg(long, default_value = "dataset/appreciations.manifest.json")]
+        dataset_manifest: std::path::PathBuf,
+        /// 待发布工件所在目录（语料、种子、统一清单与各自的 `.sha256`）。
+        #[arg(long)]
+        artifacts_dir: std::path::PathBuf,
+        /// 净机镜像名。写进报告是验收要求：「报告指明所用的净环境」。
+        #[arg(long)]
+        image: String,
+        /// 镜像摘要。
+        #[arg(long, default_value = "")]
+        image_digest: String,
+        /// 容器内自报的系统。
+        #[arg(long, default_value = "")]
+        os_release: String,
+        /// 容器内自报的内核。
+        #[arg(long, default_value = "")]
+        kernel: String,
+        /// 容器启动时用户主目录里的条目数。
+        #[arg(long, default_value_t = 0)]
+        preexisting_home_entries: u32,
+        /// 断网段用的隔离手段。
+        #[arg(long, default_value = "")]
+        offline_isolation: String,
+        /// 报告输出目录。
+        #[arg(long, default_value = "docs/reports")]
+        out_dir: std::path::PathBuf,
+        /// 报告日期，构成文件名。
+        #[arg(long)]
+        date: String,
+        /// 被测提交。
+        #[arg(long, default_value = "")]
+        commit_sha: String,
+    },
+
+    /// 把语料工件清单与随包赏析种子清单合成一份统一 `assets_manifest.json`
+    /// （`yunjian_core::assets::AssetsManifest` 的形状），供 `yunjian corpus fetch` 消费。
+    ///
+    /// **写盘之前先用应用运行期那个解析器验一遍**：应用会拒绝的清单在这里就发不出去，
+    /// 而不是等用户执行 `corpus fetch` 时才发现。两份清单的 `corpus_version` 不一致亦中止。
+    AssetsManifest {
+        /// `corpus-package` 产出的语料清单。
+        #[arg(long, default_value = "corpus/build/package/manifest.json")]
+        corpus_manifest: std::path::PathBuf,
+        /// `pregenerate` 产出的数据集清单。
+        #[arg(long, default_value = "dataset/appreciations.manifest.json")]
+        seed_manifest: std::path::PathBuf,
+        /// 随包赏析种子 JSON。摘要当场重算，不信清单里那一行。
+        #[arg(long, default_value = "dataset/appreciations.json")]
+        seed: std::path::PathBuf,
+        /// 两件工件的下载前缀，通常是某个 `corpus-v*` Release 的资产地址。
+        #[arg(long, value_name = "URL")]
+        base_url: String,
+        /// 输出路径。缺省与语料清单同目录。
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
+
+    /// 实测「随包命中零次模型调用、冷诗恰好一次」。用 **fixture 种子**，验的是缓存路径
+    /// 而不是产品内容——待发布数据集当前 `generation_executed=false`，用它验会得到一个假 PASS。
+    ///
+    /// 计数不符即以非零码中止：本子命令的产物是一条断言，不是一份观测记录。
+    ProviderCalls {
+        /// 只读源语料库。源库一个字节都不会被改动，也**不会**在它里面建派生结构。
+        #[arg(long, default_value = "corpus/build/release/corpus.db")]
+        corpus_db: std::path::PathBuf,
+        /// 计数结果的输出路径。
+        #[arg(long, default_value = "docs/reports/clean-install-provider-calls.json")]
+        out: std::path::PathBuf,
+    },
+
     /// 验收图标集：解析 `icon.ico` 的字节确认六种尺寸齐备且 32 px 层在最前、断言源图为
     /// 1024×1024 RGBA 且四角透明、断言托盘图标四角 alpha 为 0、断言小尺寸层未被降采样，并写出六档联系表
     /// （`docs/reports/icon-contact-sheet.png`）供人眼裁决。
@@ -328,6 +413,43 @@ fn main() -> anyhow::Result<()> {
             provider,
             endpoint,
         ),
+        Some(Commands::CleanInstallReport {
+            observed,
+            provider_calls,
+            dataset_manifest,
+            artifacts_dir,
+            image,
+            image_digest,
+            os_release,
+            kernel,
+            preexisting_home_entries,
+            offline_isolation,
+            out_dir,
+            date,
+            commit_sha,
+        }) => clean_install_report::run(
+            observed,
+            provider_calls,
+            dataset_manifest,
+            artifacts_dir,
+            image,
+            image_digest,
+            os_release,
+            kernel,
+            preexisting_home_entries,
+            offline_isolation,
+            out_dir,
+            date,
+            commit_sha,
+        ),
+        Some(Commands::AssetsManifest {
+            corpus_manifest,
+            seed_manifest,
+            seed,
+            base_url,
+            out,
+        }) => assets_manifest::run(corpus_manifest, seed_manifest, seed, base_url, out),
+        Some(Commands::ProviderCalls { corpus_db, out }) => provider_calls::run(corpus_db, out),
         Some(Commands::VerifyIcons) => verify_icons::run(),
         Some(Commands::VerifyModels { offline }) => verify_models::run(offline),
         Some(Commands::CerSpike {

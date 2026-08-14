@@ -1,0 +1,12 @@
+{
+  "shipped_calls": 0,
+  "cold_calls": 1,
+  "cold_calls_after_repeat": 1,
+  "shipped_source": "shipped",
+  "cold_source": "generated",
+  "shipped_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）",
+  "shipped_poem": "00001539ed2f02b5",
+  "cold_poem": "0000168330a10ebb",
+  "fixture_seed": true,
+  "fixture_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）"
+}
