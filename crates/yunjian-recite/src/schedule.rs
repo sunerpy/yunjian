@@ -1,8 +1,9 @@
 //! FSRS-6 复习排程与打字评分到四档等级的映射。
 
+use crate::RetentionObservation;
 use crate::score::TypedScore;
 use fsrs::{ComputeParametersInput, FSRS, FSRSItem, FSRSReview, ItemState, MemoryState};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -93,6 +94,46 @@ pub struct ReviewState {
     pub last_grade: FsrsGrade,
 }
 
+/// 一次正式复习的单次提交能力。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewTicket {
+    /// 复习库内的票据标识。
+    pub id: i64,
+    /// 本票据允许提交的联片稳定标识。
+    pub stable_id: String,
+    /// 本票据绑定的 Unix 日序号。
+    pub review_day: i64,
+}
+
+/// 当日内再学习的结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PracticeOutcome {
+    /// 本次无提示回忆通过。
+    Passed,
+    /// 本次无提示回忆未通过。
+    Failed,
+}
+
+/// 一次待完成的当日内再学习任务。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelearningTicket {
+    /// 复习库内的任务标识。
+    pub id: i64,
+    /// 所属联片稳定标识。
+    pub stable_id: String,
+    /// 应出现的 Unix 秒时间戳。
+    pub due_at: i64,
+}
+
+/// 正式提交后的 FSRS 状态和可选再学习任务。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReviewSubmission {
+    /// 唯一一次 FSRS 推进产生的状态。
+    pub review: ReviewState,
+    /// Again/Hard 时产生的十分钟再学习任务。
+    pub relearning: Option<RelearningTicket>,
+}
+
 impl ReviewState {
     fn memory(&self) -> MemoryState {
         MemoryState {
@@ -155,6 +196,65 @@ impl Scheduler {
             .map_err(Error::from)
     }
 
+    /// 返回在指定 Unix 秒时间点已触发且尚未完成的再学习任务。
+    pub fn pending_relearning_at(&self, unix_seconds: i64) -> Result<Vec<RelearningTicket>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, stable_id, due_at FROM relearning
+             WHERE completed_at IS NULL AND due_at <= ?1 ORDER BY due_at, id",
+        )?;
+        let rows = statement.query_map([unix_seconds], |row| {
+            Ok(RelearningTicket {
+                id: row.get(0)?,
+                stable_id: row.get(1)?,
+                due_at: row.get(2)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Error::from)
+    }
+
+    /// 返回从指定日序号起、确实在到期后提交的正式复习保持率样本。
+    pub fn retention_observation_since(&self, first_day: i64) -> Result<RetentionObservation> {
+        let (non_again, sample_size) = self.connection.query_row(
+            "SELECT COALESCE(SUM(CASE WHEN rating <> 1 THEN 1 ELSE 0 END), 0), COUNT(*)
+             FROM review_log WHERE reviewed_day >= ?1 AND was_due = 1",
+            [first_day],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )?;
+        Ok(RetentionObservation {
+            non_again: usize::try_from(non_again)
+                .map_err(|_| Error::Recite(format!("保持率成功样本数超出平台范围：{non_again}")))?,
+            sample_size: usize::try_from(sample_size)
+                .map_err(|_| Error::Recite(format!("保持率样本数超出平台范围：{sample_size}")))?,
+        })
+    }
+
+    /// 保存仅用于预算装箱的预计耗时，不改变 FSRS 状态。
+    pub fn set_estimated_minutes(&self, stable_id: &str, minutes: f32) -> Result<()> {
+        validate_stable_id(stable_id)?;
+        if !minutes.is_finite() || minutes <= 0.0 {
+            return Err(Error::Recite("预计耗时必须是大于零的有限分钟数".to_owned()));
+        }
+        self.connection.execute(
+            "INSERT INTO task_estimate(stable_id, estimated_minutes) VALUES (?1, ?2)
+             ON CONFLICT(stable_id) DO UPDATE SET estimated_minutes = excluded.estimated_minutes",
+            params![stable_id, minutes],
+        )?;
+        Ok(())
+    }
+
+    /// 读取预算装箱耗时；旧排程没有记录时返回 `None`。
+    pub fn estimated_minutes(&self, stable_id: &str) -> Result<Option<f32>> {
+        self.connection
+            .query_row(
+                "SELECT estimated_minutes FROM task_estimate WHERE stable_id = ?1",
+                [stable_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Error::from)
+    }
+
     /// 以当前日期提交一次用户选择或打字映射得到的等级。
     pub fn review(&mut self, stable_id: &str, grade: FsrsGrade) -> Result<ReviewState> {
         self.review_at(stable_id, grade, unix_day_now())
@@ -167,64 +267,129 @@ impl Scheduler {
         grade: FsrsGrade,
         review_day: i64,
     ) -> Result<ReviewState> {
-        if stable_id.trim().is_empty() {
-            return Err(Error::Recite("stable_id 不得为空".to_owned()));
-        }
-        let previous = self.state(stable_id)?;
-        let days_elapsed = previous
-            .as_ref()
-            .map(|state| elapsed_days(state.last_review_day, review_day))
-            .unwrap_or(0);
-        let next_states = self
-            .fsrs
-            .next_states(
-                previous.as_ref().map(ReviewState::memory),
-                DESIRED_RETENTION,
-                days_elapsed,
-            )
-            .map_err(fsrs_error)?;
-        let next = select_state(next_states, grade);
-        let scheduled_days = rounded_interval(next.interval);
-        let state = ReviewState {
-            stable_id: stable_id.to_owned(),
-            stability: next.memory.stability,
-            difficulty: next.memory.difficulty,
-            due_day: review_day.saturating_add(i64::from(scheduled_days)),
-            last_review_day: review_day,
-            scheduled_days,
-            last_grade: grade,
-        };
-
+        validate_stable_id(stable_id)?;
+        let fsrs = &self.fsrs;
         let transaction = self.connection.transaction()?;
+        let state = review_in_transaction(&transaction, fsrs, stable_id, grade, review_day)?;
+        transaction.commit()?;
+        Ok(state)
+    }
+
+    /// 为一次独立回答签发单次提交票据。
+    pub fn issue_review_ticket_at(
+        &mut self,
+        stable_id: &str,
+        review_day: i64,
+        issued_at: i64,
+    ) -> Result<ReviewTicket> {
+        validate_stable_id(stable_id)?;
+        self.connection.execute(
+            "INSERT INTO review_ticket(stable_id, review_day, issued_at) VALUES (?1, ?2, ?3)",
+            params![stable_id, review_day, issued_at],
+        )?;
+        Ok(ReviewTicket {
+            id: self.connection.last_insert_rowid(),
+            stable_id: stable_id.to_owned(),
+            review_day,
+        })
+    }
+
+    /// 消费一次能力票据并原子推进 FSRS；同一票据第二次提交必然失败。
+    pub fn submit_review_ticket_at(
+        &mut self,
+        ticket: &ReviewTicket,
+        grade: FsrsGrade,
+        review_day: i64,
+        submitted_at: i64,
+    ) -> Result<ReviewSubmission> {
+        if ticket.review_day != review_day {
+            return Err(Error::Recite("复习票据与提交日期不一致".to_owned()));
+        }
+        let fsrs = &self.fsrs;
+        let transaction = self.connection.transaction()?;
+        let claimed = transaction.execute(
+            "UPDATE review_ticket SET submitted_at = ?1
+             WHERE id = ?2 AND stable_id = ?3 AND review_day = ?4 AND submitted_at IS NULL",
+            params![submitted_at, ticket.id, ticket.stable_id, review_day],
+        )?;
+        if claimed != 1 {
+            return Err(Error::Recite("复习票据不存在或已经提交".to_owned()));
+        }
+        let review =
+            review_in_transaction(&transaction, fsrs, &ticket.stable_id, grade, review_day)?;
+        let relearning = if matches!(grade, FsrsGrade::Again | FsrsGrade::Hard) {
+            Some(insert_relearning(
+                &transaction,
+                &ticket.stable_id,
+                submitted_at.saturating_add(600),
+                0,
+            )?)
+        } else {
+            None
+        };
+        transaction.commit()?;
+        Ok(ReviewSubmission { review, relearning })
+    }
+
+    /// 记录一次再学习练习，不调用 FSRS，也不改变 `due_day`。
+    pub fn record_relearning_at(
+        &mut self,
+        relearning_id: &i64,
+        outcome: PracticeOutcome,
+        completed_at: i64,
+    ) -> Result<Option<RelearningTicket>> {
+        let transaction = self.connection.transaction()?;
+        let pending = transaction
+            .query_row(
+                "SELECT stable_id, stage FROM relearning WHERE id = ?1 AND completed_at IS NULL",
+                [relearning_id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, u8>(1)?)),
+            )
+            .optional()?;
+        let Some((stable_id, stage)) = pending else {
+            return Err(Error::Recite("再学习任务不存在或已经完成".to_owned()));
+        };
         transaction.execute(
-            "INSERT INTO review_state(
-                stable_id, stability, difficulty, due_day, last_review_day,
-                scheduled_days, last_grade
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(stable_id) DO UPDATE SET
-                stability = excluded.stability,
-                difficulty = excluded.difficulty,
-                due_day = excluded.due_day,
-                last_review_day = excluded.last_review_day,
-                scheduled_days = excluded.scheduled_days,
-                last_grade = excluded.last_grade",
+            "UPDATE relearning SET completed_at = ?1, passed = ?2 WHERE id = ?3",
             params![
-                state.stable_id,
-                state.stability,
-                state.difficulty,
-                state.due_day,
-                state.last_review_day,
-                state.scheduled_days,
-                state.last_grade.rating(),
+                completed_at,
+                outcome == PracticeOutcome::Passed,
+                relearning_id
             ],
         )?;
         transaction.execute(
-            "INSERT INTO review_log(stable_id, reviewed_day, rating, delta_days)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![stable_id, review_day, grade.rating(), days_elapsed],
+            "INSERT INTO practice_event(stable_id, occurred_at, kind, passed)
+             VALUES (?1, ?2, 'relearning', ?3)",
+            params![stable_id, completed_at, outcome == PracticeOutcome::Passed],
         )?;
+        let next = match (stage, outcome) {
+            (0, PracticeOutcome::Passed) => Some(insert_relearning(
+                &transaction,
+                &stable_id,
+                completed_at.saturating_add(3_600),
+                1,
+            )?),
+            (1, PracticeOutcome::Passed) => None,
+            (_, PracticeOutcome::Failed) => Some(insert_relearning(
+                &transaction,
+                &stable_id,
+                completed_at.saturating_add(600),
+                0,
+            )?),
+            _ => return Err(Error::Recite(format!("复习库含非法再学习阶段：{stage}"))),
+        };
         transaction.commit()?;
-        Ok(state)
+        Ok(next)
+    }
+
+    /// 返回正式 FSRS 复习记录数。
+    pub fn review_count(&self) -> Result<usize> {
+        count_rows(&self.connection, "review_log")
+    }
+
+    /// 返回不推进 FSRS 的练习事件数。
+    pub fn practice_event_count(&self) -> Result<usize> {
+        count_rows(&self.connection, "practice_event")
     }
 
     /// 历史量达到训练底线时优化并持久化参数；数据不足时返回 `None`。
@@ -273,16 +438,159 @@ fn initialize_schema(connection: &Connection) -> Result<()> {
              stable_id TEXT NOT NULL,
              reviewed_day INTEGER NOT NULL,
              rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 4),
-             delta_days INTEGER NOT NULL
+             delta_days INTEGER NOT NULL,
+             was_due INTEGER CHECK(was_due IN (0, 1))
          );
          CREATE INDEX IF NOT EXISTS review_log_stable_id_idx
              ON review_log(stable_id, reviewed_day, id);
          CREATE TABLE IF NOT EXISTS fsrs_parameter(
              position INTEGER PRIMARY KEY CHECK(position BETWEEN 0 AND 20),
              value REAL NOT NULL
-         ) WITHOUT ROWID;",
+         ) WITHOUT ROWID;
+         CREATE TABLE IF NOT EXISTS review_ticket(
+             id INTEGER PRIMARY KEY,
+             stable_id TEXT NOT NULL,
+             review_day INTEGER NOT NULL,
+             issued_at INTEGER NOT NULL,
+             submitted_at INTEGER
+         );
+         CREATE TABLE IF NOT EXISTS relearning(
+             id INTEGER PRIMARY KEY,
+             stable_id TEXT NOT NULL,
+             due_at INTEGER NOT NULL,
+             stage INTEGER NOT NULL CHECK(stage IN (0, 1)),
+             completed_at INTEGER,
+             passed INTEGER CHECK(passed IN (0, 1))
+         );
+         CREATE INDEX IF NOT EXISTS relearning_due_idx
+             ON relearning(completed_at, due_at, id);
+         CREATE TABLE IF NOT EXISTS practice_event(
+             id INTEGER PRIMARY KEY,
+             stable_id TEXT NOT NULL,
+             occurred_at INTEGER NOT NULL,
+             kind TEXT NOT NULL,
+             passed INTEGER NOT NULL CHECK(passed IN (0, 1))
+         );
+         CREATE TABLE IF NOT EXISTS task_estimate(
+             stable_id TEXT PRIMARY KEY NOT NULL,
+             estimated_minutes REAL NOT NULL CHECK(estimated_minutes > 0)
+         );",
     )?;
+    let has_was_due = connection
+        .prepare("PRAGMA table_info(review_log)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .iter()
+        .any(|column| column == "was_due");
+    if !has_was_due {
+        connection.execute(
+            "ALTER TABLE review_log ADD COLUMN was_due INTEGER CHECK(was_due IN (0, 1))",
+            [],
+        )?;
+    }
     Ok(())
+}
+
+fn validate_stable_id(stable_id: &str) -> Result<()> {
+    if stable_id.trim().is_empty() {
+        return Err(Error::Recite("stable_id 不得为空".to_owned()));
+    }
+    Ok(())
+}
+
+fn count_rows(connection: &Connection, table: &str) -> Result<usize> {
+    let count = connection.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    usize::try_from(count).map_err(|_| Error::Recite(format!("{table} 行数超出平台范围：{count}")))
+}
+
+fn review_in_transaction(
+    transaction: &Transaction<'_>,
+    fsrs: &FSRS,
+    stable_id: &str,
+    grade: FsrsGrade,
+    review_day: i64,
+) -> Result<ReviewState> {
+    validate_stable_id(stable_id)?;
+    let previous = transaction
+        .query_row(
+            "SELECT stable_id, stability, difficulty, due_day, last_review_day, \
+             scheduled_days, last_grade FROM review_state WHERE stable_id = ?1",
+            [stable_id],
+            review_state_from_row,
+        )
+        .optional()?;
+    let days_elapsed = previous
+        .as_ref()
+        .map(|state| elapsed_days(state.last_review_day, review_day))
+        .unwrap_or(0);
+    let was_due = previous
+        .as_ref()
+        .is_some_and(|state| state.due_day <= review_day);
+    let next_states = fsrs
+        .next_states(
+            previous.as_ref().map(ReviewState::memory),
+            DESIRED_RETENTION,
+            days_elapsed,
+        )
+        .map_err(fsrs_error)?;
+    let next = select_state(next_states, grade);
+    let scheduled_days = rounded_interval(next.interval);
+    let state = ReviewState {
+        stable_id: stable_id.to_owned(),
+        stability: next.memory.stability,
+        difficulty: next.memory.difficulty,
+        due_day: review_day.saturating_add(i64::from(scheduled_days)),
+        last_review_day: review_day,
+        scheduled_days,
+        last_grade: grade,
+    };
+    transaction.execute(
+        "INSERT INTO review_state(
+            stable_id, stability, difficulty, due_day, last_review_day,
+            scheduled_days, last_grade
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(stable_id) DO UPDATE SET
+            stability = excluded.stability,
+            difficulty = excluded.difficulty,
+            due_day = excluded.due_day,
+            last_review_day = excluded.last_review_day,
+            scheduled_days = excluded.scheduled_days,
+            last_grade = excluded.last_grade",
+        params![
+            state.stable_id,
+            state.stability,
+            state.difficulty,
+            state.due_day,
+            state.last_review_day,
+            state.scheduled_days,
+            state.last_grade.rating(),
+        ],
+    )?;
+    transaction.execute(
+        "INSERT INTO review_log(stable_id, reviewed_day, rating, delta_days, was_due)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![stable_id, review_day, grade.rating(), days_elapsed, was_due],
+    )?;
+    Ok(state)
+}
+
+fn insert_relearning(
+    transaction: &Transaction<'_>,
+    stable_id: &str,
+    due_at: i64,
+    stage: u8,
+) -> Result<RelearningTicket> {
+    transaction.execute(
+        "INSERT INTO relearning(stable_id, due_at, stage) VALUES (?1, ?2, ?3)",
+        params![stable_id, due_at, stage],
+    )?;
+    Ok(RelearningTicket {
+        id: transaction.last_insert_rowid(),
+        stable_id: stable_id.to_owned(),
+        due_at,
+    })
 }
 
 fn review_state_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReviewState> {
