@@ -403,3 +403,57 @@ fn english_readme_status_matches_code_facts() {
         |feature| feature.en,
     );
 }
+
+// ---------------------------------------------------------------------------
+// 五、两份 README 的行数上限
+// ---------------------------------------------------------------------------
+
+/// 方案给根 README 定的硬门槛。英文镜像沿用同一个数，因为两份是同一份内容的两种语言，
+/// 允许其中一份更长就等于允许它长期漂移。
+const README_LINE_CEILING: usize = 230;
+
+/// 计行数**只数真实文件的换行**，不读任何记录值。
+///
+/// 这条与上面那条 README 断言同源：见证必须是被约束的那个对象本身。一个记录在文档或
+/// 常量里的「当前行数」与真实文件对照不上时，门禁会照记录值判绿——**实测过一次**：
+/// 方案里写着 `<= 230`，没有任何断言扫过真实文件，于是根 README 漂到 **339 行**
+/// （超 109 行）而没有任何门禁报错，直到人工审计才发现。
+fn line_count(relative: &str) -> usize {
+    read(relative).lines().count()
+}
+
+#[test]
+fn both_readmes_stay_within_the_line_ceiling() {
+    // 上限本身不许被悄悄放宽：它是方案的硬门槛，改它要改方案。
+    assert_eq!(
+        README_LINE_CEILING, 230,
+        "README 行数上限由方案冻结为 230；要调整先改方案，不要改这条断言"
+    );
+
+    let mut over = Vec::new();
+    for path in ["README.md", "docs/readme/README.en.md"] {
+        let lines = line_count(path);
+        // 下界同样要判：一份被清空或截断的 README 也是漂移，只是方向相反，
+        // 而只判上限的断言会把它读成「非常合规」。
+        assert!(
+            lines >= 120,
+            "{path} 只有 {lines} 行——README 至少要装得下状态表、快速开始与输出契约，\
+             这个长度说明它被截断或清空了，而只判上限的断言会把这种情况读成合规"
+        );
+        if lines > README_LINE_CEILING {
+            over.push(format!(
+                "{path}：{lines} 行（超 {} 行）",
+                lines - README_LINE_CEILING
+            ));
+        }
+    }
+
+    assert!(
+        over.is_empty(),
+        "README 超出 {README_LINE_CEILING} 行上限：\n  {}\n\
+         超出的内容往 `docs/` 放，README 只留导航与快速上手。\
+         **不要靠删掉「尚未实现」的条目来省行数**——那是反向漂移，\
+         会让读者以为没做的事已经做了，而上面那两条状态断言正是为此存在的。",
+        over.join("\n  ")
+    );
+}
