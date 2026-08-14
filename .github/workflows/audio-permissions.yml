@@ -9,6 +9,11 @@ name: audio-permissions
 # 与 `voice-build.yml` 刻意分开：那个工作流验证 sherpa-onnx 原生库的构建与链接（重、需要
 # 下载几十 MB 产物、且分发物带 GPL-3.0），这个只验证采集与权限配置（只依赖 rodio，纯
 # MIT/Apache-2.0）。合成一个会让一次权限配置改动去重跑整套原生构建。
+#
+# CodeBuild 预备（尚未启用）：当前连接为 PENDING，全部 job 保持 GitHub-hosted。授权并
+# 重建 webhook 后，只有 Linux x86_64 的 `config` 与汇总 job 可分别改用唯一标签
+# `audio-config`、`audio-permissions-success`；`capture`/`mobile` 是混合 OS 矩阵，
+# `codesign` 是 macOS，不能整体切到当前 Linux x86_64 的 `yunjian-runner` 项目。
 
 on:
   push:

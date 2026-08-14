@@ -27,6 +27,11 @@ name: corpus
 # 被 `workflow_call` 调用时，`github.workflow` 与 `github.event_name` 取的是**调用方**
 # 的值，在这里声明并发组会与 `ci.yml` 的组字符串相同，于是父子运行互相取消。
 # PR 路径的并发控制由调用方 `ci.yml` 负责；定时运行一个月一次，不需要取消。
+#
+# CodeBuild 预备（尚未启用）：连接 AVAILABLE 且 webhook 在授权后重建之前继续使用
+# `ubuntu-latest`。届时本文件唯一 job 使用
+# `[codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, corpus-gate]`；
+# 这个唯一标签不能与调用方其他 job 共用。
 
 on:
   workflow_call:
