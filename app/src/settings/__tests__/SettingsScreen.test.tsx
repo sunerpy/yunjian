@@ -108,7 +108,11 @@ function createPorts(overrides: Overrides = {}): {
   const stored = overrides.storedReport ?? report();
   const absent =
     overrides.absentReport ??
-    report({ backend: "absent", persistence: "none", protection: "os_encrypted" });
+    report({
+      backend: "absent",
+      persistence: "none",
+      protection: "os_encrypted",
+    });
   const received: string[] = [];
   let has = false;
 
@@ -170,6 +174,25 @@ function domContains(needle: string): boolean {
   );
   return [...fields].some((field) => field.value.includes(needle));
 }
+
+describe("标题", () => {
+  it("独立渲染时带「设置」这个 h1", () => {
+    // 装进弹窗时它被关掉（弹窗头部条已经写着「设置」），但独立形态默认必须带标题——
+    // 否则这一屏没有任何东西说明自己是什么。默认值站在独立形态这一边，弹窗是特例。
+    render(<SettingsScreen ports={createPorts().ports} />);
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.textContent).toBe("设置");
+  });
+
+  it("`showTitle={false}` 时不渲染任何 h1", () => {
+    render(<SettingsScreen ports={createPorts().ports} showTitle={false} />);
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    // 四块面板仍然都在：关掉的只是标题，不是内容。
+    for (const label of ["AI 服务商与密钥", "语料库", "语音模型", "赏析缓存"]) {
+      expect(screen.getByLabelText(label), `缺少「${label}」面板`).toBeTruthy();
+    }
+  });
+});
 
 describe("密钥输入", () => {
   it("是遮罩输入，且关掉了自动填充与拼写检查", async () => {
@@ -502,8 +525,12 @@ describe("缓存管理", () => {
     render(
       <SettingsScreen
         ports={
-          createPorts({ cache: { counts: { shipped: 1, local: 2 }, database_bytes: 5_242_880 } })
-            .ports
+          createPorts({
+            cache: {
+              counts: { shipped: 1, local: 2 },
+              database_bytes: 5_242_880,
+            },
+          }).ports
         }
       />,
     );

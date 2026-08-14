@@ -25,6 +25,14 @@ import "./settings.css";
 export interface SettingsScreenProps {
   ports: SettingsPorts;
   /**
+   * 是否渲染「设置」这个 `h1`。
+   *
+   * 装进弹窗时传 `false`：弹窗的头部条已经写着「设置」，两处一起出现会得到一个空的
+   * 头部条加一个紧跟其下的重复标题，中间空出约 70px。独立渲染（以及它自己的那组测试）
+   * 仍然需要这个标题，所以默认是 `true`——弹窗是特例，不是新常态。
+   */
+  showTitle?: boolean;
+  /**
    * 当前提示词模板版本，交给缓存面板做「只清理本模板」。
    *
    * 默认值与 `AiConfig::default()` 的 `prompt_template_version`
@@ -33,10 +41,14 @@ export interface SettingsScreenProps {
   templateVersion?: string;
 }
 
-export default function SettingsScreen({ ports, templateVersion = "v1" }: SettingsScreenProps) {
+export default function SettingsScreen({
+  ports,
+  templateVersion = "v1",
+  showTitle = true,
+}: SettingsScreenProps) {
   return (
     <div className="settings-screen" data-testid="settings-screen">
-      <h1 className="settings-screen__title">设置</h1>
+      {showTitle && <h1 className="settings-screen__title">设置</h1>}
       <KeyStoragePanel keyStorePort={ports.keyStore} aiSettingsPort={ports.aiSettings} />
       <CorpusPanel port={ports.corpus} />
       <ModelPanel port={ports.models} />
