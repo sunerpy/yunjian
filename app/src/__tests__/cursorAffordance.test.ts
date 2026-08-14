@@ -69,6 +69,7 @@ const COMPONENTS = [
   "settings/KeyStoragePanel.tsx",
   "settings/CachePanel.tsx",
   "settings/CorpusPanel.tsx",
+  "shell/DictionaryPanel.tsx",
   "shell/Sidebar.tsx",
   "shell/SettingsDialog.tsx",
 ] as const;

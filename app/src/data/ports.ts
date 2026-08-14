@@ -24,7 +24,13 @@
  * 而不是把已取回的页再筛一遍。这一条不这么设计就只能编造一个不存在的字段。
  */
 
-import type { MetaPage, PoemDetail, SearchPage, TagSummary } from "../contracts/core";
+import type {
+  DictionaryLookup,
+  MetaPage,
+  PoemDetail,
+  SearchPage,
+  TagSummary,
+} from "../contracts/core";
 import type { AppreciationState } from "../contracts/ai";
 
 /** `TextSearchRequest`。`crates/yunjian-core/src/search/text.rs:9-18`。 */
@@ -46,6 +52,11 @@ export interface PoemDetailRequest {
   poem_id: string;
 }
 
+export interface DictionaryLookupRequest {
+  query: string;
+  context: string | null;
+}
+
 /** 检索端口。 */
 export interface SearchPort {
   searchText(request: TextSearchRequest): Promise<SearchPage>;
@@ -56,6 +67,10 @@ export interface SearchPort {
 /** 阅读端口。 */
 export interface PoemPort {
   poemDetail(request: PoemDetailRequest): Promise<PoemDetail>;
+}
+
+export interface DictionaryPort {
+  lookupDictionary(request: DictionaryLookupRequest): Promise<DictionaryLookup>;
 }
 
 /**

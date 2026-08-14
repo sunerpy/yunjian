@@ -114,7 +114,11 @@ ferrous-opencc = "0.4"
 # **默认特性刻意关闭，这是正确性约束而非瘦身**：下游 `inputx-phonetic-edit` 的加权
 # 表按**字节**比对，而 `with_tone` 的声调符号是多字节非 ASCII，会给每个音节叠上整
 # 字节 1.0 代价，把 0.2/0.3 的模糊对彻底压过去。恢复默认特性会静默废掉近音判据。
-pinyin = { version = "0.11", default-features = false, features = ["plain", "heteronym"] }
+pinyin = { version = "0.11", default-features = false, features = [
+  "plain",
+  "with_tone",
+  "heteronym",
+] }
 inputx-phonetic-edit = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json", "local-time"] }

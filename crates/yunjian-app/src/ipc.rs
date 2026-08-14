@@ -21,8 +21,9 @@ use yunjian_ai::{
 use yunjian_core::config::{AiConfig, user_config_path};
 use yunjian_core::operation::{Event, OperationHandle, cancel, next_event};
 use yunjian_core::{
-    Config, CorpusHandle, MaterializationProgress, MetaPage, PoemDetail, PoemDetailRequest,
-    SearchPage, TagBrowseRequest, TagSummary, TextSearchRequest, Yunjian,
+    Config, CorpusHandle, DictionaryLookup, DictionaryLookupRequest, MaterializationProgress,
+    MetaPage, PoemDetail, PoemDetailRequest, SearchPage, TagBrowseRequest, TagSummary,
+    TextSearchRequest, Yunjian,
 };
 use yunjian_recite::{
     AlignOp, ClozeOptions, FsrsGrade, MaskStage, PracticeMode, PracticeSession, ReviewState,
@@ -248,6 +249,7 @@ pub(crate) fn configure_builder<R: Runtime>(builder: Builder<R>, config: Config)
             browse_by_tag,
             list_tags,
             poem_detail,
+            lookup_dictionary,
             appreciate_poem,
             cancel_operation,
             key_status,
@@ -362,6 +364,19 @@ async fn poem_detail<R: Runtime>(
     blocking(app, move |state| {
         open_client(state)?
             .poem_detail(request)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn lookup_dictionary<R: Runtime>(
+    app: AppHandle<R>,
+    request: DictionaryLookupRequest,
+) -> IpcResult<DictionaryLookup> {
+    blocking(app, move |state| {
+        open_client(state)?
+            .lookup_dictionary(request)
             .map_err(|error| error.to_string())
     })
     .await
@@ -1413,6 +1428,7 @@ mod tests {
         "browse_by_tag",
         "list_tags",
         "poem_detail",
+        "lookup_dictionary",
         "appreciate_poem",
         "key_status",
         "set_api_key",
@@ -1458,6 +1474,41 @@ mod tests {
             assert!(
                 source.contains(&format!("async fn {command}")),
                 "IPC 命令 `{command}` 必须是 async，避免占用 WebView 主线程"
+            );
+        }
+    }
+
+    #[test]
+    fn dictionary_database_lookup_runs_on_the_blocking_pool() {
+        let production = production();
+        let body = production
+            .split("async fn lookup_dictionary")
+            .nth(1)
+            .and_then(|source| source.split("#[tauri::command]").next())
+            .expect("存在字典 IPC 命令体");
+        assert!(
+            body.contains("blocking(app,"),
+            "字典数据库查询必须进入 spawn_blocking 统一封装"
+        );
+    }
+
+    #[test]
+    fn dictionary_ipc_has_no_modern_lexicon_extension_surface() {
+        let production = production();
+        let without_comments = production
+            .lines()
+            .map(|line| line.split("//").next().unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for forbidden in [
+            "dictionary_provider",
+            "dictionary_endpoint",
+            "remote_dictionary",
+            "online_dictionary",
+        ] {
+            assert!(
+                !without_comments.contains(forbidden),
+                "字典 IPC 不得预留现代辞书扩展口：{forbidden}"
             );
         }
     }

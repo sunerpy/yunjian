@@ -32,17 +32,25 @@ import ReciteScreen from "./recite/ReciteScreen";
 import SearchScreen from "./search/SearchScreen";
 import Sidebar, { type ShellSection } from "./shell/Sidebar";
 import SettingsDialog from "./shell/SettingsDialog";
+import DictionaryPanel from "./shell/DictionaryPanel";
 import { SAMPLE_MODE_NOTICE, createSamplePorts } from "./data/samplePorts";
 import { createTauriPorts } from "./data/tauriPorts";
 import { createSampleSettingsPorts, createTauriSettingsPorts } from "./data/sampleSettingsPorts";
 import { createSampleRecitePorts, createTauriRecitePorts } from "./data/sampleRecitePorts";
 import { createSampleVoicePort, createTauriVoicePort } from "./data/sampleVoicePorts";
 
-type View = { kind: "search" } | { kind: "poem"; poemId: string } | { kind: "recite" };
+type View =
+  | { kind: "search" }
+  | { kind: "poem"; poemId: string }
+  | { kind: "dictionary" }
+  | { kind: "recite" };
 
 /** 侧栏的选中态：阅读页归「检索」那一支，它是从检索进去的。 */
 function sectionOf(view: View): ShellSection {
-  return view.kind === "recite" ? "recite" : "search";
+  if (view.kind === "recite" || view.kind === "dictionary") {
+    return view.kind;
+  }
+  return "search";
 }
 
 export default function App() {
@@ -88,7 +96,7 @@ export default function App() {
             setSidebarCollapsed((collapsed) => !collapsed);
           }}
           onSelect={(section) => {
-            setView(section === "recite" ? { kind: "recite" } : { kind: "search" });
+            setView({ kind: section });
           }}
           settingsOpen={settingsOpen}
           onOpenSettings={() => {
@@ -125,6 +133,7 @@ export default function App() {
             />
           )}
           {view.kind === "recite" && <ReciteScreen ports={recitePorts} voicePort={voicePort} />}
+          {view.kind === "dictionary" && <DictionaryPanel port={ports.dictionary} />}
         </main>
       </div>
       <SettingsDialog
