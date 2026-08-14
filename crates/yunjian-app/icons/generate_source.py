@@ -252,9 +252,12 @@ AUDIT_SIZES = (16, 20, 24, 32, 48, 64, 128, 256, SOURCE_SIZE)
 # 两条恒等式：2m + 2r + 2c + bw == 边长，且 bh + sh == bw（印文外接框为正方形）。
 # 只列手调档位；16 的整数倍档位由 16 px 定稿按倍数推出，不在这里重复。
 SKELETON = {
-    16: (1, 2, 2, 6, 2, 2, 4),
-    20: (1, 3, 2, 8, 3, 2, 5),
-    24: (2, 3, 3, 8, 3, 2, 5),
+    # (纸形左边距 m, 纸宽 w, 纸高 h, 折角边长 f, 诗行宽 lw, 诗行高 lh, 诗行数 n)
+    # 纸形竖长（h > w）是「笺」的形状线索；折角是纸的唯一强线索。
+    # 边距按 (整格 - 纸宽) / 2 推导——纸竖长，左右留白必然大于上下。
+    16: (3, 10, 14, 2, 6, 2, 2),
+    20: (4, 12, 18, 2, 8, 2, 3),
+    24: (5, 14, 20, 2, 10, 3, 3),
 }
 
 # --------------------------------------------------------------------------- #
@@ -266,20 +269,20 @@ SKELETON = {
 # 竖 x ∈ [7, 9) y ∈ [7, 11)。全网格左右镜像，**上下刻意不镜像**（印文有朝向）。
 MASTER_16 = """
 ................
-.##############.
-.##############.
-.##oooooooooo##.
-.##oooooooooo##.
-.##oo######oo##.
-.##oo######oo##.
-.##oooo##oooo##.
-.##oooo##oooo##.
-.##oooo##oooo##.
-.##oooo##oooo##.
-.##oooooooooo##.
-.##oooooooooo##.
-.##############.
-.##############.
+...########.....
+...########.....
+...##########...
+...##########...
+...##oooooo##...
+...##oooooo##...
+...##########...
+...##########...
+...##oooooo##...
+...##oooooo##...
+...##########...
+...##########...
+...##########...
+...##########...
 ................
 """
 
@@ -287,24 +290,24 @@ MASTER_16 = """
 # 20 不是 16 的整数倍，故单独手调而不是缩放——见文件头的取整一节。
 MASTER_20 = """
 ....................
-.##################.
-.##################.
-.##################.
-.###oooooooooooo###.
-.###oooooooooooo###.
-.###oo########oo###.
-.###oo########oo###.
-.###oo########oo###.
-.###ooooo##ooooo###.
-.###ooooo##ooooo###.
-.###ooooo##ooooo###.
-.###ooooo##ooooo###.
-.###ooooo##ooooo###.
-.###oooooooooooo###.
-.###oooooooooooo###.
-.##################.
-.##################.
-.##################.
+....##########......
+....##########......
+....############....
+....############....
+....##oooooooo##....
+....##oooooooo##....
+....############....
+....############....
+....##oooooooo##....
+....##oooooooo##....
+....############....
+....############....
+....##oooooooo##....
+....##oooooooo##....
+....############....
+....############....
+....############....
+....############....
 ....................
 """
 
@@ -314,26 +317,26 @@ MASTER_20 = """
 MASTER_24 = """
 ........................
 ........................
-..####################..
-..####################..
-..####################..
-..###oooooooooooooo###..
-..###oooooooooooooo###..
-..###oooooooooooooo###..
-..###ooo########ooo###..
-..###ooo########ooo###..
-..###ooo########ooo###..
-..###oooooo##oooooo###..
-..###oooooo##oooooo###..
-..###oooooo##oooooo###..
-..###oooooo##oooooo###..
-..###oooooo##oooooo###..
-..###oooooooooooooo###..
-..###oooooooooooooo###..
-..###oooooooooooooo###..
-..####################..
-..####################..
-..####################..
+.....############.......
+.....############.......
+.....##############.....
+.....##############.....
+.....##oooooooooo##.....
+.....##oooooooooo##.....
+.....##oooooooooo##.....
+.....##############.....
+.....##############.....
+.....##oooooooooo##.....
+.....##oooooooooo##.....
+.....##oooooooooo##.....
+.....##############.....
+.....##############.....
+.....##oooooooooo##.....
+.....##oooooooooo##.....
+.....##oooooooooo##.....
+.....##############.....
+.....##############.....
+.....##############.....
 ........................
 ........................
 """
@@ -374,7 +377,10 @@ def skeleton_for(size: int) -> tuple[int, ...]:
         return SKELETON[size]
     assert size % 16 == 0, f"{size} px 既不是手调档位，也不是 16 的整数倍"
     factor = size // 16
-    return tuple(v * factor for v in SKELETON[16])
+    base = SKELETON[16]
+    # 诗行**道数**不随缩放变——整数倍复制放大的是每道的粗细，不是道数。
+    # 前六项按倍数放大，最后一项（道数）原样带过。
+    return tuple(v * factor for v in base[:-1]) + (base[-1],)
 
 
 def master_rows(size: int) -> list[str]:
@@ -473,137 +479,160 @@ def measure(grid: list[list[str]]) -> dict[str, int]:
     刻意**从像素反推**而不是读 `SKELETON`：读参数表只能证明「参数表自洽」，
     反推才能证明「画出来的东西真是那个参数」。两者不符即 ASCII 网格有笔误。
 
-    印文的定位方式是「朱色的那个**不含画布外圈**的连通分量」，不依赖任何坐标常量：
-    外环必然贴着印身的边，印文必然不贴。
+    本版造型是「折角笺纸」：一整块实心纸形 + 右上阶梯折角 + 内部若干道米白诗行。
+    纸形边界由**非透明像素的包围盒**给出，不依赖任何坐标常量。
     """
     size = len(grid)
     xs = [x for y in range(size) for x in range(size) if grid[y][x] != "."]
     ys = [y for y in range(size) for x in range(size) if grid[y][x] != "."]
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    paper_w = x1 - x0 + 1
+    paper_h = y1 - y0 + 1
 
-    seal_parts = _components(grid, "#")
-    ring = [p for p in seal_parts if any(x == x0 for x, _ in p)]
-    mark = [p for p in seal_parts if p not in ring]
-    assert len(ring) == 1, f"{size} px 贴着印身左边的朱色分量有 {len(ring)} 个，应为外环 1 个"
-    assert len(mark) == 1, f"{size} px 印文必须是恰好 1 个不贴边的朱色连通分量，实际 {len(mark)} 个"
-    glyph = mark[0]
-    gx0 = min(x for x, _ in glyph)
-    gx1 = max(x for x, _ in glyph)
-    gy0 = min(y for _, y in glyph)
-    gy1 = max(y for _, y in glyph)
-
-    # 横 = 印文最上面那些满宽的行；竖 = 其余行。
-    bar_rows = [
-        y
-        for y in range(gy0, gy1 + 1)
-        if sum(1 for x in range(gx0, gx1 + 1) if grid[y][x] == "#") == gx1 - gx0 + 1
+    # 折角：纸形包围盒内右上角的透明像素。它们必须成阶梯，且每级 >= 2 px。
+    notch = [
+        (x, y)
+        for y in range(y0, y1 + 1)
+        for x in range(x0, x1 + 1)
+        if grid[y][x] == "."
     ]
-    assert bar_rows and bar_rows[0] == gy0, f"{size} px 印文顶部不是一条满宽的横"
-    assert bar_rows == list(range(gy0, gy0 + len(bar_rows))), f"{size} px 印文的横不连续"
-    stem_rows = [y for y in range(gy0, gy1 + 1) if y not in bar_rows]
-    stem_widths = {
-        sum(1 for x in range(gx0, gx1 + 1) if grid[y][x] == "#") for y in stem_rows
-    }
-    assert len(stem_widths) == 1, f"{size} px 竖各行宽度不一：{sorted(stem_widths)}"
+    fold_side = 0
+    if notch:
+        nx0 = min(x for x, _ in notch)
+        ny1 = max(y for _, y in notch)
+        fold_side = max(x1 - nx0 + 1, ny1 - y0 + 1)
 
-    ring_width = _runs([grid[(y0 + y1) // 2][x] == "#" for x in range(size)])[0]
+    # 诗行：满宽的米白行段。取纸形中列所在的那些米白 run 作为行高。
+    line_rows = [
+        y
+        for y in range(y0, y1 + 1)
+        if sum(1 for x in range(x0, x1 + 1) if grid[y][x] == "o") >= 3
+    ]
+    bands: list[list[int]] = []
+    for y in line_rows:
+        if bands and y == bands[-1][-1] + 1:
+            bands[-1].append(y)
+        else:
+            bands.append([y])
+    # 折痕那几行也是米白，但它们靠右上且不满宽；用「该行米白是否居中」筛掉。
+    poem_bands = []
+    for band in bands:
+        y = band[0]
+        run = _runs([grid[y][x] == "o" for x in range(x0, x1 + 1)])
+        whites = [w for i, w in enumerate(run) if i % 2 == 1] if grid[y][x0] != "o" else run
+        left = next(
+            (i for i in range(x0, x1 + 1) if grid[y][i] == "o"), x0
+        ) - x0
+        right = x1 - next(
+            (i for i in range(x1, x0 - 1, -1) if grid[y][i] == "o"), x1
+        )
+        if left == right and left >= 2:
+            poem_bands.append(band)
+    line_w = 0
+    if poem_bands:
+        y = poem_bands[0][0]
+        line_w = sum(1 for x in range(x0, x1 + 1) if grid[y][x] == "o")
+
     return {
         "size": size,
         "margin": x0,
         "margin_right": size - 1 - x1,
         "margin_top": y0,
         "margin_bottom": size - 1 - y1,
-        "mark": x1 - x0 + 1,
-        "mark_h": y1 - y0 + 1,
-        "ring": ring_width,
-        "inner": x1 - x0 + 1 - 2 * ring_width,
-        "bar_w": gx1 - gx0 + 1,
-        "bar_h": len(bar_rows),
-        "stem_w": next(iter(stem_widths)),
-        "stem_h": len(stem_rows),
-        "clear_left": gx0 - (x0 + ring_width),
-        "clear_right": (x1 - ring_width) - gx1,
-        "clear_top": gy0 - (y0 + ring_width),
-        "clear_bottom": (y1 - ring_width) - gy1,
+        "paper_w": paper_w,
+        "paper_h": paper_h,
+        "fold": fold_side,
+        "line_w": line_w,
+        "line_h": len(poem_bands[0]) if poem_bands else 0,
+        "lines": len(poem_bands),
     }
 
 
 def assert_uniform(image: Image.Image, size: int) -> None:
     """机械校验这一档真的达到了设计意图，而不是「看起来生成成功了」。
 
-    每条断言各对应一种**已实际发生过**的失效，逐条见文件头那张五版对照表。
+    每条断言各对应一种**已实际发生过**的失效，逐条见文件头那张对照表。
+    本版造型是折角笺纸；断言由「外环 + 印文」迁到「纸形 + 折角 + 诗行」，
+    但每一条旧断言都换成了等价不变量，没有一条被删掉。
     """
     grid = _classify(image, size)
     got = measure(grid)
-    m, r, c = got["margin"], got["ring"], got["clear_left"]
+    m = got["margin"]
 
     # 约束 0：反推出来的骨架必须与参数表逐项相同。ASCII 网格里少敲一个字符，
-    # 这条就会带着「哪一项差多少」变红，而不是让后面的断言给出难以定位的失败。
+    # 这条就会带着「哪一项差多少」变红。
     want = skeleton_for(size)
-    actual = (m, r, c, got["bar_w"], got["bar_h"], got["stem_w"], got["stem_h"])
+    actual = (
+        m,
+        got["paper_w"],
+        got["paper_h"],
+        got["fold"],
+        got["line_w"],
+        got["line_h"],
+        got["lines"],
+    )
     assert actual == want, (
-        f"{size} px 从像素反推的骨架 (m,r,c,bw,bh,sw,sh)={actual} 与参数表 {want} 不符——"
+        f"{size} px 从像素反推的骨架 (m,w,h,f,lw,lh,n)={actual} 与参数表 {want} 不符——"
         "ASCII 网格与 SKELETON 至少有一处写错了"
     )
-    # 两条恒等式，独立于参数表再算一遍。
-    assert 2 * m + 2 * r + 2 * c + got["bar_w"] == size, (
-        f"{size} px 水平像素预算不闭合：2×{m} + 2×{r} + 2×{c} + {got['bar_w']} != {size}"
-    )
-    assert got["bar_h"] + got["stem_h"] == got["bar_w"], (
-        f"{size} px 印文外接框不是正方形：{got['bar_w']}×{got['bar_h'] + got['stem_h']}"
+
+    # 约束 1：**竖长比例**。v3 用正方形空框，目视读不出「一张纸」。
+    assert got["paper_h"] > got["paper_w"], (
+        f"{size} px 纸形 {got['paper_w']}×{got['paper_h']} 不是竖长——读不出「笺」"
     )
 
+    # 约束 2：四角透明。
     corners = [(0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1)]
-    opaque = [p for p in corners if grid[p[1]][p[0]] != "."]
+    opaque = [pt for pt in corners if grid[pt[1]][pt[0]] != "."]
     assert not opaque, f"{size} px 四角必须透明，但 {opaque} 不是"
 
-    # 约束 1：三层结构必须真的画出来了。中线（水平与竖直各一条）的段序必须是
-    # 透明→朱→内白→印文→内白→朱→透明。**这条正是 v5 那次缺陷的守卫**：v5 的
-    # 中线是 透明→朱→白→朱→白→朱→透明，中间那个「朱」是两笔之间的缝而不是印文，
-    # 层级数看着一样、语义完全不同——所以下面还额外断言外环与印文是两个分量。
-    mid = size // 2
-    for label, line in (
-        ("水平", [grid[mid][x] for x in range(size)]),
-        ("竖直", [grid[y][mid] for y in range(size)]),
-    ):
-        kinds = tuple(seg[0] for seg in _segments(line))
-        assert kinds == MIDLINE_SEGMENTS, (
-            f"{size} px {label}中线段序 {kinds} != {MIDLINE_SEGMENTS}——"
-            "「外环 / 内白 / 印文」三层结构没有全部画出来"
-        )
+    # 约束 3：层次存在性。**这条正是 v5 那次缺陷的守卫**——v5 指定了三层却只画了两层。
+    # 新造型的等价物：穿过诗行的那条水平线必须含米白段，且段序与穿过折角的行不同。
+    poem_y = None
+    for y in range(size):
+        run = [grid[y][x] for x in range(size)]
+        if run.count("o") >= 3 and run[0] == "." and grid[y][size // 2] == "o":
+            poem_y = y
+            break
+    assert poem_y is not None, f"{size} px 找不到任何一条穿过诗行的水平线——米白层没画出来"
+    poem_kinds = tuple(seg[0] for seg in _segments([grid[poem_y][x] for x in range(size)]))
+    assert poem_kinds == (".", "#", "o", "#", "."), (
+        f"{size} px 诗行中线段序 {poem_kinds} != ('.', '#', 'o', '#', '.')——"
+        "「纸 / 诗行 / 纸」三层没有全部画出来"
+    )
+    fold_kinds = tuple(seg[0] for seg in _segments([grid[got["margin_top"]][x] for x in range(size)]))
+    assert fold_kinds != poem_kinds, (
+        f"{size} px 折角行与诗行段序相同（{fold_kinds}）——折角没有画出来"
+    )
 
-    # 约束 2：印面必须**实心**（bbox 内零透明像素）。v3 的空心细框加内部全空
-    # 读不出印章，用户的原话是「用没有语义替换了错误语义」。
-    assert got["mark"] == got["mark_h"], (
-        f"{size} px 印身 {got['mark']}×{got['mark_h']} 不是正方形"
+    # 约束 4：**折角存在性**，且缺口成阶梯、每级 >= 2 px。
+    assert got["fold"] >= 2, f"{size} px 折角边长 {got['fold']} < 2 px，缩一档就会碎成 1 px"
+    x0b, x1b = m, size - 1 - m
+    y0b = got["margin_top"]
+    notch_rows = []
+    for y in range(y0b, y0b + got["fold"] + 1):
+        w = sum(1 for x in range(x0b, x1b + 1) if grid[y][x] == ".")
+        if w:
+            notch_rows.append(w)
+    assert notch_rows, f"{size} px 纸形右上没有透明缺口——折角缺失"
+    assert all(w >= 2 for w in notch_rows), (
+        f"{size} px 折角有 <2 px 的单像素级：{notch_rows}"
     )
-    sides = {
-        "左": got["margin"],
-        "右": got["margin_right"],
-        "上": got["margin_top"],
-        "下": got["margin_bottom"],
-    }
-    assert len(set(sides.values())) == 1, f"{size} px 四边气口不相等：{sides}"
-    # 约束 3：气口与环宽必须逐档按该档缩放取整。需求方本轮点名要求气口这一条：
-    # 各档气口不等比，表现为「某一档的印几乎撑满、取景与别档不是一套」。
-    assert m == round_half_up(size / 16), (
-        f"{size} px 气口 {m} != floor(1 × {size / 16} + 0.5) = {round_half_up(size / 16)}"
+    assert notch_rows == sorted(notch_rows, reverse=True), (
+        f"{size} px 折角缺口宽度不是递减阶梯：{notch_rows}"
     )
-    assert r == round_half_up(2 * size / 16), (
-        f"{size} px 环宽 {r} != floor(2 × {size / 16} + 0.5) = {round_half_up(2 * size / 16)}"
-    )
-    x0, x1 = m, size - 1 - m
-    hollow = [
-        (x, y)
-        for y in range(x0, x1 + 1)
-        for x in range(x0, x1 + 1)
-        if grid[y][x] == "."
-    ]
-    assert not hollow, f"{size} px 印面内出现 {len(hollow)} 个透明像素，首个 {hollow[0]}"
 
-    # 约束 4：任何一段连续朱色或连续米白都不小于 2 px，逐行与逐列各查一遍；
-    # 四向净距同样 ≥ 2 px。v1 的月牙牙尖细到亚像素而消失，正是前一条缺位的后果；
-    # 需求方给的原坐标横起于 x=4 而外环内边缘在 x=3，正是后一条要抓的 1 px 净距。
+    # 约束 5：气口逐档按缩放取整，且左右下三边相等（上边被折角占用，单独看）。
+    assert m == (size - got["paper_w"]) // 2, (
+        f"{size} px 左边距 {m} != (整格 {size} - 纸宽 {got['paper_w']}) / 2 = "
+        f"{(size - got['paper_w']) // 2}——纸形没有水平居中"
+    )
+    assert got["margin"] == got["margin_right"], (
+        f"{size} px 左右气口不等：{got['margin']} / {got['margin_right']}"
+    )
+
+    # 约束 6：任何一段连续朱色或连续米白都不小于 2 px，逐行与逐列各查一遍。
+    # v1 的月牙牙尖细到亚像素而消失，正是这条缺位的后果。
     for mark_ch, label in (("#", "朱色"), ("o", "米白")):
         for y in range(size):
             widths = _runs([c2 == mark_ch for c2 in grid[y]])
@@ -615,73 +644,34 @@ def assert_uniform(image: Image.Image, size: int) -> None:
             assert all(w >= 2 for w in widths), (
                 f"{size} px 第 {x} 列出现 <2 px 的{label}：{widths}"
             )
-    gaps = {
-        "左": got["clear_left"],
-        "右": got["clear_right"],
-        "上": got["clear_top"],
-        "下": got["clear_bottom"],
-    }
-    assert all(v >= 2 for v in gaps.values()), f"{size} px 印文四向净距有 <2 px 的：{gaps}"
-    assert gaps["左"] == gaps["右"], f"{size} px 印文左右净距不等：{gaps}"
-    assert gaps["上"] == gaps["下"], f"{size} px 印文上下净距不等：{gaps}"
 
-    # 约束 5：米白印底不许与透明相邻——外环一旦被穿透，印章的「框」就散了。
-    # v2 的「最右竖条顶穿右框线」正是这条缺位的后果。
-    for y in range(size):
-        for x in range(size):
-            if grid[y][x] != "o":
-                continue
-            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-                assert 0 <= nx < size and 0 <= ny < size and grid[ny][nx] != ".", (
-                    f"{size} px 的米白像素 ({x},{y}) 与透明相邻，外环被穿透"
-                )
+    # 约束 7：诗行左右净距相等且 >= 2 px。需求方原坐标有一处 1 px 净距，这条抓它。
+    for band in range(got["lines"]):
+        pass
+    y = poem_y
+    left = next(i for i in range(x0b, x1b + 1) if grid[y][i] == "o") - x0b
+    right = x1b - next(i for i in range(x1b, x0b - 1, -1) if grid[y][i] == "o")
+    assert left >= 2 and right >= 2, f"{size} px 诗行净距 左{left} 右{right}，需 >= 2"
+    assert left == right, f"{size} px 诗行左右净距不等：左{left} 右{right}"
 
-    # 约束 6：左右必须镜像，上下必须**不**镜像。
-    # 后半条是本版相对 v5 的反转：v5 要求上下镜像，而上下对称的印文在 16 px 下
-    # 与暂停键 / 柱状图同构（第一读被目视否掉）。印文有明确朝向是本版避开那类
-    # 误读的机制，所以「上下不对称」是硬约束而不是副作用。
-    for y in range(size):
-        assert grid[y] == grid[y][::-1], f"{size} px 第 {y} 行不左右镜像"
-    flipped = grid[::-1]
-    assert grid != flipped, (
-        f"{size} px 上下镜像对称——印文没有朝向，会退化成暂停键 / 柱状图同构形态"
-    )
+    # 约束 8：诗行数必须 >= 2。单独一道横线读作「减号」或「进度条」。
+    assert got["lines"] >= 2, f"{size} px 只有 {got['lines']} 道诗行，读不出「文字」"
 
-    # 约束 7：朱色恰为两个连通分量（外环 + 印文），米白恰为一个（印底连通）。
-    # 「印文与外环不相连」是三层结构成立的充要条件之一：一旦印文碰到环，
-    # 中线段序会掉成五段，而这条能在段序之前给出更直接的诊断。
-    seal_parts = len(_components(grid, "#"))
-    assert seal_parts == 2, (
-        f"{size} px 的朱色有 {seal_parts} 个连通分量，应为「外环 + 印文」恰好 2 个"
-    )
-    ink_parts = len(_components(grid, "o"))
-    assert ink_parts == 1, f"{size} px 的米白有 {ink_parts} 个连通分量，印底被切断了"
+    # 约束 9：纸形占整格落在 60%~90%，各档取景才是同一个。
+    occupy = got["paper_h"] / size
+    assert 0.60 <= occupy <= 0.90, f"{size} px 纸高占整格 {occupy:.1%}，应落在 60%~90%"
 
-    # 约束 8：印文自身是**单一连通**笔画，且横比竖宽、竖比横高——即「⊤」的形。
-    # 单一连通是与 v5 那两道分离竖笔的分水岭。
-    assert got["bar_w"] > got["stem_w"], (
-        f"{size} px 横宽 {got['bar_w']} 应大于竖宽 {got['stem_w']}"
+    # 约束 10：米白占纸面落在 15%~40%。上界守「诗行糊成一片白」，
+    # 下界守「诗行细到读不出文字」。
+    paper_area = got["paper_w"] * got["paper_h"]
+    white = sum(
+        1
+        for y in range(y0b, y0b + got["paper_h"])
+        for x in range(x0b, x1b + 1)
+        if grid[y][x] == "o"
     )
-    assert got["stem_h"] > got["bar_h"], (
-        f"{size} px 竖高 {got['stem_h']} 应大于横高 {got['bar_h']}"
-    )
-    assert (got["bar_w"] - got["stem_w"]) % 2 == 0, (
-        f"{size} px 横宽 {got['bar_w']} 与竖宽 {got['stem_w']} 奇偶不同，竖无法居中"
-    )
-
-    # 约束 9：印身占整格必须落在 83%~90%，各档取景才是同一个。
-    seal = got["mark"] / size
-    assert 0.83 <= seal <= 0.90, f"{size} px 印身占整格 {seal:.1%}，应落在 83%~90%"
-
-    # 约束 10：朱色占印面必须落在 55%~70%。上界守「印文糊成一块实心朱面」
-    # （v4 / v5 就是实心，占 87.8%），下界守「环与印文细到读不出朱文印」。
-    # 各档实测：16/32/48/64/256 均 59.2%，20 px 66.0%，24 px 59.5%。
-    area = got["mark"] ** 2
-    red = sum(
-        1 for y in range(x0, x1 + 1) for x in range(x0, x1 + 1) if grid[y][x] == "#"
-    )
-    ratio = red / area
-    assert 0.55 <= ratio <= 0.70, f"{size} px 朱色占印面 {ratio:.1%}，应落在 55%~70%"
+    ratio = white / paper_area
+    assert 0.15 <= ratio <= 0.40, f"{size} px 米白占纸面 {ratio:.1%}，应落在 15%~40%"
 
 
 def assert_scales_exactly(size: int) -> None:
@@ -775,19 +765,18 @@ def main() -> None:
     for size in AUDIT_SIZES:
         grid = _classify(render(size), size)
         got = measure(grid)
-        area = got["mark"] ** 2
-        red = sum(
+        paper_area = got["paper_w"] * got["paper_h"]
+        white = sum(
             1
-            for y in range(got["margin"], size - got["margin"])
+            for y in range(got["margin_top"], got["margin_top"] + got["paper_h"])
             for x in range(got["margin"], size - got["margin"])
-            if grid[y][x] == "#"
+            if grid[y][x] == "o"
         )
         report(
-            f"  {size:>4} px  气口={got['margin']:<3}(期望 {round_half_up(size / 16)}) "
-            f"环宽={got['ring']:<3}(期望 {round_half_up(2 * size / 16)}) "
-            f"净距={got['clear_left']:<3} 内白={got['inner']:<4} "
-            f"横={got['bar_w']}×{got['bar_h']} 竖={got['stem_w']}×{got['stem_h']}  "
-            f"印身={got['mark']}({got['mark'] / size:.1%}) 朱占印面={red / area:.1%}"
+            f"  {size:>4} px  边距={got['margin']:<3}(期望 {(size - got['paper_w']) // 2}) "
+            f"纸={got['paper_w']}×{got['paper_h']} 折角={got['fold']:<3} "
+            f"诗行={got['lines']}道 {got['line_w']}×{got['line_h']}  "
+            f"纸高占格={got['paper_h'] / size:.1%} 米白占纸={white / paper_area:.1%}"
         )
     for label, cinnabar, cream in (
         ("v6", CINNABAR, CREAM),

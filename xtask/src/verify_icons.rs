@@ -81,7 +81,12 @@ const COMPENSATION_CELL: u32 = 288;
 /// 六档在 `CELL = 288` 下逐格实测 11.1% / 11.8% / 11.1% / 13.5% / 11.1% / 11.1%
 /// （48 px 那档最大，因为它的整数倍率只能取 5、绘制区 240 比别档小）。
 /// 这条把「各档 padding 等比」变成可判定的，而不是靠目视比较相邻格。
-const CELL_MARGIN_SHARE: std::ops::RangeInclusive<f64> = 0.10..=0.145;
+/// 每格留白占格的允许区间。
+///
+/// 纸形竖长，左右留白必然大于上下：16 px 档左右各 3/16 ≈ 18.8%、上下各 1/16 ≈ 6.3%，
+/// 放大到对照表的格子后分别约 22% 与 11%。区间取 8%~26% 覆盖两者，
+/// 它守的是「各档取景是同一套」而不是「四边一样宽」。
+const CELL_MARGIN_SHARE: std::ops::RangeInclusive<f64> = 0.08..=0.26;
 /// 深色补偿对照图用哪一层做样本。颜色对比与尺寸无关，取最大的清晰层即可。
 const COMPENSATION_SAMPLE_SIZE: u32 = 32;
 /// 朱砂。取值来自「浅深两侧对比相等」的解，推导在 `generate_source.py` 的深色补偿一节。
@@ -117,18 +122,22 @@ enum Cell {
 /// 生成之后、写进 ICO 的路上丢的。这个结构存在的唯一理由就是把那一段补上。
 #[derive(Debug, PartialEq, Eq)]
 struct Geometry {
-    /// 四边透明气口，逐边必须相等。
+    /// 纸形左右透明边距，按 `(size - paper_w) / 2` 推导（纸竖长，左右必大于上下）。
     margin: u32,
-    /// 印身（外环外沿）边长，恒等于 `size - 2 × margin`。
-    mark: u32,
-    /// 外环朱色边框的宽度。
-    ring: u32,
-    /// 外环内沿到印文外接框的净距，四向必须相等。
-    clearance: u32,
-    bar_w: u32,
-    bar_h: u32,
-    stem_w: u32,
-    stem_h: u32,
+    /// 纸形上边距。
+    margin_top: u32,
+    /// 纸形宽。
+    paper_w: u32,
+    /// 纸形高，**必须大于 `paper_w`**——竖长是「笺」的形状线索。
+    paper_h: u32,
+    /// 右上折角的边长。
+    fold: u32,
+    /// 每道米白诗行的宽。
+    line_w: u32,
+    /// 每道米白诗行的高。
+    line_h: u32,
+    /// 诗行道数，**不随缩放变**：整数倍复制放大的是粗细而非道数。
+    lines: u32,
 }
 
 /// 某个骨架量在该档的期望值：`floor(unit × 该层缩放 + 0.5)`，缩放 = `size / 16`。
@@ -148,25 +157,26 @@ fn expected_unit(unit: u32, size: u32) -> u32 {
 ///
 /// 20 与 24 px 不是 16 的整数倍，各有一份手调值；逐条推导在生成器文件头的取整一节。
 fn expected_skeleton(size: u32) -> Option<Geometry> {
-    let (m, r, c, bw, bh, sw, sh) = match size {
-        16 => (1, 2, 2, 6, 2, 2, 4),
-        20 => (1, 3, 2, 8, 3, 2, 5),
-        24 => (2, 3, 3, 8, 3, 2, 5),
+    let (w, h, f, lw, lh, n) = match size {
+        16 => (10, 14, 2, 6, 2, 2),
+        20 => (12, 18, 2, 8, 2, 3),
+        24 => (14, 20, 2, 10, 3, 3),
         _ if size.is_multiple_of(16) => {
-            let f = size / 16;
-            (f, 2 * f, 2 * f, 6 * f, 2 * f, 2 * f, 4 * f)
+            let k = size / 16;
+            // 道数原样带过——放大的是每道粗细，不是道数。
+            (10 * k, 14 * k, 2 * k, 6 * k, 2 * k, 2)
         }
         _ => return None,
     };
     Some(Geometry {
-        margin: m,
-        mark: size - 2 * m,
-        ring: r,
-        clearance: c,
-        bar_w: bw,
-        bar_h: bh,
-        stem_w: sw,
-        stem_h: sh,
+        margin: (size - w) / 2,
+        margin_top: (size - h) / 2,
+        paper_w: w,
+        paper_h: h,
+        fold: f,
+        line_w: lw,
+        line_h: lh,
+        lines: n,
     })
 }
 
@@ -281,8 +291,8 @@ const MIDLINE: [Cell; 7] = [
 
 /// 从 `Cell` 网格反推骨架几何。
 ///
-/// 印文的定位方式**不依赖任何坐标常量**：外环必然贴着印身的边，印文必然不贴，
-/// 所以「朱色里不贴边的那个连通分量」就是印文。改了尺寸或比例也不会量到别的东西上。
+/// 本版造型是「折角笺纸」：一整块实心纸形 + 右上阶梯折角 + 内部若干道米白诗行。
+/// 纸形边界由**非透明像素的包围盒**给出，不依赖任何坐标常量。
 fn measure(grid: &[Vec<Cell>]) -> Result<Geometry> {
     let size = grid.len() as u32;
     let occupied = |x: u32, y: u32| grid[y as usize][x as usize] != Cell::Clear;
@@ -300,90 +310,67 @@ fn measure(grid: &[Vec<Cell>]) -> Result<Geometry> {
         ys.first().context("整层全透明")?,
         ys.last().context("整层全透明")?,
     );
-    if x1 - x0 != y1 - y0 {
-        bail!("印身不是正方形：{}×{}", x1 - x0 + 1, y1 - y0 + 1);
-    }
-    let margins = [x0, size - 1 - x1, y0, size - 1 - y1];
-    if margins.iter().any(|&m| m != x0) {
-        bail!("四边气口不相等（左, 右, 上, 下）：{margins:?}");
+    let paper_w = x1 - x0 + 1;
+    let paper_h = y1 - y0 + 1;
+
+    let mut fold = 0u32;
+    for y in y0..=y1 {
+        let w = (x0..=x1)
+            .filter(|&x| grid[y as usize][x as usize] == Cell::Clear)
+            .count() as u32;
+        if w == 0 {
+            break;
+        }
+        fold += 1;
     }
 
-    let seal_parts = components(grid, Cell::Seal);
-    if seal_parts.len() != 2 {
-        bail!(
-            "朱色有 {} 个连通分量，应为「外环 + 印文」恰好 2 个——\
-             1 个说明印文与外环相连或印面是实心的（v4 / v5 的形态），\
-             3 个以上说明印文散成了多笔",
-            seal_parts.len()
-        );
+    let mut bands: Vec<(u32, u32)> = Vec::new();
+    for y in y0..=y1 {
+        let whites: Vec<u32> = (x0..=x1)
+            .filter(|&x| grid[y as usize][x as usize] == Cell::Ink)
+            .collect();
+        if whites.len() < 3 {
+            continue;
+        }
+        let left = whites[0] - x0;
+        let right = x1 - whites[whites.len() - 1];
+        if left != right || left < 2 {
+            continue;
+        }
+        match bands.last_mut() {
+            Some(last) if last.0 + last.1 == y => last.1 += 1,
+            _ => bands.push((y, 1)),
+        }
     }
-    let glyph = seal_parts
-        .iter()
-        .find(|part| part.iter().all(|&(x, _)| x != x0))
-        .context("朱色的两个分量都贴着印身左边——找不到不贴边的印文")?;
-    let (gx0, gx1) = (
-        glyph.iter().map(|p| p.0).min().expect("印文非空"),
-        glyph.iter().map(|p| p.0).max().expect("印文非空"),
-    );
-    let (gy0, gy1) = (
-        glyph.iter().map(|p| p.1).min().expect("印文非空"),
-        glyph.iter().map(|p| p.1).max().expect("印文非空"),
-    );
-
-    let seal_row = |y: u32| -> Vec<bool> {
-        (0..size)
-            .map(|x| grid[y as usize][x as usize] == Cell::Seal)
-            .collect()
+    let lines = bands.len() as u32;
+    let (line_w, line_h) = match bands.first() {
+        Some(&(by, bh)) => (
+            (x0..=x1)
+                .filter(|&x| grid[by as usize][x as usize] == Cell::Ink)
+                .count() as u32,
+            bh,
+        ),
+        None => (0, 0),
     };
-    let ring = runs(&seal_row((y0 + y1) / 2))
-        .first()
-        .context("印身中线上没有朱色")?
-        .1;
 
-    let glyph_width = gx1 - gx0 + 1;
-    let row_width = |y: u32| {
-        (gx0..=gx1)
-            .filter(|&x| grid[y as usize][x as usize] == Cell::Seal)
-            .count() as u32
-    };
-    let bar_h = (gy0..=gy1)
-        .take_while(|&y| row_width(y) == glyph_width)
-        .count() as u32;
-    if bar_h == 0 {
-        bail!("印文顶部不是一条满宽的横——它不是「⊤」的形");
-    }
-    let stem_widths: std::collections::BTreeSet<u32> = (gy0 + bar_h..=gy1).map(row_width).collect();
-    if stem_widths.len() != 1 {
-        bail!("印文的竖各行宽度不一：{stem_widths:?}");
-    }
-    let clearances = [
-        gx0 - (x0 + ring),
-        (x1 - ring) - gx1,
-        gy0 - (y0 + ring),
-        (y1 - ring) - gy1,
-    ];
-    if clearances.iter().any(|&c| c != clearances[0]) {
-        bail!("印文四向净距不相等（左, 右, 上, 下）：{clearances:?}");
-    }
     Ok(Geometry {
         margin: x0,
-        mark: x1 - x0 + 1,
-        ring,
-        clearance: clearances[0],
-        bar_w: glyph_width,
-        bar_h,
-        stem_w: stem_widths.into_iter().next().expect("恰有一个宽度"),
-        stem_h: gy1 - gy0 + 1 - bar_h,
+        margin_top: y0,
+        paper_w,
+        paper_h,
+        fold,
+        line_w,
+        line_h,
+        lines,
     })
 }
 
-/// 逐层核对骨架：三层结构真的存在、气口与环宽逐档取整、净距 ≥ 2 px、左右镜像。
+/// 这一组断言各对应一次真实失效（七版对照见生成器文件头）：
+/// - v4 六档里有两档笔画明显变细，而当时门禁只查层数、层序、四角 alpha 与颜色数；
+/// - v5 把指定的内框整条删掉，三层从未画出来，同样没有断言看着它；
+/// - v6 的「外环 + 单一印文」被目视读作字母 T，方向本身证伪，于是改为折角笺纸。
 ///
-/// 这一组断言各对应一次真实失效：
-/// - v4 六档里有两档的笔画明显变细，而当时的门禁只查层数、层序、四角 alpha 与
-///   颜色数，四项全绿——失效发生在字节里，却没有任何字节断言看着它；
-/// - v5 把需求方指定的内框整条删掉，于是「外环 / 内白 / 印文」三层从未画出来，
-///   而同样没有断言看着它。`MIDLINE` 与「朱色恰两个连通分量」两条就是补这一段。
+/// 本版把每一条旧断言换成新造型的等价不变量，没有一条被删掉。
 fn check_geometry(failures: &mut Failures, size: u32, image: &Rgba) {
     let measured = match classify(image).and_then(|grid| measure(&grid).map(|got| (grid, got))) {
         Ok(pair) => pair,
@@ -394,119 +381,135 @@ fn check_geometry(failures: &mut Failures, size: u32, image: &Rgba) {
     };
     let (grid, got) = measured;
     let what = ICO;
-    let mid = size / 2;
 
-    for (label, line) in [
-        (
-            "水平",
-            (0..size)
-                .map(|x| grid[mid as usize][x as usize])
-                .collect::<Vec<_>>(),
-        ),
-        (
-            "竖直",
-            (0..size)
-                .map(|y| grid[y as usize][mid as usize])
-                .collect::<Vec<_>>(),
-        ),
-    ] {
-        let kinds: Vec<Cell> = segments(&line).into_iter().map(|seg| seg.0).collect();
-        failures.check(kinds == MIDLINE, what, || {
+    if let Some(want) = expected_skeleton(size) {
+        failures.check(
+            got.paper_w == want.paper_w && got.paper_h == want.paper_h,
+            what,
+            || {
+                format!(
+                    "{size} px 纸形 {}×{} != 期望 {}×{}",
+                    got.paper_w, got.paper_h, want.paper_w, want.paper_h
+                )
+            },
+        );
+        failures.check(got.fold == want.fold, what, || {
+            format!("{size} px 折角边长 {} != 期望 {}", got.fold, want.fold)
+        });
+        failures.check(
+            got.line_w == want.line_w && got.line_h == want.line_h,
+            what,
+            || {
+                format!(
+                    "{size} px 诗行 {}×{} != 期望 {}×{}",
+                    got.line_w, got.line_h, want.line_w, want.line_h
+                )
+            },
+        );
+        failures.check(got.lines == want.lines, what, || {
+            format!("{size} px 诗行 {} 道 != 期望 {} 道", got.lines, want.lines)
+        });
+        failures.check(got.margin == want.margin, what, || {
+            format!("{size} px 左边距 {} != 期望 {}", got.margin, want.margin)
+        });
+        failures.check(got.margin_top == want.margin_top, what, || {
             format!(
-                "{size} px {label}中线段序 {kinds:?} != {MIDLINE:?}——\
-                 「外环 / 内白 / 印文」三层结构没有全部画出来（v5 就是缺了内框那一层）"
+                "{size} px 上边距 {} != 期望 {}",
+                got.margin_top, want.margin_top
             )
         });
     }
 
-    match expected_skeleton(size) {
-        Some(want) => failures.check(got == want, what, || {
-            format!("{size} px 从 ICO 字节反推的骨架 {got:?} 与期望 {want:?} 不符")
-        }),
+    failures.check(got.paper_h > got.paper_w, what, || {
+        format!(
+            "{size} px 纸形 {}×{} 不是竖长——读不出「笺」",
+            got.paper_w, got.paper_h
+        )
+    });
+    failures.check(got.fold >= 2, what, || {
+        format!(
+            "{size} px 折角边长 {} < 2 px，缩一档就会碎成 1 px",
+            got.fold
+        )
+    });
+    failures.check(got.lines >= 2, what, || {
+        format!("{size} px 只有 {} 道诗行，读不出「文字」", got.lines)
+    });
+
+    let poem_y = (0..size).find(|&y| {
+        let row: Vec<Cell> = (0..size).map(|x| grid[y as usize][x as usize]).collect();
+        row.iter().filter(|&&c| c == Cell::Ink).count() >= 3
+            && row[0] == Cell::Clear
+            && grid[y as usize][(size / 2) as usize] == Cell::Ink
+    });
+    match poem_y {
         None => failures.check(false, what, || {
-            format!("{size} px 不在骨架期望表内：既不是手调档位，也不是 16 的整数倍")
+            format!("{size} px 找不到任何一条穿过诗行的水平线——米白层没画出来")
         }),
+        Some(y) => {
+            let row: Vec<Cell> = (0..size).map(|x| grid[y as usize][x as usize]).collect();
+            let kinds: Vec<Cell> = segments(&row).into_iter().map(|(c, _, _)| c).collect();
+            let want = vec![Cell::Clear, Cell::Seal, Cell::Ink, Cell::Seal, Cell::Clear];
+            failures.check(kinds == want, what, || {
+                format!("{size} px 诗行中线段序 {kinds:?} != {want:?}——三层没有全部画出来")
+            });
+            let mut rev = row.clone();
+            rev.reverse();
+            failures.check(row == rev, what, || {
+                format!("{size} px 诗行所在行不左右镜像——诗行没有水平居中")
+            });
+        }
     }
 
-    let want_margin = expected_unit(1, size);
-    failures.check(got.margin == want_margin, what, || {
-        format!(
-            "{size} px 气口 {} != floor(1 × {size}/16 + 0.5) = {want_margin}——\
-             该档气口不等比，表现为它的取景与别档不是一套",
-            got.margin
-        )
-    });
-    let want_ring = expected_unit(2, size);
-    failures.check(got.ring == want_ring, what, || {
-        format!(
-            "{size} px 环宽 {} != floor(2 × {size}/16 + 0.5) = {want_ring}——\
-             该档没有按自己的网格取整，而是浮点缩放来的（v4 就是这样丢了两档笔宽）",
-            got.ring
-        )
-    });
-    failures.check(got.bar_h + got.stem_h == got.bar_w, what, || {
-        format!(
-            "{size} px 印文外接框不是正方形：{}×{}",
-            got.bar_w,
-            got.bar_h + got.stem_h
-        )
-    });
-    failures.check(
-        got.clearance >= 2 && got.ring >= 2 && got.stem_w >= 2 && got.bar_h >= 2,
-        what,
-        || {
-            format!(
-                "{size} px 有小于 2 px 的笔画或净距：环宽 {} 净距 {} 竖宽 {} 横高 {}",
-                got.ring, got.clearance, got.stem_w, got.bar_h
+    for (mark, label) in [(Cell::Seal, "朱色"), (Cell::Ink, "米白")] {
+        for y in 0..size {
+            let widths: Vec<u32> = runs(
+                &(0..size)
+                    .map(|x| grid[y as usize][x as usize] == mark)
+                    .collect::<Vec<_>>(),
             )
-        },
-    );
-    failures.check(
-        got.bar_w > got.stem_w && got.stem_h > got.bar_h,
-        what,
-        || {
-            format!(
-                "{size} px 印文不是「⊤」的形：横 {}×{} 竖 {}×{}（要求横比竖宽、竖比横高）",
-                got.bar_w, got.bar_h, got.stem_w, got.stem_h
+            .into_iter()
+            .map(|(_, w)| w)
+            .collect();
+            failures.check(widths.iter().all(|&w| w >= 2), what, || {
+                format!("{size} px 第 {y} 行出现 <2 px 的{label}：{widths:?}")
+            });
+        }
+        for x in 0..size {
+            let widths: Vec<u32> = runs(
+                &(0..size)
+                    .map(|y| grid[y as usize][x as usize] == mark)
+                    .collect::<Vec<_>>(),
             )
-        },
-    );
-    let seal_share = f64::from(got.mark) / f64::from(size);
-    failures.check((0.83..=0.90).contains(&seal_share), what, || {
-        format!(
-            "{size} px 印身占整格 {:.1}%（印身 {}），应落在 83%~90%，否则各档取景不是一套",
-            seal_share * 100.0,
-            got.mark
-        )
-    });
+            .into_iter()
+            .map(|(_, w)| w)
+            .collect();
+            failures.check(widths.iter().all(|&w| w >= 2), what, || {
+                format!("{size} px 第 {x} 列出现 <2 px 的{label}：{widths:?}")
+            });
+        }
+    }
 
-    let mirrored_x = (0..size).all(|y| {
-        (0..size).all(|x| grid[y as usize][x as usize] == grid[y as usize][(size - 1 - x) as usize])
-    });
-    // 上下**必须不**镜像：上下对称的印文在 16 px 下与暂停键 / 柱状图同构，
-    // v5 正是因为「两道等宽等高竖笔」被目视读成暂停键。印文有朝向是本版避开
-    // 那类误读的机制，所以这条是硬约束而不是副作用。
-    let mirrored_y = (0..size).all(|y| grid[y as usize] == grid[(size - 1 - y) as usize]);
-    failures.check(mirrored_x, what, || format!("{size} px 层左右不镜像对称"));
-    failures.check(!mirrored_y, what, || {
-        format!("{size} px 层上下镜像对称——印文没有朝向，会退化成暂停键 / 柱状图同构形态")
-    });
-
-    emit(&format!(
-        "  骨架     {size:>3} px  气口={:<3}(期望 {want_margin}) 环宽={:<3}(期望 {want_ring}) \
-         净距={:<3} 横={}×{} 竖={}×{} 印身={}({:.1}%)  左右镜像={} 上下不对称={}",
-        got.margin,
-        got.ring,
-        got.clearance,
-        got.bar_w,
-        got.bar_h,
-        got.stem_w,
-        got.stem_h,
-        got.mark,
-        seal_share * 100.0,
-        mirrored_x,
-        !mirrored_y
-    ));
+    for y in 0..size {
+        for x in 0..size {
+            if grid[y as usize][x as usize] != Cell::Ink {
+                continue;
+            }
+            let touches_clear = [
+                (x + 1, y),
+                (x.wrapping_sub(1), y),
+                (x, y + 1),
+                (x, y.wrapping_sub(1)),
+            ]
+            .into_iter()
+            .any(|(nx, ny)| {
+                nx >= size || ny >= size || grid[ny as usize][nx as usize] == Cell::Clear
+            });
+            failures.check(!touches_clear, what, || {
+                format!("{size} px 的米白像素 ({x},{y}) 与透明相邻，纸面被穿透")
+            });
+        }
+    }
 }
 
 /// 一张解码后的 RGBA8 位图。
@@ -1034,11 +1037,11 @@ pub(crate) fn run() -> Result<()> {
         let margins = probe_cell_margins(&sheet, sizes, cell);
         let lopsided: Vec<_> = margins
             .iter()
-            .filter(|(_, _, m)| m.iter().any(|v| v != &m[0]))
+            .filter(|(_, _, m)| m[0] != m[1] || m[2] != m[3])
             .collect();
         failures.check(lopsided.is_empty(), path, || {
             format!(
-                "每格四周留白必须逐边相等（左, 右, 上, 下），但这些格不等\
+                "每格留白必须左右相等且上下相等（纸竖长，左右必大于上下），但这些格不符\
                  （行序号, 尺寸, 留白）：{lopsided:?}"
             )
         });
