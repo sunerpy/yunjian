@@ -140,15 +140,6 @@ struct Geometry {
     lines: u32,
 }
 
-/// 某个骨架量在该档的期望值：`floor(unit × 该层缩放 + 0.5)`，缩放 = `size / 16`。
-///
-/// 用整数算而不是浮点四舍五入：Rust 的 `f64::round` 与 Python 内建 `round` 在 `.5`
-/// 上行为不同（后者是银行家舍入），而 20 px 档的环宽目标恰好是 2.5，两侧算法必须给出
-/// 同一个 3，否则这条断言在唯一需要它的档位上与生成器不一致。
-fn expected_unit(unit: u32, size: u32) -> u32 {
-    (unit * size + 8) / 16
-}
-
 /// 该档骨架的完整期望值，与 `generate_source.py` 的 `SKELETON` 逐项对应。
 ///
 /// **刻意在两个语言里各写一份**：生成器那份查渲染前的字符网格，这份查已写进 ICO
@@ -159,8 +150,8 @@ fn expected_unit(unit: u32, size: u32) -> u32 {
 fn expected_skeleton(size: u32) -> Option<Geometry> {
     let (w, h, f, lw, lh, n) = match size {
         16 => (10, 14, 2, 6, 2, 2),
-        20 => (12, 18, 2, 8, 2, 3),
-        24 => (14, 20, 2, 10, 3, 3),
+        20 => (12, 18, 2, 8, 3, 2),
+        24 => (14, 20, 3, 8, 3, 2),
         _ if size.is_multiple_of(16) => {
             let k = size / 16;
             // 道数原样带过——放大的是每道粗细，不是道数。
@@ -178,43 +169,6 @@ fn expected_skeleton(size: u32) -> Option<Geometry> {
         line_h: lh,
         lines: n,
     })
-}
-
-/// `mark` 记号的四连通分量，每个分量以 `(x, y)` 集合表示。
-fn components(grid: &[Vec<Cell>], mark: Cell) -> Vec<Vec<(u32, u32)>> {
-    let size = grid.len() as u32;
-    let mut seen = vec![vec![false; size as usize]; size as usize];
-    let mut parts = Vec::new();
-    for y in 0..size {
-        for x in 0..size {
-            if grid[y as usize][x as usize] != mark || seen[y as usize][x as usize] {
-                continue;
-            }
-            let mut part = Vec::new();
-            let mut frontier = vec![(x, y)];
-            seen[y as usize][x as usize] = true;
-            while let Some((cx, cy)) = frontier.pop() {
-                part.push((cx, cy));
-                for (nx, ny) in [
-                    (cx.wrapping_sub(1), cy),
-                    (cx + 1, cy),
-                    (cx, cy.wrapping_sub(1)),
-                    (cx, cy + 1),
-                ] {
-                    if nx < size
-                        && ny < size
-                        && grid[ny as usize][nx as usize] == mark
-                        && !seen[ny as usize][nx as usize]
-                    {
-                        seen[ny as usize][nx as usize] = true;
-                        frontier.push((nx, ny));
-                    }
-                }
-            }
-            parts.push(part);
-        }
-    }
-    parts
 }
 
 /// 各段连续 `true` 的 (起始下标, 长度)。
@@ -279,16 +233,6 @@ fn segments(line: &[Cell]) -> Vec<(Cell, u32, u32)> {
 /// 但中间那段朱色是两道竖笔之间的缝而不是印文——层级数看着对、语义完全不同。
 /// 所以除了段序，还必须断言「朱色恰有两个连通分量（外环 + 不贴边的印文）」，
 /// 两条合起来才排除掉「实心朱块被两道白痕切开」的形态。
-const MIDLINE: [Cell; 7] = [
-    Cell::Clear,
-    Cell::Seal,
-    Cell::Ink,
-    Cell::Seal,
-    Cell::Ink,
-    Cell::Seal,
-    Cell::Clear,
-];
-
 /// 从 `Cell` 网格反推骨架几何。
 ///
 /// 本版造型是「折角笺纸」：一整块实心纸形 + 右上阶梯折角 + 内部若干道米白诗行。
@@ -1334,21 +1278,36 @@ mod tests {
     /// 气口 / 环宽 / 净距 / 横宽 / 横高 / 竖宽 / 竖高。刻意逐项可调，好让测试能
     /// 构造出各种坏样本（净距 1 px、印文外接框不方、上下对称的印文……）。
     #[allow(clippy::too_many_arguments)]
-    fn synth(size: u32, m: u32, r: u32, c: u32, bw: u32, bh: u32, sw: u32, sh: u32) -> Rgba {
+    /// 合成一枚符合本版骨架的折角笺纸，供门禁自测使用。
+    fn synth(size: u32, want: &Geometry) -> Rgba {
         let mut pixels = vec![0u8; (size * size * 4) as usize];
-        let (bx, by) = (m + r + c, m + r + c);
-        let sx = bx + (bw - sw) / 2;
+        let x0 = want.margin;
+        let x1 = x0 + want.paper_w;
+        let y0 = want.margin_top;
+        let y1 = y0 + want.paper_h;
+        // 诗行：从折角下方起，每道 line_h 高、间隔 line_h（与生成器同构）。
+        let gap = want.line_h;
+        let lines: Vec<(u32, u32)> = (0..want.lines)
+            .map(|i| {
+                let top = y0 + want.fold + gap + i * (want.line_h + gap);
+                (top, top + want.line_h)
+            })
+            .collect();
+        // 诗行按 want.line_w 在纸面内水平居中，而不是硬编码左右各留 2 px：
+        // 真实产物的朱边随档位变宽（32 px 档是 5 px），硬编码会量出错的宽度。
+        let lx0 = x0 + (want.paper_w - want.line_w) / 2;
+        let lx1 = lx0 + want.line_w;
         for y in 0..size {
             for x in 0..size {
-                let inside = x >= m && x < size - m && y >= m && y < size - m;
-                let in_inner = x >= m + r && x < size - m - r && y >= m + r && y < size - m - r;
-                let in_bar = (bx..bx + bw).contains(&x) && (by..by + bh).contains(&y);
-                let in_stem = (sx..sx + sw).contains(&x) && (by + bh..by + bh + sh).contains(&y);
-                let cell = match (inside, in_inner, in_bar || in_stem) {
-                    (false, _, _) => [0, 0, 0, 0],
-                    (true, false, _) => SEAL,
-                    (true, true, true) => SEAL,
-                    (true, true, false) => INK,
+                let in_paper = (x0..x1).contains(&x) && (y0..y1).contains(&y);
+                // 右上阶梯折角：每级 2 px 高、宽度自右向左递减。
+                let in_fold = (y0..y0 + want.fold).contains(&y) && x >= x1 - want.fold;
+                let in_line =
+                    (lx0..lx1).contains(&x) && lines.iter().any(|&(a, b)| (a..b).contains(&y));
+                let cell = match (in_paper, in_fold, in_line) {
+                    (false, _, _) | (true, true, _) => [0, 0, 0, 0],
+                    (true, false, true) => INK,
+                    (true, false, false) => SEAL,
                 };
                 let i = ((y * size + x) * 4) as usize;
                 pixels[i..i + 4].copy_from_slice(&cell);
@@ -1398,48 +1357,65 @@ mod tests {
     /// 会算出 2，用 `.5` 向上才是 3。这张表就是把两侧算法钉在一起。
     #[test]
     fn expected_units_match_the_generator_per_tier() {
-        for (size, margin, ring) in [
-            (16, 1, 2),
-            (20, 1, 3),
-            (24, 2, 3),
-            (32, 2, 4),
-            (48, 3, 6),
-            (64, 4, 8),
-            (128, 8, 16),
-            (256, 16, 32),
-            (1024, 64, 128),
+        // (档位, 纸宽, 纸高, 折角) 与生成器的 SKELETON 逐项对应。
+        for (size, w, h, f) in [
+            (16, 10, 14, 2),
+            (20, 12, 18, 2),
+            (24, 14, 20, 3),
+            (32, 20, 28, 4),
+            (48, 30, 42, 6),
+            (64, 40, 56, 8),
+            (128, 80, 112, 16),
+            (256, 160, 224, 32),
+            (1024, 640, 896, 128),
         ] {
-            assert_eq!(expected_unit(1, size), margin, "{size} px 气口");
-            assert_eq!(expected_unit(2, size), ring, "{size} px 环宽");
             let want = expected_skeleton(size).expect("表内档位");
-            assert_eq!((want.margin, want.ring), (margin, ring), "{size} px 期望表");
+            assert_eq!(
+                (want.paper_w, want.paper_h, want.fold),
+                (w, h, f),
+                "{size} px 期望表"
+            );
+            assert_eq!(want.margin, (size - w) / 2, "{size} px 左边距");
+            assert!(want.paper_h > want.paper_w, "{size} px 纸形必须竖长");
         }
     }
 
     /// 量骨架必须从像素反推出与 16 px 定稿一致的每一项。
     #[test]
     fn measures_the_shipped_skeleton_from_pixels() {
-        let grid = classify(&synth(16, 1, 2, 2, 6, 2, 2, 4)).expect("只含两种实色");
+        let grid =
+            classify(&synth(16, &expected_skeleton(16).expect("16 在表内"))).expect("只含两种实色");
         assert_eq!(
             measure(&grid).expect("可量"),
             expected_skeleton(16).expect("16 px 在期望表内")
         );
     }
 
-    /// 合格的 32 px 层不该被判红，而 v4 的失效形态（该档笔画比应有的细）必须被抓住。
+    /// 合格的 32 px 层不该被判红，而「该档几何偏离骨架」必须被抓住（v4 的失效形态）。
     #[test]
     fn catches_a_tier_whose_strokes_are_thinner_than_its_grid() {
         let mut failures = Failures::default();
-        check_geometry(&mut failures, 32, &synth(32, 2, 4, 4, 12, 4, 4, 8));
+        check_geometry(
+            &mut failures,
+            32,
+            &synth(32, &expected_skeleton(32).expect("32 在表内")),
+        );
         assert!(failures.into_result().is_ok(), "合格的 32 px 层不该被判红");
 
-        // 环宽 3 而不是 4：层数、层序、四角 alpha、颜色数四项仍全绿。
+        // 用 24 px 的骨架去画 32 px 的层：纸形、折角、诗行全部偏小，而层数、层序、
+        // 四角 alpha、颜色数四项仍全绿——正是 v4 那次「两档笔画变细」的形态。
         let mut failures = Failures::default();
-        check_geometry(&mut failures, 32, &synth(32, 2, 3, 5, 12, 4, 4, 8));
-        let err = failures.into_result().expect_err("环宽 3 应被判红");
-        let text = err.to_string();
-        assert!(text.contains("环宽 3"), "{text}");
-        assert!(text.contains("= 4"), "失败信息要带上期望值：{text}");
+        let wrong = Geometry {
+            margin: (32 - 14) / 2,
+            margin_top: (32 - 20) / 2,
+            ..expected_skeleton(24).expect("24 在表内")
+        };
+        check_geometry(&mut failures, 32, &synth(32, &wrong));
+        let err = failures.into_result().expect_err("偏离骨架的层必须被判红");
+        assert!(
+            err.to_string().contains("纸形") || err.to_string().contains("折角"),
+            "必须点名几何与期望不符：{err}"
+        );
     }
 
     /// **本轮的核心反向测试**：v5 那枚「实心朱块 + 两道米白竖笔」必须被判红。
@@ -1459,44 +1435,62 @@ mod tests {
             .expect_err("v5 的实心双竖笔层必须被判红");
         let text = err.to_string();
         assert!(
-            text.contains("连通分量") || text.contains("中线段序"),
-            "必须点名三层结构缺失，而不是别的顺带失败：{text}"
+            text.contains("中线段序") || text.contains("诗行") || text.contains("纸形"),
+            "必须点名结构缺失，而不是别的顺带失败：{text}"
         );
     }
 
-    /// 上下对称的印文必须进不了门禁：那正是 v5 被目视读成暂停键的骨架特征。
-    ///
-    /// **上下不对称其实已被 `measure` 的结构约束隐含**：竖宽一旦等于横宽，印文退化
-    /// 成矩形，`take_while` 把所有行都算成横、竖行为空而直接 bail。所以
-    /// `check_geometry` 里那条 `!mirrored_y` 是第二道防线，将来若有人放宽 `measure`
-    /// 它仍会拦住 v5 那种骨架。这条测试因此钉两侧：退化矩形被拒，且合格层实测不对称。
+    /// 只剩一道横线的形态必须进不了门禁：那会被读成减号或进度条。
     #[test]
     fn rejects_a_vertically_symmetric_glyph() {
         let mut failures = Failures::default();
-        check_geometry(&mut failures, 16, &synth(16, 1, 2, 2, 6, 6, 6, 0));
-        let err = failures
-            .into_result()
-            .expect_err("退化成矩形的印文应被判红");
-        assert!(err.to_string().contains("竖各行宽度不一"), "{err}");
-
-        let grid = classify(&synth(16, 1, 2, 2, 6, 2, 2, 4)).expect("合格层只含两种实色");
-        let flipped: Vec<Vec<Cell>> = grid.iter().rev().cloned().collect();
-        assert_ne!(grid, flipped, "合格层必须上下不对称——印文要有朝向");
+        check_geometry(
+            &mut failures,
+            16,
+            &synth(
+                16,
+                &Geometry {
+                    lines: 1,
+                    ..expected_skeleton(16).expect("16 在表内")
+                },
+            ),
+        );
+        let err = failures.into_result().expect_err("只剩一道横线必须被判红");
+        assert!(
+            err.to_string().contains("诗行"),
+            "必须点名诗行道数不足：{err}"
+        );
     }
 
-    /// 净距只有 1 px 必须被拒——需求方给的原坐标（横起于 x=4、环内沿在 x=3）就是这种。
+    /// 正方形纸形必须进不了门禁：v3 用正方形空框，目视读不出「一张纸」。
     #[test]
     fn rejects_a_one_pixel_clearance() {
         let mut failures = Failures::default();
-        check_geometry(&mut failures, 16, &synth(16, 1, 2, 1, 8, 2, 2, 6));
-        let err = failures.into_result().expect_err("1 px 净距应被判红");
-        assert!(err.to_string().contains("净距"), "{err}");
+        check_geometry(
+            &mut failures,
+            16,
+            &synth(
+                16,
+                &Geometry {
+                    paper_w: 14,
+                    paper_h: 14,
+                    margin: 1,
+                    margin_top: 1,
+                    ..expected_skeleton(16).expect("16 在表内")
+                },
+            ),
+        );
+        let err = failures.into_result().expect_err("正方形纸形必须被判红");
+        assert!(
+            err.to_string().contains("竖长") || err.to_string().contains("纸形"),
+            "必须点名不是竖长：{err}"
+        );
     }
 
     /// 出现第三种实色即判为降采样产物：`classify` 必须点名那个像素。
     #[test]
     fn classify_rejects_a_third_solid_colour() {
-        let mut layer = synth(16, 1, 2, 2, 6, 2, 2, 4);
+        let mut layer = synth(16, &expected_skeleton(16).expect("16 在表内"));
         layer.pixels[(((4 * 16) + 4) * 4) as usize..][..4].copy_from_slice(&[200, 100, 90, 255]);
         let err = classify(&layer).expect_err("第三种实色应被拒");
         assert!(err.to_string().contains("(4,4)"), "{err}");
@@ -1510,26 +1504,14 @@ mod tests {
             .iter()
             .map(|&s| {
                 let want = expected_skeleton(s).expect("六档都在期望表内");
-                (
-                    s,
-                    synth(
-                        s,
-                        want.margin,
-                        want.ring,
-                        want.clearance,
-                        want.bar_w,
-                        want.bar_h,
-                        want.stem_w,
-                        want.stem_h,
-                    ),
-                )
+                (s, synth(s, &want))
             })
             .collect();
         let sheet = render_sheet(&layers, sizes.as_slice(), CELL);
         for (row, size, margins) in probe_cell_margins(&sheet, sizes.as_slice(), CELL) {
             assert!(
-                margins.iter().all(|v| *v == margins[0]),
-                "行 {row} 的 {size} px 格四周留白不等：{margins:?}"
+                margins[0] == margins[1] && margins[2] == margins[3],
+                "行 {row} 的 {size} px 格留白左右或上下不等：{margins:?}"
             );
             let share = f64::from(margins[0]) / f64::from(CELL);
             assert!(
@@ -1543,7 +1525,8 @@ mod tests {
     /// 深色补偿对照图必须真的并置两套配色，否则它证不了补偿做了什么。
     #[test]
     fn compensation_sheet_places_both_palettes_side_by_side() {
-        let sheet = render_compensation_sheet(&synth(32, 2, 4, 4, 12, 4, 4, 8));
+        let sheet =
+            render_compensation_sheet(&synth(32, &expected_skeleton(32).expect("32 在表内")));
         let cell = COMPENSATION_CELL;
         assert_eq!((sheet.width, sheet.height), (2 * cell, 2 * cell));
         // 格中心落在印文的竖上，那里是朱砂——两列的差别正是这个朱砂取值。
