@@ -147,7 +147,7 @@ fn assemble_tags(
 
 /// 装载并解析历代集评。
 ///
-/// **结构与出处的缺陷是致命的，诗篇解析不上是不致命的。** 前者（缺出处、非前现代著作、
+/// **结构与出处的缺陷是致命的，诗篇定不到一首是不致命的。** 前者（缺出处、非前现代著作、
 /// 现代体裁标记……）与本次构建选了哪个规模无关，是我们自己维护的种子集出了问题；后者
 /// 在抽样规模上必然大量出现——一条评宋词的集评在只含唐诗的规模里当然找不到诗。把两者
 /// 混为一谈会导致抽样构建全部失败，或者更糟：为了让抽样跑通而把出处缺陷也放过。
@@ -157,10 +157,29 @@ fn assemble_commentaries(records: &[CanonicalRecord]) -> Result<Vec<commentary::
         .with_context(|| format!("读取集评种子集 {}", dir.display()))?;
     let outcome = commentary::ingest(&seeds, records).context("集评入库失败")?;
 
-    let (out_of_scope, defects): (Vec<_>, Vec<_>) = outcome
+    let (unresolved, defects): (Vec<_>, Vec<_>) = outcome
         .rejections
         .iter()
-        .partition(|rejection| rejection.reason == commentary::RejectionReason::PoemUnresolved);
+        .partition(|rejection| is_poem_resolution_failure(rejection.reason));
+    let ambiguous = unresolved
+        .iter()
+        .filter(|rejection| rejection.reason == commentary::RejectionReason::PoemAmbiguous)
+        .collect::<Vec<_>>();
+    if !ambiguous.is_empty() {
+        // 歧义条目走 `emit`（终端报告）而**不是** tracing：`xtask` 没装 subscriber，
+        // 同文件里那几条 `tracing::info!` 实际上一行都不会出现。而这几条必须被看见——
+        // 它们与「评宋词的集评在唐诗规模里找不到诗」不同：那一类随规模自愈，这一类是
+        // 真实的上游重出，随包规模上就存在，每一条都意味着一条已转录的集评没有随包。
+        crate::verify_sources::emit(&format!(
+            "集评有 {} 条定不到唯一诗篇，本次不随包：{}",
+            ambiguous.len(),
+            ambiguous
+                .iter()
+                .map(|rejection| rejection.entry_id.as_str())
+                .collect::<Vec<_>>()
+                .join("、")
+        ));
+    }
     if !defects.is_empty() {
         let detail = defects
             .iter()
@@ -178,11 +197,31 @@ fn assemble_commentaries(records: &[CanonicalRecord]) -> Result<Vec<commentary::
     }
     tracing::info!(
         accepted = outcome.records.len(),
-        out_of_scope = out_of_scope.len(),
+        out_of_scope = unresolved.len() - ambiguous.len(),
+        ambiguous = ambiguous.len(),
         seeds = seeds.len(),
         "已关联历代集评"
     );
     Ok(outcome.records)
+}
+
+/// 这条拒绝是「定不到那首诗」而不是「种子集自己坏了」吗？
+///
+/// 两种取值都是解析结果而非种子缺陷，所以都不该中止构建：
+///
+/// - `PoemUnresolved`：本次规模里没有那首诗。抽样规模上必然大量出现。
+/// - `PoemAmbiguous`：同作者同题同起句匹配到多首而正文互不相同，
+///   [`resolve`](commentary::PoemIndex::resolve) 按设计拒绝猜。随包唐宋规模上实测 6 条，
+///   全部是**同一首词的两个上游版本差一个字**（如「步转迥廊」与「步转回廊」），
+///   `work_group` 与 `edition_group` 都由正文算出，因此都无法把它们并成一组。
+///
+/// 把后者算成致命缺陷的直接后果是：随包工件永远建不出来，`commentary` 表永远是 0 行——
+/// 这正是 08-11 那份工件三张表全空的成因之一。
+fn is_poem_resolution_failure(reason: commentary::RejectionReason) -> bool {
+    matches!(
+        reason,
+        commentary::RejectionReason::PoemUnresolved | commentary::RejectionReason::PoemAmbiguous
+    )
 }
 
 /// 随包的韵书行：平水韵与词林正韵。
