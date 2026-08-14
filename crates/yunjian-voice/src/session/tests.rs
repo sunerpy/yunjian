@@ -12,7 +12,8 @@ use crate::models::ModelError;
 use crate::permission::{DegradeReason, MicPermission, PermissionState};
 use crate::platform::Platform;
 use crate::recognize::{Prompt, PromptReason, RecognitionPlan};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 use yunjian_core::VoiceSessionConfig;
 use yunjian_core::operation::{Event, OperationHandle, cancel, next_event};
 use yunjian_recite::{FsrsGrade, RelativeRhythm, Scheduler};
@@ -333,6 +334,75 @@ impl Listener for ScriptedListener {
         Ok(self.takes.get(current).cloned().unwrap_or_else(even_take))
     }
 }
+
+/// 停在第一句的示范器：进入后通知测试，然后等测试放行。
+struct GatedDemonstrator {
+    gate: Arc<SessionGate>,
+}
+
+impl Demonstrator for GatedDemonstrator {
+    fn demonstrate(&mut self, _line: &str) -> Result<Demonstration, VoiceError> {
+        self.gate.enter_and_wait();
+        Ok(Demonstration {
+            marks: Vec::new(),
+            duration_ms: 1_600,
+        })
+    }
+}
+
+/// 生产者与测试之间的双向闸门。两侧等待都有上限：脚本化用例宁可失败，也不要挂到工作流超时。
+#[derive(Debug, Default)]
+struct SessionGate {
+    state: Mutex<GateState>,
+    changed: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct GateState {
+    entered: bool,
+    released: bool,
+}
+
+impl SessionGate {
+    fn enter_and_wait(&self) {
+        let mut state = self.state.lock().expect("闸门可加锁");
+        state.entered = true;
+        self.changed.notify_all();
+        let started = Instant::now();
+        while !state.released {
+            assert!(started.elapsed() < GATE_BUDGET, "闸门没有在预算内放行");
+            let (next, _) = self
+                .changed
+                .wait_timeout(state, GATE_POLL)
+                .expect("闸门可等待");
+            state = next;
+        }
+    }
+
+    fn wait_until_entered(&self) {
+        let mut state = self.state.lock().expect("闸门可加锁");
+        let started = Instant::now();
+        while !state.entered {
+            assert!(
+                started.elapsed() < GATE_BUDGET,
+                "生产者没有在预算内进入闸门"
+            );
+            let (next, _) = self
+                .changed
+                .wait_timeout(state, GATE_POLL)
+                .expect("闸门可等待");
+            state = next;
+        }
+    }
+
+    fn release(&self) {
+        self.state.lock().expect("闸门可加锁").released = true;
+        self.changed.notify_all();
+    }
+}
+
+const GATE_BUDGET: Duration = Duration::from_secs(5);
+const GATE_POLL: Duration = Duration::from_millis(200);
 
 fn even_take() -> LineTake {
     LineTake {
@@ -683,13 +753,21 @@ fn a_synthesis_failure_before_the_first_line_degrades_with_zero_progress() {
 
 #[test]
 fn cancelling_stops_the_session_without_a_report() {
-    let (demonstrator, listener, _) = rig(None, None, None);
+    // 脚本化 rig 是零耗时的：不设闸门时整场会话可能在 `cancel` 落地之前就跑完，于是这条
+    // 断言退化成与调度器赛跑，CI 上实测在 Linux 随机变红过。闸门把「取消时会话确实还在
+    // 跑」变成事实而不是概率，断言的性质一点没变——反而更强。
+    let gate = Arc::new(SessionGate::default());
+    let (_, listener, _) = rig(None, None, None);
     let handle = start_session(
-        demonstrator,
+        GatedDemonstrator {
+            gate: Arc::clone(&gate),
+        },
         listener,
         SessionPlan::guided(script(), config()),
     );
+    gate.wait_until_entered();
     cancel(&handle);
+    gate.release();
     let mut saw_report = false;
     while let Some(event) = next_event(&handle, 5_000) {
         match event {

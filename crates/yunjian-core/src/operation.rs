@@ -334,9 +334,37 @@ pub mod testing {
     use super::{
         Event, OperationHandle, OperationReporter, cancel, close, next_event, start_operation,
     };
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Condvar, Mutex};
     use std::time::{Duration, Instant};
+
+    /// 判定「事件流挂死」而不是「这台机器慢」的上限。
+    ///
+    /// **它不是延迟承诺。** 协议本身允许 `next_event` 在超时时返回 `None` 且不消费任何
+    /// 事件（`assert_timeout_does_not_consume` 就在断言这件事），所以「一次等待没拿到
+    /// 事件」只说明这一轮没等到，不说明流死了。判定挂起只能靠反复等待到一个足够宽的上限。
+    ///
+    /// 取值有上下两条边界，不是随手乘出来的：
+    /// - **下界**：必须严格大于本模块里所有延迟承诺（当前最大是 `CANCEL_PROMPTNESS`）。
+    ///   否则一台被抢占的机器会先在这里被误判成「挂起」，而不是在那条延迟断言上失败并
+    ///   给出对应诊断。下面的 `const` 断言把这条关系钉死，调小它会编译失败。
+    /// - **上界**：真挂死时必须在秒级失败而不是拖到工作流超时。八条子断言各自最坏等一轮，
+    ///   总计仍在一分钟内，而正常一轮是毫秒级。
+    const LIVENESS_BUDGET: Duration = Duration::from_secs(5);
+
+    /// 取消到终态的上限。**这一条是真的延迟承诺**：脚本化生产者以 10 ms 粒度轮询停止信号，
+    /// 因此这里留了 50 倍余量；放宽它等于放宽协议本身，不能拿它去兜调度噪声。
+    const CANCEL_PROMPTNESS_MS: u64 = 500;
+    const CANCEL_PROMPTNESS: Duration = Duration::from_millis(CANCEL_PROMPTNESS_MS);
+
+    const _: () = assert!(
+        LIVENESS_BUDGET.as_millis() > CANCEL_PROMPTNESS.as_millis(),
+        "挂起判定必须比延迟承诺宽，否则慢机器会在挂起断言上失败、掩盖真正的延迟回归"
+    );
+
+    /// 等待挂起预算时的单轮长度。切片重试而不是一次长等：这样「超时不消费」的协议语义
+    /// 在等待期间被反复走到，而不是只在一次调用里走一遍。
+    const LIVENESS_POLL_MS: u64 = 200;
 
     /// 核心测试与下游传输适配器共同实现的最小接口。
     pub trait ConformanceAdapter {
@@ -437,9 +465,7 @@ pub mod testing {
             producer_probe.store(true, Ordering::Release);
             Ok(())
         });
-        wait_until(Duration::from_millis(200), || {
-            produced.load(Ordering::Acquire)
-        });
+        wait_until(|| produced.load(Ordering::Acquire));
         let events = collect_through_terminal(adapter, &handle);
         assert_eq!(events, [Event::Progress(999), Event::Done]);
     }
@@ -456,26 +482,38 @@ pub mod testing {
             }
             Ok(())
         });
-        wait_until(Duration::from_millis(200), || {
-            produced.load(Ordering::Acquire) >= 256
-        });
+        wait_until(|| produced.load(Ordering::Acquire) >= 256);
         assert_eq!(produced.load(Ordering::Acquire), 256);
-        assert_eq!(adapter.next_event(&handle, 100), Some(Event::Item(0)));
-        wait_until(Duration::from_millis(200), || {
-            produced.load(Ordering::Acquire) == 257
-        });
+        assert_eq!(
+            await_event(adapter, &handle, "队列已满，第一条必须是最早的 Item"),
+            Event::Item(0)
+        );
+        wait_until(|| produced.load(Ordering::Acquire) == 257);
         adapter.close(&handle);
     }
 
     fn assert_timeout_does_not_consume<A: ConformanceAdapter>(adapter: &A) {
-        let handle = adapter.start(|reporter| {
-            std::thread::sleep(Duration::from_millis(40));
+        // 用闸门而不是 `sleep`：靠「生产者睡 40 ms」来保证首次 1 ms 等待落在事件之前，
+        // 是在和调度器赛跑——测试线程只要在 start 之后被抢占 40 ms，事件就已经在队里了，
+        // 那次 1 ms 等待会拿到 Item(7) 而不是 None。闸门让「此刻还没有事件」成为事实，
+        // 于是「超时不消费」由后面那次等待仍能拿到完整的 Item(7) 来证明。
+        let gate = Arc::new(Gate::default());
+        let producer_gate = Arc::clone(&gate);
+        let handle = adapter.start(move |reporter| {
+            producer_gate.wait_for_release();
             assert!(reporter.item(7));
             Ok(())
         });
         assert_eq!(adapter.next_event(&handle, 1), None);
-        assert_eq!(adapter.next_event(&handle, 200), Some(Event::Item(7)));
-        assert_eq!(adapter.next_event(&handle, 200), Some(Event::Done));
+        gate.release();
+        assert_eq!(
+            await_event(adapter, &handle, "放行后必须拿到未被超时吞掉的事件"),
+            Event::Item(7)
+        );
+        assert_eq!(
+            await_event(adapter, &handle, "生产者返回后必须给出终态"),
+            Event::Done
+        );
     }
 
     fn assert_cancel_is_idempotent_and_prompt<A: ConformanceAdapter>(adapter: &A) {
@@ -486,14 +524,22 @@ pub mod testing {
         let started = Instant::now();
         adapter.cancel(&handle);
         adapter.cancel(&handle);
-        assert_eq!(adapter.next_event(&handle, 500), Some(Event::Cancelled));
-        assert!(started.elapsed() <= Duration::from_millis(500));
+        // 这里刻意仍是延迟断言，不走挂起预算：脚本化生产者自己永远不会结束，所以拿到
+        // Cancelled 就已经证明取消被响应，而 `CANCEL_PROMPTNESS` 进一步要求它是及时的。
+        assert_eq!(
+            adapter.next_event(&handle, CANCEL_PROMPTNESS_MS),
+            Some(Event::Cancelled)
+        );
+        assert!(started.elapsed() <= CANCEL_PROMPTNESS);
         assert_eq!(adapter.next_event(&handle, 1), None);
     }
 
     fn assert_close_after_terminal_is_safe<A: ConformanceAdapter>(adapter: &A) {
         let handle = adapter.start(|_| Ok(()));
-        assert_eq!(adapter.next_event(&handle, 200), Some(Event::Done));
+        assert_eq!(
+            await_event(adapter, &handle, "无事可做的生产者必须直接给出终态"),
+            Event::Done
+        );
         adapter.close(&handle);
         adapter.close(&handle);
         assert_eq!(adapter.next_event(&handle, 1), None);
@@ -511,17 +557,13 @@ pub mod testing {
             Ok(())
         });
         drop(handle);
-        wait_until(Duration::from_millis(500), || {
-            stopped.load(Ordering::Acquire)
-        });
+        wait_until(|| stopped.load(Ordering::Acquire));
     }
 
     fn assert_producer_death_fails<A: ConformanceAdapter>(adapter: &A) {
         let handle = adapter
             .start(|_| -> std::result::Result<(), String> { panic!("scripted producer death") });
-        let event = adapter
-            .next_event(&handle, 500)
-            .expect("生产者死亡必须生成终态而不是挂起");
+        let event = await_event(adapter, &handle, "生产者死亡必须生成终态而不是挂起");
         match event {
             Event::Failed { message } => assert!(message.contains("scripted producer death")),
             other => panic!("生产者死亡应得到 Failed，实际 {other:?}"),
@@ -535,9 +577,7 @@ pub mod testing {
     ) -> Vec<Event<u16, u16>> {
         let mut events = Vec::new();
         loop {
-            let event = adapter
-                .next_event(handle, 500)
-                .expect("事件流必须在 500 ms 内前进到终态");
+            let event = await_event(adapter, handle, "事件流必须前进到终态");
             let terminal = event.is_terminal();
             events.push(event);
             if terminal {
@@ -546,11 +586,65 @@ pub mod testing {
         }
     }
 
-    fn wait_until(timeout: Duration, condition: impl Fn() -> bool) {
-        let deadline = Instant::now() + timeout;
+    /// 反复等待直到拿到事件；只有整段 `LIVENESS_BUDGET` 都没等到才判为挂起。
+    fn await_event<A: ConformanceAdapter>(
+        adapter: &A,
+        handle: &A::Handle,
+        expectation: &str,
+    ) -> Event<u16, u16> {
+        let started = Instant::now();
+        loop {
+            if let Some(event) = adapter.next_event(handle, LIVENESS_POLL_MS) {
+                return event;
+            }
+            assert!(
+                started.elapsed() < LIVENESS_BUDGET,
+                "{expectation}：{LIVENESS_BUDGET:?} 内一个事件都没有，判为挂起"
+            );
+        }
+    }
+
+    /// 等待生产者到达某个状态。**这是同步栅栏，不是延迟断言**：等多久不影响任何被断言的
+    /// 性质（栅栏之后那句 `assert_eq!` 才是断言），所以统一用挂起预算，而不是各写一个
+    /// 几百毫秒的数——那些数在被抢占的 CI runner 上只会变成随机失败。
+    fn wait_until(condition: impl Fn() -> bool) {
+        let started = Instant::now();
         while !condition() {
-            assert!(Instant::now() < deadline, "等待协议状态变化超时");
+            assert!(
+                started.elapsed() < LIVENESS_BUDGET,
+                "等待协议状态变化超过 {LIVENESS_BUDGET:?}，判为挂起"
+            );
             std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    /// 让脚本化生产者停在指定位置，直到测试放行。
+    #[derive(Debug, Default)]
+    struct Gate {
+        released: Mutex<bool>,
+        changed: Condvar,
+    }
+
+    impl Gate {
+        fn wait_for_release(&self) {
+            let started = Instant::now();
+            let mut released = self.released.lock().expect("闸门可加锁");
+            while !*released {
+                assert!(
+                    started.elapsed() < LIVENESS_BUDGET,
+                    "闸门在 {LIVENESS_BUDGET:?} 内没有放行"
+                );
+                let (next, _) = self
+                    .changed
+                    .wait_timeout(released, Duration::from_millis(LIVENESS_POLL_MS))
+                    .expect("闸门可等待");
+                released = next;
+            }
+        }
+
+        fn release(&self) {
+            *self.released.lock().expect("闸门可加锁") = true;
+            self.changed.notify_all();
         }
     }
 }
