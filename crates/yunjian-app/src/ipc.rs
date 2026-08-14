@@ -30,6 +30,8 @@ use yunjian_recite::{
     Scheduler, SubstitutionClass, TypedScore, align, classify_substitution, grade_typed,
     review_typed_text,
 };
+use yunjian_voice::annotate::{Annotation, annotate_poem};
+use yunjian_voice::lexicon::Poyin;
 use yunjian_voice::models::ModelCache;
 
 use crate::APP;
@@ -249,6 +251,7 @@ pub(crate) fn configure_builder<R: Runtime>(builder: Builder<R>, config: Config)
             browse_by_tag,
             list_tags,
             poem_detail,
+            poem_annotations,
             lookup_dictionary,
             appreciate_poem,
             cancel_operation,
@@ -365,6 +368,55 @@ async fn poem_detail<R: Runtime>(
         open_client(state)?
             .poem_detail(request)
             .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 整首注音的请求。
+///
+/// **正文由调用方带下来，而不是这里再查一次语料库。** 详情页已经拿着正文了，让这个命令
+/// 自己去查会把一次批量预取变成两次查询，而它真正要做的只是纯 CPU 的解析。这样一来
+/// 「注音不碰数据库」在这条命令上也是结构性的。
+#[derive(Debug, Deserialize)]
+struct PoemAnnotationRequest {
+    poem_id: String,
+    body: String,
+}
+
+/// 整首注音的结果。
+#[derive(Debug, Serialize)]
+struct PoemAnnotationOut {
+    /// 原样回带，供界面确认这份注音属于它当前展示的那首。
+    poem_id: String,
+    #[serde(flatten)]
+    annotation: Annotation,
+}
+
+/// 随包破读词表只解析一次。
+///
+/// 词表是 `include_str!` 进来的常量，解析结果在整个进程生命周期里不变；每次调用重解析
+/// 一遍没有正确性收益。解析失败要留住原因而不是退化成空表——空表会让三个黄金破读悄悄
+/// 变成「多候选存疑」，那是最难发现的一种坏法。
+static SHIPPED_POYIN: std::sync::OnceLock<Result<Poyin, String>> = std::sync::OnceLock::new();
+
+fn shipped_poyin() -> Result<&'static Poyin, String> {
+    SHIPPED_POYIN
+        .get_or_init(|| Poyin::shipped().map_err(|error| error.to_string()))
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+#[tauri::command]
+async fn poem_annotations<R: Runtime>(
+    app: AppHandle<R>,
+    request: PoemAnnotationRequest,
+) -> IpcResult<PoemAnnotationOut> {
+    blocking(app, move |_state| {
+        let poyin = shipped_poyin()?;
+        Ok(PoemAnnotationOut {
+            annotation: annotate_poem(poyin, &request.body),
+            poem_id: request.poem_id,
+        })
     })
     .await
 }

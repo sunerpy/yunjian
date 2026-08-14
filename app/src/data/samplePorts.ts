@@ -29,7 +29,9 @@ import type {
   MetaPage,
   PoemDetail,
   PoemRecord,
+  PoemAnnotation,
   Provenance,
+  Reading,
   RhymeGroupMembership,
   SearchPage,
   TagSummary,
@@ -41,6 +43,7 @@ import type {
   AppreciationPort,
   DictionaryLookupRequest,
   DictionaryPort,
+  PoemAnnotationRequest,
   PoemDetailRequest,
   PoemPort,
   SearchPort,
@@ -133,6 +136,57 @@ function tones(lines: string[]): ToneAnnotation {
 const JING_YE_SI_LINES = ["床前明月光", "疑是地上霜", "举头望明月", "低头思故乡"];
 const DENG_GUAN_QUE_LOU_LINES = ["白日依山尽", "黄河入海流", "欲穷千里目", "更上一层楼"];
 const CHUN_XIAO_LINES = ["春眠不觉晓", "处处闻啼鸟", "夜来风雨声", "花落知多少"];
+
+/**
+ * 样例读音表。
+ *
+ * **表里没有的字一律是「暂无注音」，这不是偷懒而是准确的**：样例模式确实没有读音数据，
+ * 而这一层的规矩就是没有数据时不造占位读音。列出来的这几个字里，读音本身取自普通话的
+ * 通行读法（`上` 两读、`头` 有轻声读法），只有「依据」那一栏是编的，并且照样例集评的
+ * 同一条办法明写「样例依据」，不冒用任何韵书。
+ *
+ * 四档在《静夜思》一首里全部出现，因此界面调试不需要连语料库也能看到四种形态。
+ */
+const SAMPLE_READINGS: Record<string, Reading> = {
+  上: {
+    kind: "attested",
+    pinyin: "shàng",
+    confidence: "tone_split",
+    evidence: "样例依据：卷一，据样例排印本。此条为界面调试用样例，不是韵书结论。",
+  },
+  头: { kind: "uncertain", candidates: ["tóu", "tou"] },
+  乡: { kind: "generic", pinyin: "xiāng" },
+  床: { kind: "generic", pinyin: "chuáng" },
+  前: { kind: "generic", pinyin: "qián" },
+  明: { kind: "generic", pinyin: "míng" },
+  月: { kind: "generic", pinyin: "yuè" },
+  光: { kind: "generic", pinyin: "guāng" },
+};
+
+/** 与 `crates/yunjian-voice/src/annotate.rs` 的 `is_content_character` 同一判据。 */
+function isContentCharacter(character: string): boolean {
+  return /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(character);
+}
+
+function sampleAnnotation(request: PoemAnnotationRequest): PoemAnnotation {
+  const coverage = { attested: 0, generic: 0, uncertain: 0, absent: 0 };
+  const lines = request.body
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((text, line_index) => ({
+      line_index,
+      text,
+      cells: Array.from(text).map((character) => {
+        if (!isContentCharacter(character)) {
+          return { character, reading: null };
+        }
+        const reading: Reading = SAMPLE_READINGS[character] ?? { kind: "absent" };
+        coverage[reading.kind] += 1;
+        return { character, reading };
+      }),
+    }));
+  return { poem_id: request.poem_id, lines, coverage };
+}
 
 /** 有出处的样例集评。`work` 带「样例」字样，不冒用真实诗话名。 */
 function sampleCommentary(id: string, text: string): CommentaryEntry {
@@ -402,6 +456,8 @@ export function createSamplePorts(): {
       }
       return Promise.resolve(detail(found));
     },
+    poemAnnotations: (request: PoemAnnotationRequest): Promise<PoemAnnotation> =>
+      Promise.resolve(sampleAnnotation(request)),
   };
 
   const appreciation: AppreciationPort = {

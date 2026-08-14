@@ -41,12 +41,24 @@
   cursor: pointer;
 }
 
+.poem-screen__toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
 .poem-screen__toggle {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.poem-screen__toggle input {
+  cursor: pointer;
 }
 
 .poem-screen__loading,
@@ -126,6 +138,23 @@
   color: var(--color-text-muted);
 }
 
+/*
+ * 逐字格的推进量：**两层唯一的宽度来源。**
+ *
+ * 拼音格与平仄格都只读这一个自定义属性，所以「两层对不齐」不再是一个可能发生的缺陷——
+ * 它要求两处写出不同的宽度，而这里只有一处。改这个值会同时挪动两层，永远不会只挪一层。
+ *
+ * 关闭注音时是 `--text-lg` 加 0.12em 字距下一个汉字的推进量；打开注音时必须放宽到能容下
+ * 一个六字母带调音节（如 zhuāng），否则拼音会挤到邻格上去。
+ */
+.poem-body {
+  --poem-char-advance: calc(1.125rem + 0.135rem);
+}
+
+.poem-body[data-pinyin="on"] {
+  --poem-char-advance: 3.25rem;
+}
+
 /* 平仄记号排在字下方并与字等宽，才能与对应的字对齐。 */
 .poem-body__tones {
   display: flex;
@@ -137,9 +166,181 @@
 .poem-body__tone {
   display: inline-grid;
   place-items: center;
-  /* 与 `--text-lg` 加 0.12em 字距下一个汉字的推进量对齐。 */
-  width: calc(1.125rem + 0.135rem);
+  width: var(--poem-char-advance);
   color: var(--color-tone-uncertain);
+}
+
+.poem-body__tone[data-tone="level"] {
+  color: var(--color-tone-level);
+}
+
+.poem-body__tone[data-tone="oblique"] {
+  color: var(--color-tone-oblique);
+}
+
+/* ============================ 注音层 ============================ */
+
+/*
+ * 注音模式下字距归零：推进量改由每格自己的宽度决定。
+ * 不归零的话字距会叠在格宽之上，正文与平仄两行各错开一点，越到行尾越明显。
+ */
+.poem-body[data-pinyin="on"] .poem-body__text {
+  letter-spacing: 0;
+}
+
+.poem-body__ruby {
+  /* 拼音在字上方。竖排下由下面那条规则改到字列外侧，两层永远分居两侧。 */
+  ruby-position: over;
+  ruby-align: center;
+}
+
+.poem-body__char {
+  display: inline-block;
+  width: var(--poem-char-advance);
+  text-align: center;
+}
+
+/*
+ * 注音是注，不是正文：字号与颜色都压在正文之下，避免它抢读。
+ *
+ * 但**压到读不了就不是「注」而是噪声**：目视 QA 实测 0.5625rem 落地是 9px，带调拼音勉强
+ * 可辨，而带 `em` 的下级标记会在这个基数上再乘一次、压到 7.2px。所以基数提到 0.6875rem
+ * （11px），下级标记一律不再用小于 1 的 `em`。
+ */
+.poem-body__rt {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--color-text-muted);
+}
+
+.poem-body__reading {
+  white-space: nowrap;
+}
+
+/*
+ * 「据」字上标是**非颜色**的有据标记：颜色不能是唯一编码。
+ *
+ * `line-height: 0` 是必需的，不是微调：上标默认会把所在行的行盒撑高，于是**只有有据那一格
+ * 的拼音会比同行其他格高出一点**（目视 QA 实测），一行拼音的基线因此不齐。
+ */
+.poem-body__attested {
+  margin-inline-start: 0.0625em;
+  /*
+   * 与拼音同号。汉字字形在 9px 上认不出来（目视 QA 把这个上标读成了一个墨点），而缩小
+   * 上标并不换来任何空间——它旁边就是空的。`line-height: 0` 已经把它对行盒的影响清零，
+   * 所以放大不会让这一格比同行其他格高。
+   */
+  font-size: 1em;
+  /* 加粗而不是继续放大：11px 的汉字缺的是笔画分量，不是尺寸。 */
+  font-weight: 600;
+  line-height: 0;
+  color: var(--color-accent);
+}
+
+.poem-body__uncertain {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--color-tone-uncertain);
+  /*
+   * 存疑标记是可点的：点开才看到并列候选与「此处读音存疑」。
+   * 实线而非虚线：目视 QA 实测这个字号下点线在屏幕上认不出来，于是这一档等于丢了标记。
+   */
+  text-decoration: underline solid;
+  cursor: pointer;
+}
+
+/*
+ * 无数据那一档在格内只占一个短横。
+ *
+ * 「暂无注音」四个字塞进一格必须缩到 7.2px（目视 QA 实测），那不是克制而是不可读；而一整行
+ * 铺满这四个字，注音层反而比留空更嘈杂。所以格内用短横，完整措辞进 `title`，并由正文下方
+ * 那条说明**逐字讲明这个短横的含义**——短横不是一个读音，因此这仍然是「不造占位读音」。
+ */
+.poem-body__absent {
+  color: var(--color-text-muted);
+}
+
+.poem-body__uncertain-detail {
+  display: block;
+  margin-top: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--color-tone-uncertain);
+}
+
+/*
+ * 两层同开时的正文行距。
+ *
+ * 上方多一层 ruby、下方多一行平仄，默认 1.9 的行距会让相邻两行的注记贴到一起。
+ * 这条只在注音打开时生效，关闭注音的阅读体验一个像素都不变。
+ */
+.poem-body[data-pinyin="on"] .poem-body__line {
+  line-height: 2.6;
+}
+
+/*
+ * 行与行之间也要放开。
+ *
+ * 目视 QA：只放开行内行距不够——上一行的平仄与下一行的拼音都是小字，两组小字上下贴近时
+ * 会被读成同一组。这里放开的是**行间**，与上面那条放开**行内**是两件事。
+ */
+.poem-body[data-pinyin="on"] {
+  gap: var(--space-8);
+}
+
+.poem-body__recall {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.poem-body__recall-note {
+  margin: 0;
+  flex: 1 1 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.poem-body__reveal {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+/*
+ * 竖排：拼音到字列外侧，平仄到内侧/行末。
+ *
+ * 竖排下 `ruby-position: over` 落在字列的右侧（外侧），而平仄那一行是正文之后的独立块，
+ * 落在字列左侧（内侧）。**两者争不到同一侧**，因为它们一个是 ruby 的注位、一个是块的
+ * 相邻位置，不是同一种定位机制。
+ *
+ * 目前界面还没有切竖排的入口，这一段是为竖排预先定好侧位归属，不是已上线的功能。
+ */
+.poem-body[data-orientation="vertical"] {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+}
+
+.poem-body[data-orientation="vertical"] .poem-body__ruby {
+  ruby-position: over;
+}
+
+.poem-body[data-orientation="vertical"] .poem-body__tones {
+  writing-mode: vertical-rl;
 }
 
 .poem-body__tone[data-tone="level"] {
