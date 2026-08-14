@@ -4,12 +4,19 @@
 // 所以 `npm run build` 刻意把类型检查放在构建之前。
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // Tauri 期望前端在固定端口上，且不允许它自动改端口 —— `tauri.conf.json` 的
 // `devUrl` 是写死的 http://localhost:5173，端口漂移会让 `cargo tauri dev` 连到空地址。
 // 因此 `strictPort: true`：端口被占时报错，而不是静默换一个。
 export default defineConfig({
-  plugins: [react()],
+  // Tailwind 走官方 Vite 插件而不是 PostCSS：`@tailwindcss/postcss` 要多一个
+  // `postcss.config.js` 与一条 PostCSS 依赖链，而这个项目此前没有 PostCSS 配置。
+  // 少了这个插件的症状是构建**照样成功**，只是 `@theme` 原样落进产物、
+  // 所有 utility 类一个都不生成——lightningcss 会打一条 `Unknown at rule: @theme`
+  // 的警告，但那是警告不是错误。所以 `__tests__/tailwind.test.ts` 与产物 grep
+  // 是这条接线唯一的硬保障。
+  plugins: [tailwindcss(), react()],
   // Tauri 自己会把 stderr 上的 Rust 日志交给终端。Vite 的 clearScreen 会把它们擦掉，
   // 于是「窗口起不来」的原因刚打出来就消失。
   clearScreen: false,
