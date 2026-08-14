@@ -15,7 +15,7 @@ use yunjian_core::{
     TextSearchHit,
 };
 use yunjian_recite::{
-    AlignOp, FsrsGrade, OpsSummary, ReviewState, SubstitutionClass, TypedScore,
+    AlignOp, DailyQueueReport, FsrsGrade, OpsSummary, ReviewState, SubstitutionClass, TypedScore,
     classify_substitution,
 };
 
@@ -1312,11 +1312,116 @@ pub struct ReciteStatsOut {
     pub due_today: usize,
     /// 按最近一次等级的分布。
     pub by_last_grade: GradeCountsOut,
+    /// 时间预算内承诺完成的今日计划。
+    pub daily_plan: DailyPlanOut,
+    /// 未装入今日计划的到期债务。
+    pub backlog: BacklogOut,
+    /// 明日起七日按 FSRS 到期日聚合的压力。
+    pub next_seven_days: Vec<DailyPressureOut>,
+    /// 过去三十天到期正式复习的真实保持率。
+    pub observed_retention: RetentionOut,
+    /// 与观察值并列展示的运营目标，不是 FSRS 模型参数。
+    pub retention_target: f64,
     /// 本机生效的评级阈值，原样取自 `[recite.grading]`。
     ///
     /// 报阈值而不是自己重算等级：等级由内核的 `grade_typed` 按严格优先级得出，
     /// 这里再算一遍就会多出第二套规则。
     pub grading: GradingConfig,
+}
+
+/// 今日预算计划摘要。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct DailyPlanOut {
+    /// 预算内任务总数。
+    pub task_count: usize,
+    /// 预算内预计分钟数。
+    pub estimated_minutes: f32,
+    /// 全部到期与逾期联片数。
+    pub due_total: usize,
+    /// 装入计划的到期与逾期联片数。
+    pub due_planned: usize,
+    /// 未装入计划的到期与逾期联片数。
+    pub due_unplanned: usize,
+    /// 装入计划的新联片数。
+    pub new_chunks: usize,
+}
+
+/// 未装箱到期债务摘要。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct BacklogOut {
+    /// 未装入计划的到期联片数。
+    pub count: usize,
+    /// 最老逾期天数。
+    pub oldest_overdue_days: i64,
+    /// 预计清理分钟数。
+    pub estimated_clear_minutes: f32,
+}
+
+/// 某一未来日期的 FSRS 压力。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct DailyPressureOut {
+    /// Unix 日序号。
+    pub day: i64,
+    /// 到期联片数。
+    pub count: usize,
+    /// 预计分钟数。
+    pub estimated_minutes: f32,
+}
+
+/// 真实观察保持率及其样本量。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct RetentionOut {
+    /// 非 Again 比例；零样本时为 `null`。
+    pub rate: Option<f32>,
+    /// 到期正式复习样本量。
+    pub sample_size: usize,
+}
+
+impl ReciteStatsOut {
+    /// 从内核预算报告构造稳定 CLI 载荷。
+    #[must_use]
+    pub fn from_queue(
+        database: String,
+        scheduled: &[ReviewState],
+        due_today: usize,
+        grading: GradingConfig,
+        queue: &DailyQueueReport,
+    ) -> Self {
+        Self {
+            database,
+            scheduled_total: scheduled.len(),
+            due_today,
+            by_last_grade: GradeCountsOut::tally(scheduled),
+            daily_plan: DailyPlanOut {
+                task_count: queue.planned.len(),
+                estimated_minutes: queue.planned_minutes,
+                due_total: queue.due_total,
+                due_planned: queue.due_planned,
+                due_unplanned: queue.due_unplanned,
+                new_chunks: queue.new_chunks_planned,
+            },
+            backlog: BacklogOut {
+                count: queue.backlog.count,
+                oldest_overdue_days: queue.backlog.oldest_overdue_days,
+                estimated_clear_minutes: queue.backlog.estimated_clear_minutes,
+            },
+            next_seven_days: queue
+                .next_seven_days
+                .iter()
+                .map(|pressure| DailyPressureOut {
+                    day: pressure.day,
+                    count: pressure.count,
+                    estimated_minutes: pressure.estimated_minutes,
+                })
+                .collect(),
+            observed_retention: RetentionOut {
+                rate: queue.observed_retention.rate,
+                sample_size: queue.observed_retention.sample_size,
+            },
+            retention_target: (f64::from(queue.retention_target) * 100.0).round() / 100.0,
+            grading,
+        }
+    }
 }
 
 /// 四档等级各自的计数。
@@ -1363,6 +1468,28 @@ impl Renderable for ReciteStatsOut {
                 self.by_last_grade.hard,
                 self.by_last_grade.good,
                 self.by_last_grade.easy
+            ),
+            format!(
+                "今日计划 {} 项 · 预计 {:.1} 分钟 · 到期 {}/{} 项已装入",
+                self.daily_plan.task_count,
+                self.daily_plan.estimated_minutes,
+                self.daily_plan.due_planned,
+                self.daily_plan.due_total
+            ),
+            format!(
+                "积压 {} 项 · 最老逾期 {} 天 · 预计清理 {:.1} 分钟",
+                self.backlog.count,
+                self.backlog.oldest_overdue_days,
+                self.backlog.estimated_clear_minutes
+            ),
+            format!(
+                "观察保持率 {}（{} 个到期正式复习样本）· 运营目标 {:.0}%",
+                self.observed_retention.rate.map_or_else(
+                    || "样本不足".to_owned(),
+                    |rate| format!("{:.0}%", rate * 100.0)
+                ),
+                self.observed_retention.sample_size,
+                self.retention_target * 100.0
             ),
             format!(
                 "评级阈值（config.toml 的 [recite.grading]）：完整度低于 {} 记重来 · \
