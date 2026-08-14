@@ -263,6 +263,8 @@ impl Default for VoiceSessionConfig {
 pub struct ReciteConfig {
     /// 打字分数到 FSRS 等级的阈值。
     pub grading: GradingConfig,
+    /// 每日时间预算、新联片上限与运营保持率目标。
+    pub scheduling: ReciteSchedulingConfig,
 }
 
 /// `[recite.grading]`
@@ -289,6 +291,28 @@ impl Default for GradingConfig {
             hard_accuracy_lenient_below: 0.85,
             hard_rerecitation_above: 0,
             easy_accuracy_strict_at_least: 0.97,
+        }
+    }
+}
+
+/// `[recite.scheduling]`
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ReciteSchedulingConfig {
+    /// 每日默认学习预算，分钟。
+    pub daily_minutes: f32,
+    /// 每日最多引入的新联片数。
+    pub new_chunk_limit: usize,
+    /// 与真实观察值并列展示的运营保持率目标。
+    pub retention_target: f32,
+}
+
+impl Default for ReciteSchedulingConfig {
+    fn default() -> Self {
+        Self {
+            daily_minutes: 15.0,
+            new_chunk_limit: 3,
+            retention_target: 0.85,
         }
     }
 }
@@ -502,6 +526,13 @@ hard_accuracy_lenient_below = {hard_accuracy_lenient_below:?}
 hard_rerecitation_above = {hard_rerecitation_above}
 easy_accuracy_strict_at_least = {easy_accuracy_strict_at_least:?}
 
+[recite.scheduling]
+# 每日按预计耗时装箱；前三类义务占满预算时暂停新联片，但未装入的到期项仍作为积压展示。
+daily_minutes = {recite_daily_minutes:?}
+new_chunk_limit = {recite_new_chunk_limit}
+# 运营目标与过去 30 天真实观察保持率并列展示；它不是 FSRS 的模型目标。
+retention_target = {recite_retention_target:?}
+
 [voice.prosody]
 # 朗读时音步之间与行之间插入的静音，毫秒。引擎既无 SSML、其静音参数也已报损，节奏由
 # 逐音步合成加 Rust 侧插静音得到，这两个值就是那两段静音的时长。
@@ -539,6 +570,9 @@ similar_band = {session_similar_band:?}
         hard_accuracy_lenient_below = config.recite.grading.hard_accuracy_lenient_below,
         hard_rerecitation_above = config.recite.grading.hard_rerecitation_above,
         easy_accuracy_strict_at_least = config.recite.grading.easy_accuracy_strict_at_least,
+        recite_daily_minutes = config.recite.scheduling.daily_minutes,
+        recite_new_chunk_limit = config.recite.scheduling.new_chunk_limit,
+        recite_retention_target = config.recite.scheduling.retention_target,
         voice_foot_pause_ms = config.voice.prosody.foot_pause_ms,
         voice_line_pause_ms = config.voice.prosody.line_pause_ms,
         session_long_pause_ms = config.voice.session.long_pause_ms,
@@ -646,6 +680,11 @@ hard_accuracy_lenient_below = 0.9
 hard_rerecitation_above = 1
 easy_accuracy_strict_at_least = 0.99
 
+[recite.scheduling]
+daily_minutes = 20.0
+new_chunk_limit = 5
+retention_target = 0.88
+
 [voice.prosody]
 foot_pause_ms = 150
 line_pause_ms = 500
@@ -708,6 +747,11 @@ similar_band = 0.2
                     hard_rerecitation_above: 1,
                     easy_accuracy_strict_at_least: 0.99,
                 },
+                scheduling: ReciteSchedulingConfig {
+                    daily_minutes: 20.0,
+                    new_chunk_limit: 5,
+                    retention_target: 0.88,
+                },
             },
         }
     }
@@ -759,6 +803,9 @@ similar_band = 0.2
         assert_eq!(config.recite.grading.hard_accuracy_lenient_below, 0.9);
         assert_eq!(config.recite.grading.hard_rerecitation_above, 1);
         assert_eq!(config.recite.grading.easy_accuracy_strict_at_least, 0.99);
+        assert_eq!(config.recite.scheduling.daily_minutes, 20.0);
+        assert_eq!(config.recite.scheduling.new_chunk_limit, 5);
+        assert_eq!(config.recite.scheduling.retention_target, 0.88);
         assert_eq!(config.voice.prosody.foot_pause_ms, 150);
         assert_eq!(config.voice.prosody.line_pause_ms, 500);
         assert_eq!(config.voice.session.long_pause_ms, 800);
@@ -797,6 +844,7 @@ similar_band = 0.2
         assert!(config.voice.allow_download);
         assert_eq!(config.corpus.path, None);
         assert_eq!(config.recite.grading, GradingConfig::default());
+        assert_eq!(config.recite.scheduling, ReciteSchedulingConfig::default());
     }
 
     #[test]

@@ -48,6 +48,7 @@ describe("导航入口", () => {
     expect(screen.getByTestId("app-nav")).toBeTruthy();
     for (const [testId, label] of [
       ["nav-search", "检索"],
+      ["nav-dictionary", "字典"],
       ["nav-recite", "背诵"],
       ["nav-settings", "设置"],
     ] as const) {
@@ -64,6 +65,8 @@ describe("导航入口", () => {
     expect(onSelect).toHaveBeenLastCalledWith("recite");
     fireEvent.click(screen.getByTestId("nav-search"));
     expect(onSelect).toHaveBeenLastCalledWith("search");
+    fireEvent.click(screen.getByTestId("nav-dictionary"));
+    expect(onSelect).toHaveBeenLastCalledWith("dictionary");
   });
 
   it("点设置走的是「打开弹窗」而不是「切屏」", () => {
@@ -82,6 +85,7 @@ describe("选中态", () => {
   it("检索被选中时只有它是当前页", () => {
     renderSidebar({ section: "search" });
     expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("nav-dictionary").getAttribute("aria-current")).toBeNull();
     expect(screen.getByTestId("nav-recite").getAttribute("aria-current")).toBeNull();
   });
 
@@ -89,12 +93,13 @@ describe("选中态", () => {
     renderSidebar({ section: "recite" });
     expect(screen.getByTestId("nav-recite").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBeNull();
+    expect(screen.getByTestId("nav-dictionary").getAttribute("aria-current")).toBeNull();
   });
 
   it("整份渲染里当前页有且只有一个", () => {
     // 这一条比上面两条更强：它拦得住「选中态判定写成了常量」这类改法——
     // 把 `section === "search"` 换成 `true` 会让上面第一条照样绿，这一条会红。
-    for (const section of ["search", "recite"] as const) {
+    for (const section of ["search", "dictionary", "recite"] as const) {
       const view = renderSidebar({ section });
       expect(view.container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
       view.unmount();
@@ -110,9 +115,9 @@ describe("选中态", () => {
     // 判据取 className 里那个只出现在选中分支的记号（左侧标尺的强调色）。
     // 断言的是**两个集合相等**，所以多标一个与少标一个都会红。
     const ACTIVE_MARK = "border-[var(--color-accent)]";
-    for (const section of ["search", "recite"] as const) {
+    for (const section of ["search", "dictionary", "recite"] as const) {
       const view = renderSidebar({ section });
-      const items = ["nav-search", "nav-recite", "nav-settings"].map((testId) =>
+      const items = ["nav-search", "nav-dictionary", "nav-recite", "nav-settings"].map((testId) =>
         screen.getByTestId(testId),
       );
       const visually = items
@@ -135,6 +140,7 @@ describe("选中态", () => {
     renderSidebar({ section: "search", settingsOpen: true });
     expect(screen.getByTestId("nav-settings").className).toContain(ACTIVE_MARK);
     expect(screen.getByTestId("nav-search").className).toContain(ACTIVE_MARK);
+    expect(screen.getByTestId("nav-dictionary").className).not.toContain(ACTIVE_MARK);
     expect(screen.getByTestId("nav-recite").className).not.toContain(ACTIVE_MARK);
   });
 
@@ -182,6 +188,7 @@ describe("折叠", () => {
     renderSidebar({ collapsed: true });
     for (const [testId, label] of [
       ["nav-search", "检索"],
+      ["nav-dictionary", "字典"],
       ["nav-recite", "背诵"],
       ["nav-settings", "设置"],
     ] as const) {
@@ -198,7 +205,7 @@ describe("折叠", () => {
     // 反向对照：少了它，「折叠时是 sr-only」可以靠「永远是 sr-only」满足，
     // 而那意味着展开态下标签也看不见。
     renderSidebar({ collapsed: false });
-    for (const testId of ["nav-search", "nav-recite", "nav-settings"]) {
+    for (const testId of ["nav-search", "nav-dictionary", "nav-recite", "nav-settings"]) {
       expect(screen.getByTestId(testId).querySelector("span")?.className).not.toContain("sr-only");
     }
   });
@@ -207,6 +214,7 @@ describe("折叠", () => {
     // 折叠态下文字看不见，鼠标用户唯一的辨认途径就是原生 tooltip。
     renderSidebar({ collapsed: true });
     expect(screen.getByTestId("nav-search").getAttribute("title")).toBe("检索");
+    expect(screen.getByTestId("nav-dictionary").getAttribute("title")).toBe("字典");
     expect(screen.getByTestId("nav-recite").getAttribute("title")).toBe("背诵");
     expect(screen.getByTestId("nav-settings").getAttribute("title")).toBe("设置");
   });

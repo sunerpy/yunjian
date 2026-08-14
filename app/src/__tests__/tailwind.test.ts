@@ -101,7 +101,7 @@ describe("引入的是哪几层", () => {
     // 没有 preflight，也就没人替我们补手型光标；而浏览器对 `<button>` 的默认光标是
     // `default`。少写一处的症状是「鼠标移到按钮上毫无反馈」，用户会以为界面卡住了。
     // 这条只扫用 utility 写样式的外壳组件——既有组件的光标归它们各自的 css 管。
-    const files = ["shell/Sidebar.tsx", "shell/SettingsDialog.tsx"];
+    const files = ["shell/DictionaryPanel.tsx", "shell/Sidebar.tsx", "shell/SettingsDialog.tsx"];
     const offenders: string[] = [];
     for (const relative of files) {
       const source = readFileSync(resolve(process.cwd(), "src", relative), "utf8");
@@ -254,6 +254,30 @@ describe("侧栏选中态的底色在两套配色下都必须看得出来", () =
   });
 });
 
+describe("字典三层来源保持不同视觉语域", () => {
+  const dictionary = readFileSync(resolve(process.cwd(), "src/shell/DictionaryPanel.tsx"), "utf8");
+
+  function layer(name: string): string {
+    const match = new RegExp(`data-source-layer="${name}"[\\s\\S]*?className="([^"]+)"`).exec(
+      dictionary,
+    );
+    expect(match, `找不到 ${name} 来源层`).not.toBeNull();
+    return match?.[1] ?? "";
+  }
+
+  it("韵书、字书与 AI 三层的边框、底色和字体声明两两不同", () => {
+    const declarations = [layer("rhyme"), layer("public-lexicon"), layer("ai")];
+    expect(new Set(declarations).size).toBe(3);
+    expect(declarations[0]).toContain("border-solid");
+    expect(declarations[0]).toContain("font-serif");
+    expect(declarations[1]).toContain("border-dotted");
+    expect(declarations[1]).toContain("bg-[var(--color-surface-raised)]");
+    expect(declarations[2]).toContain("border-dashed");
+    expect(declarations[2]).toContain("bg-[var(--color-ai-surface)]");
+    expect(declarations[2]).toContain("font-sans");
+  });
+});
+
 describe("颜色一律走令牌层", () => {
   /**
    * Tailwind 自带的 22 组调色板。用它们等于绕开 `styles.css` 的语义令牌，
@@ -288,7 +312,13 @@ describe("颜色一律走令牌层", () => {
   it("源码里没有 `bg-slate-800` 这类调色板 utility", () => {
     const utilities = ["bg", "text", "border", "ring", "outline", "fill", "stroke", "from", "to"];
     // 只扫 className 字面量所在的 tsx，css 里写不出 utility。
-    const files = ["App.tsx", "shell/Sidebar.tsx", "shell/SettingsDialog.tsx", "shell/icons.tsx"];
+    const files = [
+      "App.tsx",
+      "shell/DictionaryPanel.tsx",
+      "shell/Sidebar.tsx",
+      "shell/SettingsDialog.tsx",
+      "shell/icons.tsx",
+    ];
     const pattern = new RegExp(
       `\\b(?:${utilities.join("|")})-(?:${PALETTES.join("|")})-\\d{2,3}\\b`,
     );

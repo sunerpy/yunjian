@@ -11,10 +11,9 @@ use crate::cli::{
 use crate::envelope::{ErrorCode, Failure, Status, Warning, WarningCode};
 use crate::exit::{Exit, corpus_failure, describe, describe_model};
 use crate::output::{
-    AiCachePurgeOut, AssetsOut, CorpusOut, GradeCountsOut, ModelFetchOut, ModelListOut,
-    ModelRemoveOut, ModelRow, NotFound, OpOut, RECITE_DATABASE_FILE, ReciteDueOut, ReciteOut,
-    ReciteStatsOut, Renderable, ReviewItemOut, ScoreOut, SearchFilters, SearchHit, SearchOut,
-    grade_key,
+    AiCachePurgeOut, AssetsOut, CorpusOut, ModelFetchOut, ModelListOut, ModelRemoveOut, ModelRow,
+    NotFound, OpOut, RECITE_DATABASE_FILE, ReciteDueOut, ReciteOut, ReciteStatsOut, Renderable,
+    ReviewItemOut, ScoreOut, SearchFilters, SearchHit, SearchOut, grade_key,
 };
 use crate::provision::{Provisioned, degradation, provision};
 use serde::Serialize;
@@ -26,8 +25,9 @@ use yunjian_core::{
     Yunjian,
 };
 use yunjian_recite::{
-    FsrsGrade, PracticeMode, PracticeSession, Scheduler, TypedAttempt, align, grade_typed,
-    review_typed,
+    BudgetConfig, DailyQueueInput, EstimatedTask, FsrsGrade, PracticeMode, PracticeSession,
+    QueueKind, Scheduler, TypedAttempt, align, build_learning_objects, estimate_minutes,
+    grade_typed, plan_daily_queue, review_typed,
 };
 use yunjian_voice::models::{FetchProgress, ModelCache, ModelError};
 
@@ -277,15 +277,83 @@ fn recite_due(config: &Config, all: bool) -> std::result::Result<Produced, Faile
 fn recite_stats(config: &Config) -> std::result::Result<Produced, Failed> {
     let scheduler = Scheduler::open(review_database(config)).map_err(Failed::from)?;
     let scheduled = scheduler.due_on(i64::MAX).map_err(Failed::from)?;
-    let due_today = scheduler.due_today().map_err(Failed::from)?.len();
-    let empty = scheduled.is_empty();
-    let out = ReciteStatsOut {
-        database: review_database(config).display().to_string(),
-        scheduled_total: scheduled.len(),
-        due_today,
-        by_last_grade: GradeCountsOut::tally(&scheduled),
-        grading: config.recite.grading,
+    let today = current_unix_day();
+    let now = current_unix_seconds();
+    let due_states = scheduler.due_on(today).map_err(Failed::from)?;
+    let due_today = due_states.len();
+    let estimated = |stable_id: &str| {
+        scheduler
+            .estimated_minutes(stable_id)
+            .map_err(Failed::from)
+            .map(|minutes| minutes.unwrap_or(1.0))
     };
+    let relearning = scheduler
+        .pending_relearning_at(now)
+        .map_err(Failed::from)?
+        .into_iter()
+        .map(|task| {
+            Ok(EstimatedTask {
+                estimated_minutes: estimated(&task.stable_id)?,
+                id: format!("relearning:{}", task.id),
+                kind: QueueKind::Relearning,
+                due_day: None,
+            })
+        })
+        .collect::<std::result::Result<Vec<_>, Failed>>()?;
+    let due_tasks = due_states
+        .iter()
+        .map(|state| {
+            Ok(EstimatedTask {
+                id: state.stable_id.clone(),
+                kind: if state.due_day < today {
+                    QueueKind::Overdue
+                } else {
+                    QueueKind::Scheduled
+                },
+                estimated_minutes: estimated(&state.stable_id)?,
+                due_day: Some(state.due_day),
+            })
+        })
+        .collect::<std::result::Result<Vec<_>, Failed>>()?;
+    let future = scheduled
+        .iter()
+        .filter(|state| state.due_day > today)
+        .map(|state| {
+            Ok(EstimatedTask {
+                id: state.stable_id.clone(),
+                kind: QueueKind::Scheduled,
+                estimated_minutes: estimated(&state.stable_id)?,
+                due_day: Some(state.due_day),
+            })
+        })
+        .collect::<std::result::Result<Vec<_>, Failed>>()?;
+    let retention = scheduler
+        .retention_observation_since(today.saturating_sub(29))
+        .map_err(Failed::from)?;
+    let scheduling = config.recite.scheduling;
+    let queue = plan_daily_queue(
+        DailyQueueInput {
+            today,
+            relearning,
+            scheduled: due_tasks,
+            new_chunks: Vec::new(),
+            future,
+            retention,
+        },
+        BudgetConfig {
+            daily_minutes: scheduling.daily_minutes,
+            new_chunk_limit: scheduling.new_chunk_limit,
+            retention_target: scheduling.retention_target,
+        },
+    );
+    let empty = scheduled.is_empty();
+    let out = ReciteStatsOut::from_queue(
+        review_database(config).display().to_string(),
+        &scheduled,
+        due_today,
+        config.recite.grading,
+        &queue,
+    );
     Produced::new(&out, empty).map_err(Failed::from)
 }
 
@@ -416,14 +484,34 @@ fn recite(
             }
         };
 
-    let session = PracticeSession::start(&handle, &detail.poem.body, mode).map_err(Failed::from)?;
+    let learning = build_learning_objects(poem_id, &detail.poem.body);
+    let scheduler = Scheduler::open(review_database(config)).map_err(Failed::from)?;
+    let chunk = learning
+        .chunks
+        .iter()
+        .find(|chunk| {
+            scheduler
+                .state(&chunk.stable_id)
+                .map(|state| state.is_none())
+                .unwrap_or(false)
+        })
+        .or_else(|| learning.chunks.first())
+        .ok_or_else(|| Failed {
+            exit: Exit::Usage,
+            failure: Failure::new(ErrorCode::Usage, "作品正文无法形成可练习联片"),
+            warnings: Vec::new(),
+        })?;
+    let session = PracticeSession::start(&handle, &chunk.body, mode).map_err(Failed::from)?;
     let answer = read_answer(&session)?;
     let attempt = TypedAttempt::new(&handle, &answer).map_err(Failed::from)?;
     let review = review_typed(session.reference(), &attempt);
-    let alignment = align(&handle, &detail.poem.body, &answer).map_err(Failed::from)?;
+    let alignment = align(&handle, &chunk.body, &answer).map_err(Failed::from)?;
 
-    let mut scheduler = Scheduler::open(review_database(config)).map_err(Failed::from)?;
-    let first_attempt = scheduler.state(poem_id).map_err(Failed::from)?.is_none();
+    let mut scheduler = scheduler;
+    let first_attempt = scheduler
+        .state(&chunk.stable_id)
+        .map_err(Failed::from)?
+        .is_none();
     let (grade, grade_source) = match args.grade {
         Some(chosen) => (FsrsGrade::from(chosen), "user_chosen"),
         None => (
@@ -431,7 +519,21 @@ fn recite(
             "typed_mapping",
         ),
     };
-    let state = scheduler.review(poem_id, grade).map_err(Failed::from)?;
+    let now = current_unix_seconds();
+    let today = current_unix_day();
+    let ticket = scheduler
+        .issue_review_ticket_at(&chunk.stable_id, today, now)
+        .map_err(Failed::from)?;
+    let state = scheduler
+        .submit_review_ticket_at(&ticket, grade, today, now)
+        .map_err(Failed::from)?
+        .review;
+    scheduler
+        .set_estimated_minutes(
+            &chunk.stable_id,
+            estimate_minutes(session.reference().as_str().chars().count(), first_attempt),
+        )
+        .map_err(Failed::from)?;
 
     let executed = session.mode();
     let out = ReciteOut {
@@ -458,6 +560,18 @@ fn recite(
         review: ReviewItemOut::from(&state),
     };
     Ok(Produced::new(&out, false)?.warn(warnings))
+}
+
+fn current_unix_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
+        })
+}
+
+fn current_unix_day() -> i64 {
+    current_unix_seconds() / 86_400
 }
 
 /// 本次生效的挖空种子。省略 `--seed` 时按当前时间取一个，并由载荷回显以便复现。

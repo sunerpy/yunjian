@@ -8132,6 +8132,7 @@ dependencies = [
  "criterion",
  "dirs 6.0.0",
  "flate2",
+ "pinyin",
  "rusqlite",
  "serde",
  "serde_json",

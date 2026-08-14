@@ -57,6 +57,16 @@ export function ReciteIcon({ className }: IconProps) {
   );
 }
 
+export function DictionaryIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M5 4.5h11.5A2.5 2.5 0 0 1 19 7v12.5H7.5A2.5 2.5 0 0 1 5 17Z" />
+      <path d="M5 17a2.5 2.5 0 0 1 2.5-2.5H19" />
+      <path d="M9 8h6M12 6v5" />
+    </Icon>
+  );
+}
+
 /**
  * 设置：三条带滑块的横轨。
  *

@@ -28,10 +28,10 @@
  * 用 `{collapsed ? null : <span>…</span>}` 会让折叠态下的按钮变成一个无名图标钮。
  */
 
-import { CollapseIcon, ReciteIcon, SearchIcon, SettingsIcon } from "./icons";
+import { CollapseIcon, DictionaryIcon, ReciteIcon, SearchIcon, SettingsIcon } from "./icons";
 
 /** 侧栏能直接抵达的两屏。阅读页归「检索」那一支：它是从检索进去的。 */
-export type ShellSection = "search" | "recite";
+export type ShellSection = "search" | "dictionary" | "recite";
 
 export interface SidebarProps {
   section: ShellSection;
@@ -125,6 +125,20 @@ export default function Sidebar({
       {/* `list-none` 要显式写：本项目刻意没有引入 Tailwind 的 preflight，
           所以 `<ul>` 的默认项目符号与缩进都还在。理由见 `tailwind.css`。 */}
       <ul id="app-nav-items" className="m-0 flex list-none flex-col gap-1 p-0">
+        <li>
+          <button
+            type="button"
+            data-testid="nav-dictionary"
+            aria-current={section === "dictionary" ? "page" : undefined}
+            title={collapsed ? "字典" : undefined}
+            onClick={() => {
+              onSelect("dictionary");
+            }}
+            className={itemClass(section === "dictionary", collapsed)}>
+            <DictionaryIcon className={iconClass} />
+            <span className={labelClass}>字典</span>
+          </button>
+        </li>
         <li>
           <button
             type="button"

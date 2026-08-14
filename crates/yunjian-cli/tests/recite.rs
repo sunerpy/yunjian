@@ -32,6 +32,8 @@ const SHARED_FIXTURES_PATH: &str = "../yunjian-core/tests/fixtures/poems.toml";
 /// 用来背的那首诗。
 const ANCHOR: &str = "fixture:tang-libai-jingyesi";
 
+const ANCHOR_CHUNK: &str = "fixture:tang-libai-jingyesi:v1:0-4";
+
 /// 复习库文件名，与 `output::RECITE_DATABASE_FILE` 一致。
 const REVIEW_DATABASE: &str = "recite.db";
 
@@ -589,7 +591,7 @@ fn recite_due_lists_the_schedule_after_a_review() {
     assert_eq!(value["data"]["scope"], serde_json::json!("all"));
     assert_eq!(
         value["data"]["items"][0]["poem_id"],
-        serde_json::json!(ANCHOR)
+        serde_json::json!(ANCHOR_CHUNK)
     );
     assert_eq!(
         value["data"]["items"][0]["last_grade"],
@@ -681,6 +683,21 @@ fn recite_stats_reports_the_distribution_and_the_thresholds_in_effect() {
     assert_eq!(value["command"], serde_json::json!("recite.stats"));
     assert_eq!(value["data"]["scheduled_total"], serde_json::json!(1));
     assert_eq!(value["data"]["by_last_grade"]["easy"], serde_json::json!(1));
+    assert_eq!(
+        value["data"]["daily_plan"]["task_count"],
+        serde_json::json!(0)
+    );
+    assert_eq!(value["data"]["backlog"]["count"], serde_json::json!(0));
+    assert!(
+        value["data"]["next_seven_days"].is_array(),
+        "未来七日压力必须稳定输出数组：{value}"
+    );
+    assert_eq!(
+        value["data"]["observed_retention"]["sample_size"],
+        serde_json::json!(0),
+        "首次建立联片不算到期正式复习样本：{value}"
+    );
+    assert_eq!(value["data"]["retention_target"], serde_json::json!(0.85));
     // 阈值原样来自 `[recite.grading]`；命令行不得在这里自己算等级。
     for key in [
         "again_completeness_below",
@@ -925,7 +942,8 @@ fn the_cli_carries_no_scoring_logic_of_its_own() {
         "grade_typed(",
         "align(",
         "Scheduler::open(",
-        "scheduler.review(",
+        "issue_review_ticket_at(",
+        "submit_review_ticket_at(",
     ] {
         assert!(
             all.contains(entry),

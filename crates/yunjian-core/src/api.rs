@@ -1,12 +1,12 @@
 //! 稳定、可序列化且与宿主外壳无关的核心 API 门面。
 
 use crate::{
-    Attribution, AuthorDetail, CorpusHandle, MetaPage, PoemDetail, PoemFeatures, Result,
-    RhymeAnswer, RhymeBook, RhymeGroupMatches, RhymeGroupRef, SearchPage, TagSummary,
+    Attribution, AuthorDetail, CorpusHandle, DictionaryLookup, MetaPage, PoemDetail, PoemFeatures,
+    Result, RhymeAnswer, RhymeBook, RhymeGroupMatches, RhymeGroupRef, SearchPage, TagSummary,
     TextSearchRequest, ToneFilter, author_detail, browse_by_dynasty, browse_by_tag, do_these_rhyme,
     find_by_author, find_by_first_line, find_by_last_char, find_by_rhyme_group, find_by_title,
-    find_work_group_attributions, frequent_content_chars, list_tags, poem_detail, poem_features,
-    rhyme_groups_of,
+    find_work_group_attributions, frequent_content_chars, list_tags, lookup_dictionary,
+    poem_detail, poem_features, rhyme_groups_of,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -132,6 +132,15 @@ pub struct PoemDetailRequest {
     pub poem_id: String,
 }
 
+/// 查询内置字典的请求。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DictionaryLookupRequest {
+    /// 一字或双字查询文本。
+    pub query: String,
+    /// 用于匹配破读记录的可选原句。
+    pub context: Option<String>,
+}
+
 impl Yunjian {
     /// 从一份已就绪的只读语料库创建客户端。
     #[must_use]
@@ -252,19 +261,29 @@ impl Yunjian {
     pub fn poem_detail(&self, request: PoemDetailRequest) -> Result<PoemDetail> {
         poem_detail(&self.inner.corpus, &request.poem_id)
     }
+
+    /// 查询一字或双字的韵书、异体与破读事实。
+    pub fn lookup_dictionary(&self, request: DictionaryLookupRequest) -> Result<DictionaryLookup> {
+        lookup_dictionary(
+            &self.inner.corpus,
+            &request.query,
+            request.context.as_deref(),
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::assert_stable_api_type;
     use super::{
-        AuthorDetailRequest, AuthorSearchRequest, CharacterRhymesRequest, DynastyBrowseRequest,
-        FirstLineSearchRequest, LastCharacterSearchRequest, PoemDetailRequest, RhymeCheckRequest,
-        RhymeGroupSearchRequest, TagBrowseRequest, TitleSearchRequest, WorkGroupRequest, Yunjian,
+        AuthorDetailRequest, AuthorSearchRequest, CharacterRhymesRequest, DictionaryLookupRequest,
+        DynastyBrowseRequest, FirstLineSearchRequest, LastCharacterSearchRequest,
+        PoemDetailRequest, RhymeCheckRequest, RhymeGroupSearchRequest, TagBrowseRequest,
+        TitleSearchRequest, WorkGroupRequest, Yunjian,
     };
     use crate::{
-        Attribution, AuthorDetail, CharacterRhymes, MetaPage, PoemDetail, Result, RhymeAnswer,
-        RhymeGroupMatches, RhymeGroupRef, SearchPage, TagSummary, TextSearchRequest,
+        Attribution, AuthorDetail, CharacterRhymes, DictionaryLookup, MetaPage, PoemDetail, Result,
+        RhymeAnswer, RhymeGroupMatches, RhymeGroupRef, SearchPage, TagSummary, TextSearchRequest,
     };
 
     #[test]
@@ -292,6 +311,7 @@ mod tests {
         assert_stable_api_type::<CharacterRhymesRequest>();
         assert_stable_api_type::<TagBrowseRequest>();
         assert_stable_api_type::<PoemDetailRequest>();
+        assert_stable_api_type::<DictionaryLookupRequest>();
 
         assert_stable_api_type::<SearchPage>();
         assert_stable_api_type::<MetaPage>();
@@ -303,6 +323,7 @@ mod tests {
         assert_stable_api_type::<RhymeGroupRef>();
         assert_stable_api_type::<TagSummary>();
         assert_stable_api_type::<PoemDetail>();
+        assert_stable_api_type::<DictionaryLookup>();
     }
 
     #[test]
@@ -326,6 +347,8 @@ mod tests {
         let _: fn(&Yunjian) -> Result<Vec<TagSummary>> = Yunjian::list_tags;
         let _: fn(&Yunjian, TagBrowseRequest) -> Result<MetaPage> = Yunjian::browse_by_tag;
         let _: fn(&Yunjian, PoemDetailRequest) -> Result<PoemDetail> = Yunjian::poem_detail;
+        let _: fn(&Yunjian, DictionaryLookupRequest) -> Result<DictionaryLookup> =
+            Yunjian::lookup_dictionary;
     }
 
     #[test]

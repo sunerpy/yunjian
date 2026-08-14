@@ -325,3 +325,48 @@ export interface TagSummary {
   name: string;
   poem_count: number;
 }
+
+export type DictionaryQueryKind = "character" | "character_sequence";
+
+export interface VariantRelation {
+  variant: string;
+  normalized: string;
+}
+
+export interface DictionaryRhymeFact {
+  book: RhymeBook;
+  rhyme_group: string;
+  tone: RhymeTone;
+  tone_raw: string;
+  source_locator: string;
+}
+
+export type PoyinConfidence = "rhyme_attested" | "tone_split" | "engine_default";
+
+export interface PoyinEvidence {
+  reading: string | null;
+  confidence: PoyinConfidence;
+  evidence: string;
+  source_locator: string;
+}
+
+export type DictionaryPronunciation =
+  | { kind: "attested"; reading: string }
+  | { kind: "general"; reading: string }
+  | { kind: "uncertain"; candidates: string[] }
+  | { kind: "unavailable" };
+
+export interface DictionaryCharacter {
+  character: string;
+  normalized: string;
+  variants: VariantRelation[];
+  pronunciation: DictionaryPronunciation;
+  poyin: PoyinEvidence | null;
+  rhymes: DictionaryRhymeFact[];
+}
+
+export interface DictionaryLookup {
+  query: string;
+  kind: DictionaryQueryKind;
+  characters: DictionaryCharacter[];
+}

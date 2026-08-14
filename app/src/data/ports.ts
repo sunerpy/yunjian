@@ -25,6 +25,7 @@
  */
 
 import type {
+  DictionaryLookup,
   MetaPage,
   PoemAnnotation,
   PoemDetail,
@@ -50,6 +51,11 @@ export interface TagBrowseRequest {
 /** `PoemDetailRequest`。`crates/yunjian-core/src/api.rs:117-122`。 */
 export interface PoemDetailRequest {
   poem_id: string;
+}
+
+export interface DictionaryLookupRequest {
+  query: string;
+  context: string | null;
 }
 
 /** 检索端口。 */
@@ -80,6 +86,10 @@ export interface PoemAnnotationRequest {
 export interface PoemPort {
   poemDetail(request: PoemDetailRequest): Promise<PoemDetail>;
   poemAnnotations(request: PoemAnnotationRequest): Promise<PoemAnnotation>;
+}
+
+export interface DictionaryPort {
+  lookupDictionary(request: DictionaryLookupRequest): Promise<DictionaryLookup>;
 }
 
 /**
