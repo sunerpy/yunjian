@@ -17,6 +17,21 @@
  * 3. macOS 的左侧让位量 `--titlebar-macos-inset` 与 `tauri.macos.conf.json` 的
  *    `trafficLightPosition` 是**一对耦合值**：红绿灯从 x=12 起、约 70px 宽，
  *    让位不足会让标题压在按钮上。改一处必须改另一处。
+ *
+ * # Windows 上 `decorations: false` 的代价，只有一项，且已接受
+ *
+ * 丢掉的**只有 Windows 11 的 Snap Layouts**（悬停最大化按钮弹出的那个布局面板）。
+ * Aero Snap、缩放边框、投影与 Windows 11 圆角**全部保留**——tao 并不剥掉
+ * `WS_CAPTION` / `WS_THICKFRAME`（那是流传很广的误传），它保留这些样式，
+ * 改为在 `WM_NCCALCSIZE` 里返回 0 来吃掉非客户区；缩放命中测试则由 Tauri 在 WebView
+ * 上方注册的透明子窗口承担（WebView2 会吞掉父窗口的 `NCHITTEST`）。
+ *
+ * 因此 `tauri.conf.json` 里那句 `"shadow": true` 必须**显式写着**：它虽然是默认值，
+ * 但 `shadow: false` 会同时拿掉投影**与圆角**，把这层依赖留在配置里看得见。
+ *
+ * Snap Layouts 在上游卡在 WebView2，没有干净的替代（社区插件用合成 `Win+Z` 按键实现，
+ * 那不是真的 `NCHITTEST` 面板，且在 Tauri 的缩放子窗口存在时会错位）。
+ * 所以它记为**已接受的功能降级**，而不是悄悄丢掉的东西。
  */
 
 .titlebar {
@@ -37,6 +52,10 @@
   gap: var(--space-2);
   min-width: 0;
   padding-inline: var(--space-3);
+  /* 标题栏是窗口外框，不是一段文本。不显式写的话，指针移到标题文字上会变成 I 形光标，
+     暗示「这里能选中」——而整条标题栏刻意关掉了选中（见下方 `.titlebar`），
+     于是用户按下拖动时既没选中也没有他预期的反馈。 */
+  cursor: default;
 }
 
 /* macOS 上系统在左上角画红绿灯，标题必须让位。 */
@@ -67,6 +86,15 @@
   border: 0;
   background: transparent;
   color: var(--color-text-muted);
+  /*
+   * `default` 而不是 `pointer`，这是本项目「按钮一律手型光标」那条规则的**唯一例外**，
+   * 因此写在这里而不是让人猜：Windows、macOS 与主流 Linux 桌面的窗口按钮全都保持箭头。
+   * 改成手型会让这三个按钮看起来像页面里的链接而不是窗口外框的一部分。
+   *
+   * 例外只在光标这一维。「移上去要有可见反馈」那条要求由下面的 `:hover` 与 `:active`
+   * 承担，且两者必须**各自与静息态都有可见差异**——用户判断「点到了没有」靠的是
+   * 按下那一瞬的变化，只有 hover 的话按下与悬停长得一样，那一瞬就没有信号。
+   */
   cursor: default;
   transition:
     background-color 120ms ease,
@@ -78,6 +106,14 @@
   color: var(--color-text);
 }
 
+/* 按下态比悬停态再深一档。用 `--color-border` 是因为它在两套配色里都恰好比
+   `--color-titlebar-hover` 更深（浅色 #e2ddd4 对 #e3ded5，深色 #2f353b 对 #1d2227），
+   于是不必为这一档新增令牌——而新增令牌就要同时改 `styles.css` 的浅色与深色两处。 */
+.titlebar__button:active {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
 /* 键盘可达性：这三个按钮是窗口的唯一关闭途径之一，焦点环不能被 `outline: none` 抹掉。 */
 .titlebar__button:focus-visible {
   outline: 2px solid var(--color-accent);
@@ -86,6 +122,13 @@
 
 .titlebar__button--close:hover {
   background: var(--color-titlebar-close-hover);
+  color: var(--color-titlebar-close-fg);
+}
+
+/* 关闭键按下时压暗，而不是沿用上面那条中性的按下态——否则从悬停（红）切到按下（灰）
+   会像是移开了按钮。`color-mix` 避免为这一档再引入一个令牌。 */
+.titlebar__button--close:active {
+  background: color-mix(in srgb, var(--color-titlebar-close-hover) 80%, black);
   color: var(--color-titlebar-close-fg);
 }
 

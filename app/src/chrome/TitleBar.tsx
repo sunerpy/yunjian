@@ -100,6 +100,7 @@ export default function TitleBar({ title, chrome }: TitleBarProps) {
             type="button"
             className="titlebar__button"
             aria-label="最小化"
+            title="最小化"
             onClick={chrome.minimize}>
             <MinimizeGlyph />
           </button>
@@ -107,6 +108,7 @@ export default function TitleBar({ title, chrome }: TitleBarProps) {
             type="button"
             className="titlebar__button"
             aria-label={isMaximized ? "向下还原" : "最大化"}
+            title={isMaximized ? "向下还原" : "最大化"}
             onClick={chrome.toggleMaximize}>
             <MaximizeGlyph restore={isMaximized} />
           </button>
@@ -114,6 +116,7 @@ export default function TitleBar({ title, chrome }: TitleBarProps) {
             type="button"
             className="titlebar__button titlebar__button--close"
             aria-label="关闭"
+            title="关闭"
             onClick={chrome.close}>
             <CloseGlyph />
           </button>
