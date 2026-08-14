@@ -28,20 +28,40 @@ recitation practice, and an MCP server that lets an AI assistant query your poet
 
 Implemented on `main` **and covered by tests**:
 
-| Component           | Status   | Notes                                                                                               |
-| ------------------- | -------- | --------------------------------------------------------------------------------------------------- |
-| Workspace skeleton  | done     | Cargo workspace of 8 crates, dependency versions pinned centrally                                   |
-| Config and logging  | done     | Runtime `config.toml` discovery; tracing to stderr and a rolling file only                          |
-| stdout ban          | done     | Clippy denies `println!` and `std::io::stdout` workspace-wide, one CLI exit                         |
-| Licence gate        | done     | `xtask verify-sources` checks upstream licences and SHA-256 per asset                               |
-| Corpus record model | done     | Canonical records plus an append-only `stable_id` registry                                          |
-| Rhyme book import   | done     | 平水韵 and 词林正韵 ingested, reverse index derived at build time; 中华新韵 and 词谱 withheld       |
-| Index selection     | measured | FTS5 `detail` mode and n-gram table settled by measurement, see [Corpus](CORPUS.md)                 |
-| Voice build path    | verified | Native dependency build and linking proven on five targets, see [Voice build](../VOICE-BUILD.zh.md) |
+| Component           | Status   | Notes                                                                                                |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| Workspace skeleton  | done     | Cargo workspace of 8 crates, dependency versions pinned centrally                                    |
+| Config and logging  | done     | Runtime `config.toml` discovery; tracing to stderr and a rolling file only                           |
+| stdout ban          | done     | Clippy denies `println!` and `std::io::stdout` workspace-wide, one CLI exit                          |
+| Licence gate        | done     | `xtask verify-sources` checks upstream licences and SHA-256 per asset                                |
+| Corpus record model | done     | Canonical records plus an append-only `stable_id` registry                                           |
+| Rhyme book import   | done     | 平水韵 and 词林正韵 ingested, reverse index derived at build time; 中华新韵 and 词谱 withheld        |
+| Index selection     | measured | FTS5 `detail` mode and n-gram table settled by measurement, see [Corpus](CORPUS.md)                  |
+| Corpus artifact     | done     | 474k Tang–Song poems bundled (211 MiB gzip), search structures derived on first launch               |
+| Voice build path    | verified | Native dependency build and linking proven on five targets, see [Voice build](../VOICE-BUILD.zh.md)  |
+| Microphone floor    | verified | 16 kHz mono capture measured on Linux, see [Platform requirements](PLATFORM-REQUIREMENTS.md)         |
+| Model licensing     | verified | Verified per model, MIT / Apache-2.0 only, enforced by `xtask verify-models`                         |
+| Classical CER       | measured | Measured on synthetic speech; the verdict is that CER is advisory only, never a score                |
+| Core search         | done     | Body, title, author, dynasty, first line, last character, tag and rhyme search plus poem detail      |
+| Command line        | done     | `yunjian search/show/author/rhyme/corpus`, stable `--json` envelope, exit codes 0/1/2/3              |
+| MCP server          | done     | `yunjian mcp` over stdio with three read-only tools; `mcp install` writes Claude and OpenCode config |
+| AI appreciation     | done     | BYOK in the OS keychain only, cancellable streaming, two-tier cache, see [AI](AI.md)                 |
+| Recitation practice | done     | Cloze / first-character / masking modes on one scoring kernel, FSRS review scheduling                |
+| Read-aloud and ASR  | done     | Per-音步 TTS with the 破读 lexicon, streaming dual-decode recognition; `voice` is off by default     |
+| Desktop app         | done     | Tauri v2 + React: custom titlebar, reading, settings, recitation and voice, non-blocking IPC         |
 
-**Not implemented yet** (fully specified, but not a line of product code): poetry search, AI
-appreciation, recitation practice and FSRS review, offline read-aloud and speech recognition, the
-MCP server, the command-line tool, the Tauri desktop app, the mobile app.
+**Not implemented, or not yet verified**:
+
+- **The mobile app** — the `yunjian-mobile` façade, its UI and its distribution pipeline do not exist
+  yet; they need physical Android / iOS devices, `adb` and signing identities.
+- **Real-machine desktop acceptance** — of 20 pre-declared assertions, 3 PASS and 17 NOT EXECUTED on
+  Linux (under a GPU-less container plus Xvfb, WebKitGTK composites into a GL surface X cannot read
+  back); Windows / macOS have no interactive session and no signing identity.
+- **Release artifacts and the first tag** — blocked on the two items above.
+- **The bundled appreciation dataset** — the pipeline and its gates exist, but no open-weight
+  inference is available here, so `dataset/` holds only a README; not one line was fabricated.
+- **The 词谱 line-pattern table** — only 念奴娇 and 水调歌头 are covered, and from the measured mode
+  of 全宋词 rather than a public-domain 词谱; every other tune degrades honestly to punctuation.
 
 ## Why it is built this way
 
