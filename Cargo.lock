@@ -8209,6 +8209,7 @@ version = "0.1.0"
 dependencies = [
  "bzip2",
  "hound",
+ "pinyin",
  "rodio",
  "serde",
  "serde_json",

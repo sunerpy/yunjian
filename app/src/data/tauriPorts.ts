@@ -17,9 +17,16 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { AppreciationState } from "../contracts/ai";
-import type { MetaPage, PoemDetail, SearchPage, TagSummary } from "../contracts/core";
+import type {
+  MetaPage,
+  PoemAnnotation,
+  PoemDetail,
+  SearchPage,
+  TagSummary,
+} from "../contracts/core";
 import type {
   AppreciationPort,
+  PoemAnnotationRequest,
   PoemDetailRequest,
   PoemPort,
   SearchPort,
@@ -38,6 +45,7 @@ export const IPC_COMMANDS = {
   browseByTag: "browse_by_tag",
   listTags: "list_tags",
   poemDetail: "poem_detail",
+  poemAnnotations: "poem_annotations",
   appreciate: "appreciate_poem",
 } as const;
 
@@ -68,6 +76,8 @@ export function createTauriPorts(): {
   const poem: PoemPort = {
     poemDetail: (request: PoemDetailRequest) =>
       invoke<PoemDetail>(IPC_COMMANDS.poemDetail, { request }),
+    poemAnnotations: (request: PoemAnnotationRequest) =>
+      invoke<PoemAnnotation>(IPC_COMMANDS.poemAnnotations, { request }),
   };
 
   const appreciation: AppreciationPort = {

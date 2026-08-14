@@ -24,7 +24,13 @@
  * 而不是把已取回的页再筛一遍。这一条不这么设计就只能编造一个不存在的字段。
  */
 
-import type { MetaPage, PoemDetail, SearchPage, TagSummary } from "../contracts/core";
+import type {
+  MetaPage,
+  PoemAnnotation,
+  PoemDetail,
+  SearchPage,
+  TagSummary,
+} from "../contracts/core";
 import type { AppreciationState } from "../contracts/ai";
 
 /** `TextSearchRequest`。`crates/yunjian-core/src/search/text.rs:9-18`。 */
@@ -53,9 +59,27 @@ export interface SearchPort {
   listTags(): Promise<TagSummary[]>;
 }
 
-/** 阅读端口。 */
+/**
+ * 整首注音的请求。
+ *
+ * 正文由调用方带下来。详情页已经拿着正文了，让后端再查一次会把一次批量预取变成两次
+ * 查询；而注音本身是纯解析，不需要语料库。
+ */
+export interface PoemAnnotationRequest {
+  poem_id: string;
+  body: string;
+}
+
+/**
+ * 阅读端口。
+ *
+ * `poemAnnotations` **刻意与 `poemDetail` 同属一个端口**：注音是「读这一首」的一部分，
+ * 而把它放进同一个接口意味着每一处构造端口的地方都必须显式提供它，漏了是编译错误而不是
+ * 一个运行期才发现的空注音层。
+ */
 export interface PoemPort {
   poemDetail(request: PoemDetailRequest): Promise<PoemDetail>;
+  poemAnnotations(request: PoemAnnotationRequest): Promise<PoemAnnotation>;
 }
 
 /**

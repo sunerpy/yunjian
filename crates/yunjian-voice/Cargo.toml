@@ -33,6 +33,9 @@ yunjian-core = { path = "../yunjian-core" }
 # `crates/yunjian-recite/tests/ui/biased_hyp_cannot_be_scored.rs` 守住「不得进入打字
 # 评分」，复用它等于让那道现成的门禁直接看住生产路径。
 yunjian-recite = { path = "../yunjian-recite" }
+# 注音层的通用候选来源。破读词表只覆盖 22 首名册，表外的字要靠它给出候选；
+# 两者的强弱差别由 `annotate::Reading` 在类型上分开，不靠调用点自觉。
+pinyin.workspace = true
 bzip2 = { workspace = true, optional = true }
 rodio = { workspace = true, optional = true }
 sherpa-rs = { workspace = true, optional = true }

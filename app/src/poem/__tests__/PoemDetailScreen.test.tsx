@@ -27,6 +27,9 @@ function commentary(overrides: Partial<CommentaryEntry["citation"]> = {}): Comme
   };
 }
 
+/** 空注音：既有用例一律不开拼音层，形状齐全而内容为空即可。 */
+const EMPTY_COVERAGE = { attested: 0, generic: 0, uncertain: 0, absent: 0 };
+
 function detailFixture(overrides: Partial<PoemDetail> = {}): PoemDetail {
   return {
     poem: {
@@ -86,7 +89,11 @@ function detailFixture(overrides: Partial<PoemDetail> = {}): PoemDetail {
 }
 
 function mount(detail: PoemDetail, appreciation: AppreciationState = { kind: "absent" }) {
-  const poemPort: PoemPort = { poemDetail: () => Promise.resolve(detail) };
+  const poemPort: PoemPort = {
+    poemDetail: () => Promise.resolve(detail),
+    poemAnnotations: (request) =>
+      Promise.resolve({ poem_id: request.poem_id, lines: [], coverage: EMPTY_COVERAGE }),
+  };
   const appreciationPort: AppreciationPort = { appreciate: () => Promise.resolve(appreciation) };
   const onBack = vi.fn();
   render(
@@ -308,6 +315,8 @@ describe("失败与返回", () => {
   it("读取失败显示原因而不是空页", async () => {
     const poemPort: PoemPort = {
       poemDetail: () => Promise.reject(new Error("集评 c-9 缺出处")),
+      poemAnnotations: (request) =>
+        Promise.resolve({ poem_id: request.poem_id, lines: [], coverage: EMPTY_COVERAGE }),
     };
     render(
       <PoemDetailScreen
@@ -323,7 +332,11 @@ describe("失败与返回", () => {
   });
 
   it("AI 端口抛异常时面板落到失败态，不影响考据材料", async () => {
-    const poemPort: PoemPort = { poemDetail: () => Promise.resolve(detailFixture()) };
+    const poemPort: PoemPort = {
+      poemDetail: () => Promise.resolve(detailFixture()),
+      poemAnnotations: (request) =>
+        Promise.resolve({ poem_id: request.poem_id, lines: [], coverage: EMPTY_COVERAGE }),
+    };
     render(
       <PoemDetailScreen
         poemId="p-1"

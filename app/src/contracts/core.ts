@@ -155,6 +155,77 @@ export interface ToneAnnotation {
   either_count: number;
 }
 
+/**
+ * 有据破读的依据强度。`crates/yunjian-voice/src/annotate.rs` 的 `AttestedConfidence`，
+ * `rename_all = "snake_case"`。
+ *
+ * **只有两个取值。** 破读词表里还有第三档 `engine_default`，它表示的恰恰是「不覆写，
+ * 只登记处置」，因此在类型上到不了这里——那一档的字会落到 `generic` 或 `uncertain`。
+ */
+export type AttestedConfidence = "rhyme_attested" | "tone_split";
+
+/**
+ * 一个字的读音处境，四档互斥。`crates/yunjian-voice/src/annotate.rs` 的 `Reading`，
+ * 内部标签是 `kind`。
+ *
+ * 四档必须在界面上说成四种不同的话：
+ *
+ * | `kind` | 含义 | 界面不能说成 |
+ * | --- | --- | --- |
+ * | `attested` | 破读词表按当前句给出的有据读音 | —— |
+ * | `generic` | 通用候选只有一个 | 「古典语境裁决」 |
+ * | `uncertain` | 多候选且无破读证据 | 任何一个唯一读音 |
+ * | `absent` | 没有读音数据 | 一个占位读音 |
+ */
+export type Reading =
+  | {
+      kind: "attested";
+      pinyin: string;
+      confidence: AttestedConfidence;
+      evidence: string;
+    }
+  | { kind: "generic"; pinyin: string }
+  | { kind: "uncertain"; candidates: string[] }
+  | { kind: "absent" };
+
+/**
+ * 正文里的一格。
+ *
+ * `reading` 为 `null` 表示这一格**不是内容字**（标点、空白），因此没有读音层。
+ * 它与 `{ kind: "absent" }` 不是一回事：后者是「有读音位但查不到数据」。
+ * 混同会让「，」也顶着一个「暂无注音」。
+ */
+export interface AnnotationCell {
+  character: string;
+  reading: Reading | null;
+}
+
+/** 一行的注音。`line_index` 与 `ToneLine.line_index` 同一口径：都按过滤空行后的下标。 */
+export interface AnnotatedLine {
+  line_index: number;
+  text: string;
+  cells: AnnotationCell[];
+}
+
+/**
+ * 四档的绝对数量。
+ *
+ * 存计数而不是比例，因为比例会把「3 / 4」和「3000 / 4000」说成同一件事。
+ */
+export interface AnnotationCoverage {
+  attested: number;
+  generic: number;
+  uncertain: number;
+  absent: number;
+}
+
+/** 整首的注音结果。`poem_id` 原样回带，供界面确认这份注音属于它当前展示的那一首。 */
+export interface PoemAnnotation {
+  poem_id: string;
+  lines: AnnotatedLine[];
+  coverage: AnnotationCoverage;
+}
+
 /** 逐韵书的韵部归属。`crates/yunjian-core/src/search/topic.rs:207-218`。 */
 export interface RhymeGroupMembership {
   book: RhymeBook;

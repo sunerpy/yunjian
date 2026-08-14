@@ -84,7 +84,15 @@ describe("容器类不相交", () => {
   });
 
   it("原文块不带任何 ai- 类", () => {
-    const { getByTestId } = render(<OriginalText poem={POEM} tones={TONES} showTones={false} />);
+    const { getByTestId } = render(
+      <OriginalText
+        poem={POEM}
+        tones={TONES}
+        showTones={false}
+        annotation={null}
+        showPinyin={false}
+      />,
+    );
     const classes = classesOf(getByTestId("poem-original"));
     expect(classes).toContain("sourced-block");
     expect(classes.filter((name) => name.startsWith("ai-"))).toEqual([]);
@@ -102,7 +110,15 @@ describe("容器类不相交", () => {
     const aiClasses = new Set(classesOf(ai.getByTestId("ai-panel")));
     ai.unmount();
 
-    const original = render(<OriginalText poem={POEM} tones={TONES} showTones={false} />);
+    const original = render(
+      <OriginalText
+        poem={POEM}
+        tones={TONES}
+        showTones={false}
+        annotation={null}
+        showPinyin={false}
+      />,
+    );
     const originalClasses = new Set(classesOf(original.getByTestId("poem-original")));
     original.unmount();
 
@@ -125,7 +141,15 @@ describe("溯源标记", () => {
     expect(ai.getByTestId("ai-panel").getAttribute("data-provenance")).toBe("ai-generated");
     ai.unmount();
 
-    const original = render(<OriginalText poem={POEM} tones={TONES} showTones={false} />);
+    const original = render(
+      <OriginalText
+        poem={POEM}
+        tones={TONES}
+        showTones={false}
+        annotation={null}
+        showPinyin={false}
+      />,
+    );
     expect(original.getByTestId("poem-original").getAttribute("data-provenance")).toBe("sourced");
     original.unmount();
 
@@ -138,7 +162,13 @@ describe("溯源标记", () => {
   it("AI 容器里不含任何 sourced 容器，反之亦然——嵌套就是交错", () => {
     const { getByTestId } = render(
       <>
-        <OriginalText poem={POEM} tones={TONES} showTones={false} />
+        <OriginalText
+          poem={POEM}
+          tones={TONES}
+          showTones={false}
+          annotation={null}
+          showPinyin={false}
+        />
         <CommentaryList commentaries={[COMMENTARY]} />
         <AiAppreciationPanel state={AI_STATE} />
       </>,
@@ -155,7 +185,13 @@ describe("溯源标记", () => {
   it("AI 面板在文档顺序上排在原文与集评之后", () => {
     const { getByTestId } = render(
       <>
-        <OriginalText poem={POEM} tones={TONES} showTones={false} />
+        <OriginalText
+          poem={POEM}
+          tones={TONES}
+          showTones={false}
+          annotation={null}
+          showPinyin={false}
+        />
         <CommentaryList commentaries={[COMMENTARY]} />
         <AiAppreciationPanel state={AI_STATE} />
       </>,

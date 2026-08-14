@@ -311,3 +311,77 @@ describe("颜色一律走令牌层", () => {
     expect(block?.[1]).not.toContain("--color-");
   });
 });
+
+/**
+ * 每个被引用的令牌都必须真的定义过。
+ *
+ * # 这条断言防的是一次真实的静默失效
+ *
+ * 本仓库的手写样式表全部靠 `var(--token)` 取值，而**引用一个不存在的自定义属性不会报错、
+ * 也不会回退到上一条声明**：整条声明在「计算值时刻」失效，该属性退回初始值。落地的样子是
+ * `gap: var(--space-5)` 让 `row-gap` 变成 `normal`——**比不写这条规则更糟**，因为它连同一
+ * 选择器上原本生效的 `gap` 一起抹掉了。
+ *
+ * 实测过程：注音层为了放开行间距写了 `gap: var(--space-5)`，而间距刻度是 1/2/3/4/6/8/12，
+ * **没有 5**。产物照旧构建成功，397 条测试照旧全绿，只有 `getComputedStyle` 里那个
+ * `row-gap: normal` 说出了真相。凭记忆写令牌名与凭记忆写标识符是同一类错，区别只是 CSS
+ * 不会替你判错。
+ *
+ * 扫描的是**去掉注释之后的正文**：上面这段解释本身就写出了那个不存在的令牌名。
+ *
+ * **带回退值的引用不算缺陷**：`var(--maybe, rgb(...))` 在令牌缺失时会取回退值，声明照旧
+ * 生效，那是一种刻意的可选令牌写法（`recite.css` 的 karaoke 高亮就是这么写的）。只有
+ * **不带回退**又指向未定义令牌的引用才会静默失效，所以只判这一种。
+ */
+describe("样式表引用的令牌都必须定义过", () => {
+  /** 参与检查的手写样式表。`tailwind.css` 只有指令与 `@theme`，不含规则。 */
+  const STYLESHEETS = [
+    "styles.css",
+    "chrome/titlebar.css",
+    "search/search.css",
+    "poem/poem.css",
+    "recite/recite.css",
+    "settings/settings.css",
+  ] as const;
+
+  /** 令牌的定义处。`styles.css` 是唯一一处，这本身也是被断言的事实。 */
+  const defined = new Set(
+    [...tokens.matchAll(/^\s*(--[\w-]+)\s*:/gm)].map((match) => match[1] ?? ""),
+  );
+
+  it("扫描前提成立：定义与引用都不为空", () => {
+    expect(defined.size, "一个令牌定义都没扫到，正则失配").toBeGreaterThan(20);
+    const referenced = STYLESHEETS.flatMap((relative) => [
+      ...readFileSync(resolve(process.cwd(), "src", relative), "utf8").matchAll(
+        /var\(\s*(--[\w-]+)\s*([,)])/g,
+      ),
+    ]);
+    expect(referenced.length, "一处 var() 引用都没扫到，正则失配").toBeGreaterThan(50);
+  });
+
+  it("**没有任何样式表引用未定义的令牌**", () => {
+    const offenders: string[] = [];
+    for (const relative of STYLESHEETS) {
+      const body = readFileSync(resolve(process.cwd(), "src", relative), "utf8").replace(
+        /\/\*[\s\S]*?\*\//g,
+        "",
+      );
+      for (const match of body.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)) {
+        const token = match[1] ?? "";
+        // 带回退值的引用在令牌缺失时仍然生效，不是缺陷。
+        if (match[2] === ",") {
+          continue;
+        }
+        // 局部自定义属性（在同一份样式表里自己定义、自己用）也算定义过。
+        const localOnly = new RegExp(`${token}\\s*:`).test(body);
+        if (!defined.has(token) && !localOnly) {
+          offenders.push(`${relative}: ${token}`);
+        }
+      }
+    }
+    expect(
+      [...new Set(offenders)],
+      `这些令牌被引用但没有定义，整条声明会在计算值时刻失效并静默退回初始值：\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+});

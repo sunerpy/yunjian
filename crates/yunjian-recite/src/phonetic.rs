@@ -361,6 +361,45 @@ mod tests {
         }
     }
 
+    /// 声调符号。带调读音就是靠它们与无调读音区分开的。
+    const TONE_DIACRITICS: &[char] = &[
+        'ā', 'á', 'ǎ', 'à', 'ē', 'é', 'ě', 'è', 'ī', 'í', 'ǐ', 'ì', 'ō', 'ó', 'ǒ', 'ò', 'ū', 'ú',
+        'ǔ', 'ù', 'ǖ', 'ǘ', 'ǚ', 'ǜ',
+    ];
+
+    /// 加权表只能吃无调读音，这条断言替代了「希望没人改」。
+    ///
+    /// 工作区给 `pinyin` 同时开了无调与带调两种形式，因为注音层要展示带调拼音。于是
+    /// 「喂给近音判据的是哪一种」从一个编译期事实降级成了一个调用点选择，而选错不会
+    /// 编译失败——它只会让加权表按字节给每个音节叠上整字代价，把 0.2/0.3 的模糊对压没，
+    /// 近音判据静默失效而所有既有用例照旧全绿。
+    ///
+    /// 判据不能写成「全是 ASCII」：无调形式里 `ü` 是真的存在的（「绿」得到 `lü`），
+    /// 那样写会因为一个与声调无关的字符判红。
+    #[test]
+    fn the_near_match_table_is_fed_toneless_readings() {
+        let sampled: Vec<&'static str> = ['中', '行', '衰', '绿', '女']
+            .into_iter()
+            .flat_map(readings)
+            .collect();
+        assert!(
+            !sampled.is_empty(),
+            "取样字都没有读音，这条断言的前提不成立"
+        );
+
+        for reading in sampled {
+            let offending: Vec<char> = reading
+                .chars()
+                .filter(|character| TONE_DIACRITICS.contains(character))
+                .collect();
+            assert!(
+                offending.is_empty(),
+                "近音判据拿到了带调读音 {reading:?}（声调符号 {offending:?}）。\
+                 加权表按字节比对，声调符号是多字节非 ASCII，会把模糊对彻底压过去"
+            );
+        }
+    }
+
     #[test]
     fn a_deletion_is_never_reclassified_phonetically() {
         let fixture = fixture();

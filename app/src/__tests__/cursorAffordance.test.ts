@@ -57,6 +57,7 @@ const STYLESHEETS = [
 /** 含 `<button>` 或可禁用部件的全部组件。 */
 const COMPONENTS = [
   "chrome/TitleBar.tsx",
+  "poem/OriginalText.tsx",
   "poem/PoemDetailScreen.tsx",
   "recite/ReciteScreen.tsx",
   "recite/ModeSelector.tsx",

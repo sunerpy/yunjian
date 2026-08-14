@@ -211,6 +211,47 @@ describe("外壳导航到背诵界面", () => {
     expect(screen.getByTestId("nav-search").getAttribute("aria-current")).toBeNull();
   });
 
+  it("**从 `<App />` 走到详情页，拼音与平仄两个开关都在且各自独立**", async () => {
+    // 与本文件存在的理由同一条：注音层的档位断言全在组件级，唯有这一条能拦住
+    // 「注音层做好了但详情页没接上开关」。所以只点用户能看见的东西。
+    await renderApp();
+    // 检索屏初始没有结果，得先真的查一次——这也正是用户到详情页的唯一路径。
+    fireEvent.change(screen.getByTestId("search-input"), { target: { value: "明月" } });
+    fireEvent.click(screen.getByTestId("search-submit"));
+    const rows = await waitFor(() => {
+      const found = screen.getAllByTestId("result-row");
+      expect(found.length).toBeGreaterThan(0);
+      return found;
+    });
+    const open = rows[0]?.querySelector("button");
+    expect(open, "检索结果行里没有可点的打开按钮").toBeTruthy();
+    fireEvent.click(open as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("poem-detail")).toBeTruthy();
+    });
+
+    const pinyin = screen.getByTestId("pinyin-toggle") as HTMLInputElement;
+    const tones = screen.getByTestId("tone-toggle") as HTMLInputElement;
+    expect(pinyin.checked).toBe(false);
+    expect(tones.checked).toBe(false);
+
+    fireEvent.click(pinyin);
+    await waitFor(() => {
+      expect(screen.getByTestId("poem-body").dataset.pinyin).toBe("on");
+    });
+    // 开拼音不得把平仄一起点亮，这条在真实页面上再确认一次。
+    expect((screen.getByTestId("tone-toggle") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByTestId("tone-row")).toBeNull();
+
+    // 样例注音里四档齐全，所以真实路径上四种形态都应该看得到。
+    expect(screen.getAllByTitle("暂无注音").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("uncertain-mark").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("通用拼音，不是古典语境裁决").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle(/有据破读：/).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("pinyin-coverage").textContent).toContain("名册之外");
+  });
+
   it("**从 `<App />` 走完一整局：出题、作答、五类标记、发音注记、落账**", async () => {
     // 这一条是整条链的端到端确认，也是唯一能拦住「面板做好了但接不上」的测法。
     await renderApp();
