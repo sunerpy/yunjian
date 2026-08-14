@@ -43,6 +43,8 @@
 use yunjian_core::{Config, LoggerConfig, init_config, init_logger};
 
 mod ipc;
+mod tray;
+mod updater;
 pub mod voice_ipc;
 
 /// 配置发现与用户配置目录使用的应用名。与命令行共用同一个名字，
@@ -76,8 +78,14 @@ pub fn run() {
     );
 
     let startup_config = config.clone();
-    ipc::configure_builder(tauri::Builder::default(), config)
-        .setup(move |_| {
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+    ipc::configure_builder(builder, config)
+        .on_window_event(tray::handle_window_event)
+        .setup(move |app| {
+            tray::setup(app)?;
+            updater::start_delayed_check(app.handle().clone());
             start_asset_sync(startup_config.clone());
             Ok(())
         })

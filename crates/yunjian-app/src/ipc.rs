@@ -265,6 +265,8 @@ pub(crate) fn configure_builder<R: Runtime>(builder: Builder<R>, config: Config)
             recite_commit_grade,
             recite_due,
             recite_stats,
+            crate::updater::update_check,
+            crate::updater::update_download_and_install,
             crate::voice_ipc::voice_availability,
             crate::voice_ipc::voice_demonstrate,
             crate::voice_ipc::voice_start_session,

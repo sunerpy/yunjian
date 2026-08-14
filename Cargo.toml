@@ -220,6 +220,8 @@ getrandom = "0.4"
 # 变成运行期缺陷而不是编译错误。
 tauri = { version = "2.11" }
 tauri-build = { version = "2.6" }
+tauri-plugin-dialog = { version = "=2.7.2" }
+tauri-plugin-updater = { version = "=2.10.1" }
 
 # 工作区级 lint 门禁。每个成员以 `[lints] workspace = true` 引用，没有例外。
 #
