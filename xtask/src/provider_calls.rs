@@ -134,6 +134,8 @@ pub fn run(corpus_db: PathBuf, out: PathBuf) -> Result<()> {
 
     emit("== provider 调用计数实测 ==");
 
+    crate::prerequisite::require_corpus_db(&corpus_db)?;
+
     // 只读打开源库取两个 stable_id。**绝不 `CorpusHandle::open` 源库**：那会在库里
     // 就地建首启派生结构（唐宋规模约十分钟），而随包工件恰恰不该带那些表。
     let picked = pick_two(&corpus_db)?;

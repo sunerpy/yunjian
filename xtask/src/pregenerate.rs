@@ -101,6 +101,7 @@ pub fn run(
     })?;
     emit(&format!("披露校验通过：{}", disclosure_path.display()));
 
+    crate::prerequisite::require_corpus_db(&corpus_db)?;
     let source = open_read_only(&corpus_db)
         .with_context(|| format!("只读打开语料库 {} 失败", corpus_db.display()))?;
     let corpus_version = source
