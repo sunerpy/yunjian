@@ -54,7 +54,8 @@
   设备、`adb` 与签名凭据才能推进。
 - **桌面端真机验收**——20 条预声明断言 Linux 侧 3 PASS / 17 NOT EXECUTED（无 GPU 容器加 Xvfb
   下 WebKitGTK 合成到 X 读不回的 GL 表面）；Windows / macOS 无交互式会话与签名身份。
-- **发布产物与首个 tag**——依赖上面两项。
+- **首个 tag**——发布管线已经覆盖五个 CLI 目标、三平台桌面安装包、updater 签名和逐资产
+  SHA-256，但还没有切出首个正式 tag；桌面端真机验收与签名凭据仍是发布前置条件。
 - **随包赏析数据集**——管线与门禁齐备，但没有开放权重推理条件，`dataset/` 目前只有 README，
   一条正文都没有编造。
 - **词谱句式表**——只覆盖「念奴娇」「水调歌头」两支，依据是《全宋词》实测众数而非公有领域
@@ -100,10 +101,41 @@ irm https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.ps1 |
 两个脚本都检测系统与 CPU 架构、挑出对应的发布产物、**校验 SHA-256 之后才落盘**，
 校验不过就一个文件也不装。可用环境变量：
 
-| 变量                  | 缺省               | 作用                                 |
-| --------------------- | ------------------ | ------------------------------------ |
-| `YUNJIAN_VERSION`     | 最新正式发布       | 装指定版本，`v0.1.0` 与 `0.1.0` 都收 |
-| `YUNJIAN_INSTALL_DIR` | `$HOME/.local/bin` | 安装目录                             |
+| 变量                        | 缺省               | 作用                                                         |
+| --------------------------- | ------------------ | ------------------------------------------------------------ |
+| `YUNJIAN_VERSION`           | 最新正式发布       | 装指定版本，`v0.1.0` 与 `0.1.0` 都收                         |
+| `YUNJIAN_INSTALL_DIR`       | `$HOME/.local/bin` | 安装目录                                                     |
+| `GH_TOKEN` / `GITHUB_TOKEN` | 无                 | 通过 GitHub CLI 下载私有仓库 Release；也可先 `gh auth login` |
+
+私有仓库必须先安装 `gh`，再提供能读取该仓库 Release 的 token，或提前完成 `gh auth login`：
+
+```bash
+GH_TOKEN=github_pat_xxx sh scripts/install.sh
+```
+
+```powershell
+$env:GH_TOKEN = 'github_pat_xxx'
+.\scripts\install.ps1
+```
+
+token 只交给 GitHub CLI，不写入安装脚本的临时目录。自定义 `YUNJIAN_BASE_URL` /
+`YUNJIAN_API_URL` 时仍使用普通 HTTP 下载，便于内部镜像和离线测试。
+
+发布管线生成以下 CLI 归档，全部启用 `voice,mcp`，并将 voice 所需动态库放在归档内：
+
+| 系统    | 目标                        | 归档     |
+| ------- | --------------------------- | -------- |
+| Linux   | `x86_64-unknown-linux-gnu`  | `tar.gz` |
+| Linux   | `aarch64-unknown-linux-gnu` | `tar.gz` |
+| macOS   | `x86_64-apple-darwin`       | `tar.gz` |
+| macOS   | `aarch64-apple-darwin`      | `tar.gz` |
+| Windows | `x86_64-pc-windows-msvc`    | `zip`    |
+
+Linux CLI 以 glibc 2.31 为上限；sherpa-onnx 没有可用于 `voice` 的 musl 预编译库，所以安装脚本
+会先兼容探测旧版 musl 资产，再回退到当前 GNU 资产。桌面端另发布 Linux x86_64 的 `.deb` 与
+`.AppImage`、macOS Apple Silicon 的 `.dmg` 与 updater `.app.tar.gz`、Windows x86_64 的 NSIS
+`.exe` 与 `.msi`。Tauri 自动更新只声明 `linux-x86_64`、`darwin-aarch64` 和
+`windows-x86_64-nsis`；每个安装包、签名、`latest.json` 与 CLI 归档都有同名 `.sha256`。
 
 > [!NOTE]
 > 首个正式发布（`v0.1.0`）还没切出来，上面的安装命令要等它。在此之前从源码构建：
@@ -284,6 +316,16 @@ make help    # 列出所有 target
 
 `cargo run -p xtask -- verify-sources --offline` 离线校验上游语料源逐资产的许可与摘要，
 退出码 0 说明环境是对的。
+
+正式发布还需要仓库 Actions secrets `TAURI_SIGNING_PRIVATE_KEY` 和
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。任一 updater 签名缺失或与应用内公钥不匹配时，流程
+都会失败并让 GitHub Release 保持 draft；不要通过关闭签名绕过门禁。
+
+Linux x86_64 作业已记录 AWS CodeBuild runner `yunjian-runner` 的迁移标签，但当前
+CodeConnections 连接 `yunjian-github` 仍为 `PENDING`。在 AWS 控制台授权连接并重建
+`WORKFLOW_JOB_QUEUED` webhook 前，所有 job 继续使用 GitHub-hosted runner。Windows、macOS、
+Linux ARM 和混合平台矩阵不迁移到这个 Linux x86_64 项目；启用 CodeBuild 时每个 job 还必须
+保留自己的唯一第二标签，避免 GitHub 的 superset 标签匹配把作业路由到错误 runner。
 
 约定：
 

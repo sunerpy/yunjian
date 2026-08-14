@@ -10,6 +10,9 @@
 #   YUNJIAN_INSTALL_DIR   安装目录。缺省 `$HOME\.local\bin`。
 #   YUNJIAN_BASE_URL      发布资产的下载前缀。缺省 GitHub Releases。
 #   YUNJIAN_API_URL       解析最新版本用的 API 前缀。缺省 GitHub API。
+#   GH_TOKEN / GITHUB_TOKEN
+#                         私有仓库访问令牌；也可先执行 `gh auth login`，脚本会读取
+#                         GitHub CLI 的凭据；令牌不写入脚本临时目录。
 #
 # 退出码与 `yunjian` 自身的约定一致（见 docs/CLI.zh.md）：
 #
@@ -35,6 +38,8 @@ function Get-EnvOrDefault {
     if ([string]::IsNullOrWhiteSpace($value)) { return $Default }
     return $value
 }
+
+$AuthToken = Get-EnvOrDefault -Name 'GH_TOKEN' -Default (Get-EnvOrDefault -Name 'GITHUB_TOKEN' -Default '')
 
 # 日志一律走 stderr，stdout 留给可能的管道消费方。与 CLI 的两条流约定同源。
 function Write-Info {
@@ -75,7 +80,11 @@ function Resolve-ReleaseTag {
     }
 
     try {
-        $latest = Invoke-RestMethod -Uri "$ApiUrl/releases/latest" -UseBasicParsing
+        if ($script:UseGh) {
+            $latest = (& gh api "repos/$Repo/releases/latest" | ConvertFrom-Json)
+        } else {
+            $latest = Invoke-RestMethod -Uri "$ApiUrl/releases/latest" -UseBasicParsing
+        }
     } catch {
         Exit-WithUnavailableError '取不到最新版本；用 YUNJIAN_VERSION 显式指定，例如 $env:YUNJIAN_VERSION = "v0.1.0"'
     }
@@ -91,7 +100,12 @@ function Save-RemoteFile {
         [Parameter(Mandatory = $true)][string] $Path
     )
     try {
-        Invoke-WebRequest -Uri $Uri -OutFile $Path -UseBasicParsing | Out-Null
+        if ($script:UseGh -and $Uri.StartsWith("$script:BaseUrl/")) {
+            & gh release download $script:Tag --repo $Repo --pattern ([IO.Path]::GetFileName($Uri)) --output $Path
+            if ($LASTEXITCODE -ne 0) { return $false }
+        } else {
+            Invoke-WebRequest -Uri $Uri -OutFile $Path -UseBasicParsing | Out-Null
+        }
         return $true
     } catch {
         return $false
@@ -103,8 +117,21 @@ function Save-RemoteFile {
 $baseUrl = Get-EnvOrDefault -Name 'YUNJIAN_BASE_URL' -Default "https://github.com/$Repo/releases/download"
 $apiUrl = Get-EnvOrDefault -Name 'YUNJIAN_API_URL' -Default "https://api.github.com/repos/$Repo"
 $installDir = Get-EnvOrDefault -Name 'YUNJIAN_INSTALL_DIR' -Default (Join-Path $HOME '.local\bin')
+$script:BaseUrl = $baseUrl
+$script:UseGh = $false
+if ($baseUrl -eq "https://github.com/$Repo/releases/download" -and $apiUrl -eq "https://api.github.com/repos/$Repo") {
+    $gh = Get-Command gh -ErrorAction SilentlyContinue
+    if (-not [string]::IsNullOrWhiteSpace($AuthToken)) {
+        if ($null -eq $gh) { Exit-WithUsageError 'GH_TOKEN/GITHUB_TOKEN 访问私有 Release 需要 GitHub CLI（gh）' }
+        $script:UseGh = $true
+    } elseif ($null -ne $gh) {
+        & gh auth token 2>$null | Out-Null
+        $script:UseGh = $LASTEXITCODE -eq 0
+    }
+}
 
 $tag = Resolve-ReleaseTag -ApiUrl $apiUrl
+$script:Tag = $tag
 $version = $tag.TrimStart('v')
 $target = Get-TargetTriple
 $archive = "$BinaryName-$version-$target.zip"
@@ -151,6 +178,13 @@ try {
 
     New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     Copy-Item -Path $extracted -Destination (Join-Path $installDir "$BinaryName.exe") -Force
+
+    $runtimeLibraries = @(Get-ChildItem -Path $workDir -File | Where-Object {
+        $_.Name -like '*onnxruntime*.dll' -or $_.Name -like '*sherpa-onnx-*.dll'
+    })
+    foreach ($runtimeLibrary in $runtimeLibraries) {
+        Copy-Item -Path $runtimeLibrary.FullName -Destination (Join-Path $installDir $runtimeLibrary.Name) -Force
+    }
 
     Write-Info "已安装 $(Join-Path $installDir "$BinaryName.exe")（$target）"
 

@@ -9,6 +9,19 @@ name: ci
 # `make build`），**不在本文件里重写命令**。门禁只有一处定义，否则「本机绿」与
 # 「CI 绿」会变成两套标准。唯一的例外是 test-windows：它刻意直接跑 cargo，
 # 见该作业的注释。
+#
+# CodeBuild 预备（尚未启用）：`yunjian-github` CodeConnections 状态仍为 PENDING，授权并
+# 重建 `WORKFLOW_JOB_QUEUED` webhook 前不得切 runner。连接 AVAILABLE 后，Linux x86_64
+# 作业可把 `runs-on: ubuntu-latest` 分别替换为下面两标签；每个 job 的第二个标签必须唯一，
+# 否则 GitHub 的 superset 匹配会把 job 路由给错误 runner。`test-windows` 继续 hosted：
+#
+#   test       → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-test]
+#   msrv       → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-msrv]
+#   security   → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-security]
+#   ci-success → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-success]
+#
+# 若仓库转为 private，第三方报告上传还必须配置各服务自己的 token；`GITHUB_TOKEN` 不能
+# 代替 Codecov repository upload token。
 
 on:
   push:

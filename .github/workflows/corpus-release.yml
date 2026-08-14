@@ -22,6 +22,10 @@ name: corpus-release
 # `corpus-audit.db` 是构建期台账（`defect` + `disposition`），供排查用；
 # 它作为 workflow artifact 保留 90 天，**不**作为 Release 资产——用户工件里
 # 不该有任何诊断数据。
+#
+# CodeBuild 预备（尚未启用）：连接 AVAILABLE 且 webhook 在授权后重建之前继续使用
+# `ubuntu-latest`。届时 `build` 使用
+# `[codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, corpus-release-build]`。
 
 on:
   push:

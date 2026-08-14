@@ -57,7 +57,9 @@ Implemented on `main` **and covered by tests**:
 - **Real-machine desktop acceptance** — of 20 pre-declared assertions, 3 PASS and 17 NOT EXECUTED on
   Linux (under a GPU-less container plus Xvfb, WebKitGTK composites into a GL surface X cannot read
   back); Windows / macOS have no interactive session and no signing identity.
-- **Release artifacts and the first tag** — blocked on the two items above.
+- **The first tag** — the release pipeline now covers five CLI targets, desktop installers on three
+  platforms, updater signatures, and per-asset SHA-256 files, but no first release tag has been cut;
+  real-machine desktop acceptance and signing credentials remain release prerequisites.
 - **The bundled appreciation dataset** — the pipeline and its gates exist, but no open-weight
   inference is available here, so `dataset/` holds only a README; not one line was fabricated.
 - **The 词谱 line-pattern table** — only 念奴娇 and 水调歌头 are covered, and from the measured mode
@@ -107,10 +109,45 @@ irm https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.ps1 |
 Both scripts detect the OS and CPU architecture, resolve the matching release asset, and
 **verify its SHA-256 before anything lands on disk** — a checksum failure installs nothing.
 
-| Variable              | Default            | Effect                                          |
-| --------------------- | ------------------ | ----------------------------------------------- |
-| `YUNJIAN_VERSION`     | latest release     | Install a specific version; `v0.1.0` or `0.1.0` |
-| `YUNJIAN_INSTALL_DIR` | `$HOME/.local/bin` | Install directory                               |
+| Variable                    | Default            | Effect                                                          |
+| --------------------------- | ------------------ | --------------------------------------------------------------- |
+| `YUNJIAN_VERSION`           | latest release     | Install a specific version; `v0.1.0` or `0.1.0`                 |
+| `YUNJIAN_INSTALL_DIR`       | `$HOME/.local/bin` | Install directory                                               |
+| `GH_TOKEN` / `GITHUB_TOKEN` | none               | Download a private Release through `gh`; or run `gh auth login` |
+
+For a private repository, install the GitHub CLI first, then provide a token that can read its
+Releases or authenticate with `gh auth login`:
+
+```bash
+GH_TOKEN=github_pat_xxx sh scripts/install.sh
+```
+
+```powershell
+$env:GH_TOKEN = 'github_pat_xxx'
+.\scripts\install.ps1
+```
+
+The token is handed only to the GitHub CLI and is never written to the installer's temporary
+directory. Custom `YUNJIAN_BASE_URL` / `YUNJIAN_API_URL` endpoints continue to use ordinary HTTP
+downloads for internal mirrors and offline tests.
+
+The release pipeline produces these CLI archives with both `voice,mcp` enabled and the native voice
+libraries included:
+
+| OS      | Target                      | Archive  |
+| ------- | --------------------------- | -------- |
+| Linux   | `x86_64-unknown-linux-gnu`  | `tar.gz` |
+| Linux   | `aarch64-unknown-linux-gnu` | `tar.gz` |
+| macOS   | `x86_64-apple-darwin`       | `tar.gz` |
+| macOS   | `aarch64-apple-darwin`      | `tar.gz` |
+| Windows | `x86_64-pc-windows-msvc`    | `zip`    |
+
+Linux CLI binaries target a glibc 2.31 ceiling. sherpa-onnx does not provide a musl prebuilt library
+usable with `voice`, so the installer probes legacy musl assets for compatibility before falling
+back to the current GNU asset. Desktop assets are `.deb` and `.AppImage` for Linux x86_64, `.dmg`
+and updater `.app.tar.gz` for Apple Silicon macOS, and NSIS `.exe` plus `.msi` for Windows x86_64.
+Tauri updates declare only `linux-x86_64`, `darwin-aarch64`, and `windows-x86_64-nsis`. Every
+installer, signature, `latest.json`, and CLI archive has a matching `.sha256` file.
 
 > [!NOTE]
 > The first tagged release (`v0.1.0`) has not been cut yet, so the commands above are waiting on
@@ -298,6 +335,18 @@ make help    # list every target
 
 `cargo run -p xtask -- verify-sources --offline` checks upstream corpus licences and digests
 offline; exit code 0 means the environment is correct.
+
+A production release also requires the Actions secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. If an updater signature is missing or does not match the
+public key embedded in the app, the workflow fails and leaves the GitHub Release as a draft; do not
+bypass this gate by disabling signing.
+
+The workflows record migration labels for the Linux x86_64 AWS CodeBuild runner project
+`yunjian-runner`, but the `yunjian-github` CodeConnections connection is still `PENDING`. Every job
+therefore remains GitHub-hosted until the connection is authorised in the AWS console and the
+`WORKFLOW_JOB_QUEUED` webhook is recreated. Windows, macOS, Linux ARM, and mixed-platform matrices
+must not move to that Linux x86_64 project. When CodeBuild is enabled, each job must also retain a
+unique second label so GitHub's superset label matching cannot route it to the wrong runner.
 
 Conventions:
 

@@ -16,8 +16,18 @@ name: release
 # 2. **Release 在全部构建成功前保持 draft。** 任一步失败就停在 draft：现象是「多了一个
 #    草稿」而不是「发出去一个没有产物的版本」，可观测且可修复。
 #
-# 当前的 build-binaries 只有一个 Linux 目标，是刻意的骨架。五平台矩阵、
-# `--features voice,mcp`、桌面安装包、校验和与移动端产物属于 todo 74，在此之上扩展。
+# 发布矩阵覆盖 Linux x64/arm64、macOS x64/arm64、Windows x64。五个目标都发布
+# `voice,mcp` CLI；Tauri 当前封闭的 updater 目标只有 Linux x64、macOS arm64、
+# Windows x64，因此只在这三个目标发布安装包，绝不拿无法编译的壳冒充五平台安装包。
+# Linux 的 sherpa-onnx 预编译动态库只提供 GNU 目标，不能与 musl 链接；Linux CLI
+# 因此用 cargo-zigbuild 把 GNU 基线钉在 glibc 2.31，而不是构建必失败的 musl+voice。
+#
+# CodeBuild 预备（尚未启用）：`yunjian-github` 连接为 PENDING，授权并重建 webhook 前
+# 全部 job 保持 GitHub-hosted。届时纯 Linux x86_64 控制作业分别用唯一标签
+# `release-please`、`release-verify-ci`、`release-upload-assets`、`release-publish`；
+# `build-binaries` 同时含 Linux ARM、macOS 与 Windows，不能整体切到当前 x86_64 项目，
+# 必须先按宿主平台拆 job。每个 CodeBuild job 都使用第一标签
+# `codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}` 加上述唯一标签。
 
 on:
   push:
@@ -50,7 +60,9 @@ concurrency:
 env:
   BINARY_NAME: yunjian
   CLI_CRATE: yunjian-cli
+  DESKTOP_BINARY_NAME: yunjian-desktop
   GIT_CLIFF_VERSION: 2.13.1
+  TAURI_CLI_VERSION: 2.11.4
 
 jobs:
   release-please:
@@ -157,7 +169,7 @@ jobs:
           sleep_secs=15
           run_id=""
           for i in $(seq 1 "${max_iters}"); do
-            run_id=$(gh api "repos/${REPO}/actions/runs?head_sha=${HEAD_SHA}&event=push&per_page=100" \
+            run_id=$(gh api "repos/${REPO}/actions/runs?head_sha=${HEAD_SHA}&event=push&branch=main&per_page=100" \
               --jq '[.workflow_runs[] | select(.path == ".github/workflows/ci.yml")]
                     | sort_by(.created_at) | last | .id // empty')
             if [ -n "${run_id}" ]; then
@@ -201,12 +213,43 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      # 骨架：先只有一个原生目标，证明「切 tag → 编译 → 挂产物 → 翻牌」这条链路成立。
-      # todo 74 在这里补齐 Linux/macOS/Windows 五平台、交叉编译与桌面安装包。
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
+            use_zigbuild: true
+            archive: tar.gz
+            desktop: linux
+            desktop_arch: x86_64
+            expected_arch: x86-64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            use_zigbuild: true
+            archive: tar.gz
+            desktop: none
+            desktop_arch: aarch64
+            expected_arch: aarch64
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            use_zigbuild: false
+            archive: tar.gz
+            desktop: none
+            desktop_arch: x86_64
+            expected_arch: x86_64
+          - target: aarch64-apple-darwin
+            os: macos-14
+            use_zigbuild: false
+            archive: tar.gz
+            desktop: macos
+            desktop_arch: aarch64
+            expected_arch: arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_zigbuild: false
+            archive: zip
+            desktop: windows
+            desktop_arch: x86_64
+            expected_arch: x86-64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -219,16 +262,150 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}
+          # sherpa-rs-sys 的 build script 会复制原生库。缓存 target 会保留脚本指纹却
+          # 丢掉复制结果，第二次运行才在链接时报缺库；原生下载另用 actions/cache。
+          cache-targets: false
 
-      # 只编 CLI 那个包。默认特性不含 voice：它要拉 libclang 与网络下载的原生产物，
-      # 分发物许可也与默认构建不同（见 docs/VOICE-BUILD.zh.md）。
-      # todo 74 会显式加上 `--features voice,mcp` 并处理随之而来的原生依赖。
-      - name: 编译
+      - name: 缓存 sherpa-onnx 原生产物
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sherpa-rs
+            ~/Library/Caches/sherpa-rs
+            ~/AppData/Local/sherpa-rs
+          key: sherpa-native-${{ matrix.target }}-v1.12.9
+
+      - name: 安装 Linux 原生依赖
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libclang-dev libasound2-dev
+          if [ "${{ matrix.desktop }}" = "linux" ]; then
+            sudo apt-get install -y --no-install-recommends \
+              libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+              librsvg2-dev libxdo-dev libssl-dev dpkg-dev patchelf
+          fi
+          SO=$(find /usr/lib/llvm-* -name 'libclang.so*' -print -quit 2>/dev/null || true)
+          if [ -z "$SO" ]; then
+            echo "::error::装了 libclang-dev 却找不到 libclang.so"
+            exit 1
+          fi
+          echo "LIBCLANG_PATH=$(dirname "$SO")" >> "$GITHUB_ENV"
+
+      - name: 配置 Windows libclang
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:ProgramFiles 'LLVM\bin'
+          if (-not (Test-Path (Join-Path $candidate 'libclang.dll'))) {
+            throw "找不到 Windows runner 预装的 libclang.dll：$candidate"
+          }
+          "LIBCLANG_PATH=$candidate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: 安装 Zig
+        if: matrix.use_zigbuild
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.13.0
+
+      - name: 安装 cargo-zigbuild
+        if: matrix.use_zigbuild
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: 安装 Tauri CLI
+        if: matrix.desktop != 'none'
+        shell: bash
+        run: cargo install tauri-cli --version "=${TAURI_CLI_VERSION}" --locked
+
+      - name: 编译 CLI（Linux GNU，glibc 2.31）
+        if: matrix.use_zigbuild
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
-        run: cargo build --release -p "${CLI_CRATE}" --target "${TARGET}"
+        run: |
+          set -euo pipefail
+          cargo zigbuild --release --locked -p "${CLI_CRATE}" \
+            --target "${TARGET}.2.31" --features voice,mcp
 
-      - name: 打包
+      - name: 编译 CLI（原生）
+        if: ${{ !matrix.use_zigbuild }}
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cargo build --release --locked -p "${CLI_CRATE}" \
+            --target "${TARGET}" --features voice,mcp
+
+      - name: 断言 CLI 同时带 voice 与 mcp
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          bin="target/${TARGET}/release/${BINARY_NAME}"
+          if [ "${{ runner.os }}" = "Windows" ]; then bin="${bin}.exe"; fi
+          test -f "$bin"
+          "$bin" --version
+          "$bin" mcp --help >/dev/null
+          log="${RUNNER_TEMP}/yunjian-feature.log"
+          "$bin" --log-level debug --json models list >/dev/null 2>"$log"
+          if ! grep -Fq 'sherpa-onnx ' "$log"; then
+            cat "$log" >&2
+            echo "::error::voice 后端版本探针未出现；拒绝发布缺少 voice 的 CLI"
+            exit 1
+          fi
+
+      - name: 暂存 CLI 与语音动态库
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          release="target/${TARGET}/release"
+          stage="${RUNNER_TEMP}/yunjian-cli-stage"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          exe="${BINARY_NAME}"
+          if [ "${{ runner.os }}" = "Windows" ]; then exe="${exe}.exe"; fi
+          cp "$release/$exe" "$stage/$exe"
+
+          case "${{ runner.os }}" in
+            Linux) patterns=('libonnxruntime.so*' 'libsherpa-onnx-c-api.so*' 'libsherpa-onnx-cxx-api.so*') ;;
+            macOS) patterns=('libonnxruntime*.dylib' 'libsherpa-onnx-c-api*.dylib' 'libsherpa-onnx-cxx-api*.dylib') ;;
+            Windows) patterns=('onnxruntime*.dll' 'sherpa-onnx-c-api*.dll' 'sherpa-onnx-cxx-api*.dll') ;;
+          esac
+          shopt -s nullglob
+          for pattern in "${patterns[@]}"; do
+            found=()
+            while IFS= read -r native_file; do
+              found+=("$native_file")
+            done < <(find "$release" -maxdepth 1 -type f -name "$pattern" -print)
+            if [ "${#found[@]}" -eq 0 ]; then
+              echo "::error::缺少 voice 运行库：$pattern"
+              find "$release" -maxdepth 1 -type f -print
+              exit 1
+            fi
+            cp "${found[@]}" "$stage/"
+          done
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            readelf --version-info "$stage/$exe" "$stage"/*.so* > "${RUNNER_TEMP}/glibc-versions.txt"
+            if grep -E 'GLIBC_2\.(3[2-9]|[4-9][0-9])|GLIBC_[3-9]' "${RUNNER_TEMP}/glibc-versions.txt"; then
+              echo "::error::Linux 发布包含高于 glibc 2.31 的原生库"
+              exit 1
+            fi
+          fi
+          ls -la "$stage"
+
+      - name: 打包 CLI（tar.gz）
+        if: matrix.archive == 'tar.gz'
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
           VERSION: ${{ needs.release-please.outputs.version }}
@@ -236,9 +413,166 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           archive="${BINARY_NAME}-${VERSION}-${TARGET}.tar.gz"
-          tar -czf "dist/${archive}" -C "target/${TARGET}/release" "${BINARY_NAME}"
-          ( cd dist && sha256sum "${archive}" > "${archive}.sha256" )
-          ls -l dist
+          tar -czf "dist/${archive}" -C "${RUNNER_TEMP}/yunjian-cli-stage" .
+          tar -tzf "dist/${archive}" | tee "${RUNNER_TEMP}/cli-contents.txt"
+          grep -Eq '(^|/)yunjian$' "${RUNNER_TEMP}/cli-contents.txt"
+          grep -Eiq 'onnxruntime|sherpa-onnx-c-api' "${RUNNER_TEMP}/cli-contents.txt"
+          extracted="${RUNNER_TEMP}/cli-verify"
+          mkdir -p "$extracted"
+          tar -xzf "dist/${archive}" -C "$extracted"
+          file "$extracted/${BINARY_NAME}" | tee "${RUNNER_TEMP}/cli-file.txt"
+          grep -Fqi '${{ matrix.expected_arch }}' "${RUNNER_TEMP}/cli-file.txt"
+
+      - name: 打包 CLI（zip）
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $archive = "${env:BINARY_NAME}-${env:VERSION}-${env:TARGET}.zip"
+          Compress-Archive -Path "${env:RUNNER_TEMP}\yunjian-cli-stage\*" -DestinationPath "dist\$archive"
+          $verify = Join-Path $env:RUNNER_TEMP 'cli-verify'
+          Expand-Archive -Path "dist\$archive" -DestinationPath $verify
+          if (-not (Test-Path (Join-Path $verify 'yunjian.exe'))) { throw 'CLI zip 缺少 yunjian.exe' }
+          if (-not (Get-ChildItem $verify -Filter '*onnxruntime*.dll')) { throw 'CLI zip 缺少 onnxruntime DLL' }
+          if (-not (Get-ChildItem $verify -Filter '*sherpa-onnx-c-api*.dll')) { throw 'CLI zip 缺少 sherpa C API DLL' }
+
+      - name: 构建桌面前端
+        if: matrix.desktop != 'none'
+        working-directory: app
+        run: npm ci && npm run build
+
+      - name: 构建 Tauri 安装包
+        if: matrix.desktop != 'none'
+        shell: bash
+        working-directory: crates/yunjian-app
+        env:
+          TARGET: ${{ matrix.target }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::error::缺少 TAURI_SIGNING_PRIVATE_KEY；updater 签名不可关闭，Release 保持 draft"
+            exit 1
+          fi
+          case "${{ matrix.desktop }}" in
+            linux) bundles='deb,appimage' ;;
+            macos) bundles='dmg' ;;
+            windows) bundles='nsis,msi' ;;
+          esac
+          cargo tauri build --ci --target "$TARGET" --bundles "$bundles"
+
+      - name: 收集并验证 Linux 安装包
+        if: matrix.desktop == 'linux'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          root="target/${TARGET}/release/bundle"
+          debs=("$root/deb/"*.deb)
+          images=("$root/appimage/"*.AppImage)
+          [ "${#debs[@]}" -eq 1 ] && [ "${#images[@]}" -eq 1 ]
+          [ -f "${debs[0]}.sig" ] && [ -f "${images[0]}.sig" ]
+
+          deb_name="${DESKTOP_BINARY_NAME}-${VERSION}-linux-${{ matrix.desktop_arch }}.deb"
+          image_name="${DESKTOP_BINARY_NAME}-${VERSION}-linux-${{ matrix.desktop_arch }}.AppImage"
+          cp "${debs[0]}" "dist/$deb_name"
+          cp "${debs[0]}.sig" "dist/${deb_name}.sig"
+          cp "${images[0]}" "dist/$image_name"
+          cp "${images[0]}.sig" "dist/${image_name}.sig"
+
+          deb_root="${RUNNER_TEMP}/deb-root"
+          dpkg-deb -x "dist/$deb_name" "$deb_root"
+          deb_bin=$(find "$deb_root" -type f -name "$DESKTOP_BINARY_NAME" -print -quit)
+          test -n "$deb_bin"
+          file "$deb_bin" | tee "${RUNNER_TEMP}/deb-file.txt"
+          grep -Fqi '${{ matrix.expected_arch }}' "${RUNNER_TEMP}/deb-file.txt"
+
+          chmod +x "dist/$image_name"
+          ( cd "${RUNNER_TEMP}" && "$GITHUB_WORKSPACE/dist/$image_name" --appimage-extract >/dev/null )
+          image_bin=$(find "${RUNNER_TEMP}/squashfs-root" -type f -name "$DESKTOP_BINARY_NAME" -print -quit)
+          test -n "$image_bin"
+          file "$image_bin" | tee "${RUNNER_TEMP}/appimage-file.txt"
+          grep -Fqi '${{ matrix.expected_arch }}' "${RUNNER_TEMP}/appimage-file.txt"
+
+      - name: 收集并验证 macOS 安装包
+        if: matrix.desktop == 'macos'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          root="target/${TARGET}/release/bundle"
+          dmgs=("$root/dmg/"*.dmg)
+          updates=("$root/macos/"*.app.tar.gz)
+          [ "${#dmgs[@]}" -eq 1 ] && [ "${#updates[@]}" -eq 1 ]
+          [ -f "${updates[0]}.sig" ]
+
+          dmg_name="${DESKTOP_BINARY_NAME}-${VERSION}-macos-${{ matrix.desktop_arch }}.dmg"
+          update_name="${DESKTOP_BINARY_NAME}-${VERSION}-macos-${{ matrix.desktop_arch }}.app.tar.gz"
+          cp "${dmgs[0]}" "dist/$dmg_name"
+          cp "${updates[0]}" "dist/$update_name"
+          cp "${updates[0]}.sig" "dist/${update_name}.sig"
+
+          mount="${RUNNER_TEMP}/yunjian-dmg"
+          mkdir -p "$mount"
+          hdiutil attach "dist/$dmg_name" -readonly -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount" || true' EXIT
+          app_bin=$(find "$mount" -type f -path '*/Contents/MacOS/yunjian-desktop' -print -quit)
+          test -n "$app_bin"
+          file "$app_bin" | tee "${RUNNER_TEMP}/dmg-file.txt"
+          grep -Fqi '${{ matrix.expected_arch }}' "${RUNNER_TEMP}/dmg-file.txt"
+          hdiutil detach "$mount"
+          trap - EXIT
+          tar -tzf "dist/$update_name" | grep -F 'Contents/MacOS/yunjian-desktop'
+
+      - name: 收集并验证 Windows 安装包
+        if: matrix.desktop == 'windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          $root = "target\$env:TARGET\release\bundle"
+          $nsis = @(Get-ChildItem "$root\nsis\*.exe" -File)
+          $msi = @(Get-ChildItem "$root\msi\*.msi" -File)
+          if ($nsis.Count -ne 1 -or $msi.Count -ne 1) { throw "NSIS/MSI 产物数量错误：$($nsis.Count)/$($msi.Count)" }
+          if (-not (Test-Path "$($nsis[0].FullName).sig") -or -not (Test-Path "$($msi[0].FullName).sig")) {
+            throw 'Windows updater 签名缺失'
+          }
+          $setupName = "$env:DESKTOP_BINARY_NAME-$env:VERSION-windows-x86_64-setup.exe"
+          $msiName = "$env:DESKTOP_BINARY_NAME-$env:VERSION-windows-x86_64.msi"
+          Copy-Item $nsis[0].FullName "dist\$setupName"
+          Copy-Item "$($nsis[0].FullName).sig" "dist\$setupName.sig"
+          Copy-Item $msi[0].FullName "dist\$msiName"
+          Copy-Item "$($msi[0].FullName).sig" "dist\$msiName.sig"
+
+          $nsisRoot = Join-Path $env:RUNNER_TEMP 'nsis-root'
+          & 7z x "dist\$setupName" "-o$nsisRoot" -y | Out-Null
+          $nsisBin = Get-ChildItem $nsisRoot -Recurse -Filter 'yunjian-desktop.exe' | Select-Object -First 1
+          if ($null -eq $nsisBin) { throw 'NSIS 安装包里没有 yunjian-desktop.exe' }
+
+          $msiRoot = Join-Path $env:RUNNER_TEMP 'msi-root'
+          New-Item -ItemType Directory -Force -Path $msiRoot | Out-Null
+          $process = Start-Process msiexec.exe -ArgumentList @('/a', (Resolve-Path "dist\$msiName"), '/qn', "TARGETDIR=$msiRoot") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "MSI administrative extract 失败：$($process.ExitCode)" }
+          $msiBin = Get-ChildItem $msiRoot -Recurse -Filter 'yunjian-desktop.exe' | Select-Object -First 1
+          if ($null -eq $msiBin) { throw 'MSI 安装包里没有 yunjian-desktop.exe' }
+
+          foreach ($binary in @($nsisBin.FullName, $msiBin.FullName)) {
+            $bytes = [IO.File]::ReadAllBytes($binary)
+            $offset = [BitConverter]::ToInt32($bytes, 0x3c)
+            $machine = [BitConverter]::ToUInt16($bytes, $offset + 4)
+            if ($machine -ne 0x8664) { throw "安装包内二进制不是 x86_64 PE：$binary machine=$machine" }
+          }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -266,6 +600,67 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: 断言矩阵产物集合完整且无意外文件
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          expected=(
+            "yunjian-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+            "yunjian-${VERSION}-aarch64-unknown-linux-gnu.tar.gz"
+            "yunjian-${VERSION}-x86_64-apple-darwin.tar.gz"
+            "yunjian-${VERSION}-aarch64-apple-darwin.tar.gz"
+            "yunjian-${VERSION}-x86_64-pc-windows-msvc.zip"
+            "yunjian-desktop-${VERSION}-linux-x86_64.deb"
+            "yunjian-desktop-${VERSION}-linux-x86_64.deb.sig"
+            "yunjian-desktop-${VERSION}-linux-x86_64.AppImage"
+            "yunjian-desktop-${VERSION}-linux-x86_64.AppImage.sig"
+            "yunjian-desktop-${VERSION}-macos-aarch64.dmg"
+            "yunjian-desktop-${VERSION}-macos-aarch64.app.tar.gz"
+            "yunjian-desktop-${VERSION}-macos-aarch64.app.tar.gz.sig"
+            "yunjian-desktop-${VERSION}-windows-x86_64-setup.exe"
+            "yunjian-desktop-${VERSION}-windows-x86_64-setup.exe.sig"
+            "yunjian-desktop-${VERSION}-windows-x86_64.msi"
+            "yunjian-desktop-${VERSION}-windows-x86_64.msi.sig"
+          )
+          printf '%s\n' "${expected[@]}" | LC_ALL=C sort > "${RUNNER_TEMP}/expected-assets.txt"
+          find dist -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort > "${RUNNER_TEMP}/actual-assets.txt"
+          if ! diff -u "${RUNNER_TEMP}/expected-assets.txt" "${RUNNER_TEMP}/actual-assets.txt"; then
+            echo "::error::发布矩阵产物集合与封闭清单不一致"
+            exit 1
+          fi
+
+      - name: 断言 updater 签名与内置公钥属于同一密钥
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          def keynum(encoded_box: str) -> bytes:
+              lines = base64.b64decode(encoded_box.strip()).decode("utf-8").splitlines()
+              if len(lines) < 2:
+                  raise SystemExit("minisign box 缺少 payload 行")
+              payload = base64.b64decode(lines[1])
+              if len(payload) < 10:
+                  raise SystemExit("minisign payload 过短")
+              return payload[2:10]
+
+          config = json.loads(Path("crates/yunjian-app/tauri.conf.json").read_text())
+          expected = keynum(config["plugins"]["updater"]["pubkey"])
+          signatures = sorted(Path("dist").glob("*.sig"))
+          if len(signatures) != 5:
+              raise SystemExit(f"预期 5 个 updater 签名，实际 {len(signatures)}")
+          for signature in signatures:
+              actual = keynum(signature.read_text())
+              if actual != expected:
+                  raise SystemExit(
+                      f"{signature.name} 的 keynum {actual.hex().upper()} 与内置公钥 "
+                      f"{expected.hex().upper()} 不一致"
+                  )
+              print(f"{signature.name}: keynum={actual.hex().upper()}")
+          PY
+
       # 用 git-cliff 官方预编译产物，不引第三方 action：orhun/git-cliff-action
       # 星数远低于采用门槛，而工具本身有官方 release。与 ci.yml 里 cargo-audit
       # 的处理方式一致。解到 RUNNER_TEMP 而不是工作树，避免污染仓库。
@@ -287,6 +682,61 @@ jobs:
           git-cliff --config cliff.toml --latest --strip header --output RELEASE_NOTES.md
           cat RELEASE_NOTES.md
 
+      - name: 生成并校验 Tauri updater 清单
+        env:
+          REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/${REPO}/releases/download/${TAG_NAME}"
+          linux="yunjian-desktop-${VERSION}-linux-x86_64.AppImage"
+          mac="yunjian-desktop-${VERSION}-macos-aarch64.app.tar.gz"
+          windows="yunjian-desktop-${VERSION}-windows-x86_64-setup.exe"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "$(cat RELEASE_NOTES.md)" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg linux_url "${base}/${linux}" \
+            --rawfile linux_sig "dist/${linux}.sig" \
+            --arg mac_url "${base}/${mac}" \
+            --rawfile mac_sig "dist/${mac}.sig" \
+            --arg windows_url "${base}/${windows}" \
+            --rawfile windows_sig "dist/${windows}.sig" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: {
+              "linux-x86_64": {url: $linux_url, signature: $linux_sig},
+              "darwin-aarch64": {url: $mac_url, signature: $mac_sig},
+              "windows-x86_64-nsis": {url: $windows_url, signature: $windows_sig}
+            }}' > dist/latest.json
+          jq -e \
+            '.version != "" and
+             (.platforms | keys | sort) == ["darwin-aarch64", "linux-x86_64", "windows-x86_64-nsis"] and
+             all(.platforms[]; (.url | startswith("https://github.com/")) and (.signature | length > 20))' \
+            dist/latest.json >/dev/null
+
+      # 摘要从**最终要上传的同一个 dist/** 产生。每个非摘要资产都有同名 `.sha256`，
+      # 包括安装器、updater 签名与 latest.json；未来增加格式却漏摘要会在这里硬失败。
+      - name: 为每个发布资产生成并机械校验 SHA-256
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find . -maxdepth 1 -type f ! -name '*.sha256' -printf '%f\n' | LC_ALL=C sort)
+          if [ "${#assets[@]}" -ne 17 ]; then
+            printf '实际非摘要资产（%s）：\n' "${#assets[@]}"
+            printf '  %s\n' "${assets[@]}"
+            echo "::error::预期 16 个矩阵资产 + latest.json，共 17 个"
+            exit 1
+          fi
+          for asset in "${assets[@]}"; do
+            sha256sum "$asset" > "${asset}.sha256"
+          done
+          for asset in "${assets[@]}"; do
+            test -s "${asset}.sha256"
+            sha256sum -c --strict "${asset}.sha256"
+          done
+          sidecars=$(find . -maxdepth 1 -type f -name '*.sha256' | wc -l)
+          [ "$sidecars" -eq "${#assets[@]}" ]
+
       # 挂产物 + 写正文，但**保持 draft**。翻牌交给 publish-release。
       - name: 把产物挂到 draft Release 上
         env:
@@ -297,8 +747,12 @@ jobs:
           set -euo pipefail
           gh release edit "${TAG_NAME}" --repo "${REPO}" --notes-file RELEASE_NOTES.md
           gh release upload "${TAG_NAME}" --repo "${REPO}" --clobber dist/*
-          gh release view "${TAG_NAME}" --repo "${REPO}" --json isDraft,assets \
-            --jq '{isDraft, assets: [.assets[].name]}'
+          gh release view "${TAG_NAME}" --repo "${REPO}" --json isDraft,assets > "${RUNNER_TEMP}/release.json"
+          jq '{isDraft, assets: [.assets[].name]}' "${RUNNER_TEMP}/release.json"
+          jq -e '.isDraft == true' "${RUNNER_TEMP}/release.json" >/dev/null
+          find dist -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort > "${RUNNER_TEMP}/local-assets.txt"
+          jq -r '.assets[].name' "${RUNNER_TEMP}/release.json" | LC_ALL=C sort > "${RUNNER_TEMP}/remote-assets.txt"
+          diff -u "${RUNNER_TEMP}/local-assets.txt" "${RUNNER_TEMP}/remote-assets.txt"
 
   publish-release:
     name: Publish Release

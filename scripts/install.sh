@@ -12,6 +12,9 @@
 #   YUNJIAN_BASE_URL      发布资产的下载前缀。缺省 GitHub Releases；改它是为了能对着
 #                         本地 mock 服务器验证这个脚本本身。
 #   YUNJIAN_API_URL       解析最新版本用的 API 前缀。缺省 GitHub API。
+#   GH_TOKEN / GITHUB_TOKEN
+#                         私有仓库访问令牌；也可先执行 `gh auth login`，脚本会读取
+#                         GitHub CLI 的凭据；令牌不写入脚本临时目录。
 #
 # 退出码与 `yunjian` 自身的约定一致（见 docs/CLI.zh.md）：
 #
@@ -30,6 +33,8 @@ BINARY="yunjian"
 BASE_URL="${YUNJIAN_BASE_URL:-https://github.com/${REPO}/releases/download}"
 API_URL="${YUNJIAN_API_URL:-https://api.github.com/repos/${REPO}}"
 INSTALL_DIR="${YUNJIAN_INSTALL_DIR:-${HOME}/.local/bin}"
+AUTH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+USE_GH=false
 
 # 日志一律走 stderr，stdout 留给可能的管道消费方。与 CLI 的两条流约定同源。
 info() { printf '%s\n' "$*" >&2; }
@@ -41,6 +46,16 @@ die_unavailable() {
   printf 'error: %s\n' "$*" >&2
   exit 3
 }
+
+if [ "${BASE_URL}" = "https://github.com/${REPO}/releases/download" ] && \
+  [ "${API_URL}" = "https://api.github.com/repos/${REPO}" ]; then
+  if [ -n "${AUTH_TOKEN}" ]; then
+    command -v gh >/dev/null 2>&1 || die_usage "GH_TOKEN/GITHUB_TOKEN 访问私有 Release 需要 GitHub CLI（gh）"
+    USE_GH=true
+  elif command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
+    USE_GH=true
+  fi
+fi
 
 # ---------------------------------------------------------------- 平台检测
 
@@ -71,6 +86,10 @@ detect_target_candidates() {
 
 # 选一个下载工具。curl 与 wget 二者有其一即可。
 detect_downloader() {
+  if [ "${USE_GH}" = true ]; then
+    printf 'gh\n'
+    return
+  fi
   if command -v curl >/dev/null 2>&1; then
     printf 'curl\n'
   elif command -v wget >/dev/null 2>&1; then
@@ -85,7 +104,19 @@ fetch() {
   fetch_url="$1"
   fetch_out="$2"
   case "${DOWNLOADER}" in
-    curl) curl -fsSL -o "${fetch_out}" "${fetch_url}" ;;
+    gh)
+      case "${fetch_url}" in
+        "${API_URL}/releases/latest") gh api "repos/${REPO}/releases/latest" >"${fetch_out}" ;;
+        "${BASE_URL}/"*)
+          gh release download "${TAG}" --repo "${REPO}" \
+            --pattern "$(basename "${fetch_url}")" --output "${fetch_out}"
+          ;;
+        *) die_usage "认证下载拒绝未知 URL：${fetch_url}" ;;
+      esac
+      ;;
+    curl)
+      curl -fsSL -o "${fetch_out}" "${fetch_url}"
+      ;;
     wget) wget -q -O "${fetch_out}" "${fetch_url}" ;;
     *) die_usage "未知下载工具 ${DOWNLOADER}" ;;
   esac
@@ -195,6 +226,18 @@ chmod +x "${WORK_DIR}/${BINARY}"
 # 先搬到同目录的临时名再 mv：正在运行的旧进程不会看到一个半截的文件。
 mv "${WORK_DIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}.new"
 mv "${INSTALL_DIR}/${BINARY}.new" "${INSTALL_DIR}/${BINARY}"
+
+# voice 运行库必须与可执行文件同目录，才能命中构建时写入的 rpath。
+for runtime in \
+  "${WORK_DIR}"/libonnxruntime*.so* \
+  "${WORK_DIR}"/libsherpa-onnx-*.so* \
+  "${WORK_DIR}"/libonnxruntime*.dylib \
+  "${WORK_DIR}"/libsherpa-onnx-*.dylib; do
+  [ -f "${runtime}" ] || continue
+  runtime_name="$(basename "${runtime}")"
+  mv "${runtime}" "${INSTALL_DIR}/${runtime_name}.new"
+  mv "${INSTALL_DIR}/${runtime_name}.new" "${INSTALL_DIR}/${runtime_name}"
+done
 
 info "已安装 ${INSTALL_DIR}/${BINARY}（${TARGET}）"
 

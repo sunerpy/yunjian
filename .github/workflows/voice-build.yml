@@ -3,6 +3,11 @@ name: voice-build
 # 五平台原生语音构建矩阵。存在的理由是 todo 44 的裁决：Linux 之外的四个目标在开发
 # 环境里无法构建（无 Windows/macOS 宿主机、无 NDK、无 Xcode SDK），只能在有对应宿主机
 # 的地方验证。详见 docs/VOICE-BUILD.zh.md「五平台结论」。
+#
+# CodeBuild 预备（尚未启用）：当前连接为 PENDING，全部 job 保持 GitHub-hosted。授权并
+# 重建 webhook 后，`no-voice-links-nothing` 与汇总 job 可分别用唯一标签
+# `voice-no-native`、`voice-build-success`；`desktop`/`mobile` 是混合平台矩阵，不能整体
+# 切到当前 Linux x86_64 的 `yunjian-runner`，需先按宿主 OS 拆 job。
 
 on:
   push:
