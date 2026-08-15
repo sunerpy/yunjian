@@ -49,6 +49,10 @@ const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 const PAINT_TIMEOUT: Duration = Duration::from_secs(20);
 /// 等 React 把首屏挂到 DOM 上的上限。实测约 2 秒，取 20 秒余量。
 const MOUNT_TIMEOUT: Duration = Duration::from_secs(20);
+/// 打断连击链的等待时长。GTK 默认双击时间是 400 毫秒，取两倍余量。
+const CHAIN_ESCAPE_WAIT: Duration = Duration::from_millis(800);
+/// 打断连击链时把指针移开的距离，px。GTK 默认双击距离是 5 px，取远超它的值。
+const CHAIN_ESCAPE_PX: i32 = 200;
 
 /// 执行 Linux 断言集。
 ///
@@ -504,7 +508,16 @@ fn webdriver_assertions(driver: &Session, shots: &Path, collector: &mut Collecto
         }
         driver.send_keys("[data-testid='search-input']", "明月")?;
         driver.click("[data-testid='search-submit']")?;
-        std::thread::sleep(Duration::from_secs(2));
+        // 等摘要出现，**不要**换回一个固定 `sleep`：本机实测这一步要 5.09 秒
+        // （debug 构建、47 万首、FTS5 检索加渲染），原先那个 2 秒的固定等待因此会把
+        // 「还没渲染完」读成「检索没有结果」，判词说的是产品，坏的却是等待时长。
+        // 断言本身不受影响：下面仍然要求摘要文本非空。
+        if !driver.wait_for("[data-testid='search-summary']", MOUNT_TIMEOUT) {
+            bail!(
+                "等了 {} 秒，`[data-testid='search-summary']` 仍未出现在 DOM 里",
+                MOUNT_TIMEOUT.as_secs()
+            );
+        }
         driver.text("[data-testid='search-summary']")
     })();
     let shot = shots.join("two-char-search.png");
@@ -860,33 +873,63 @@ fn os_assertions(
     };
 
     // 最大化。
+    //
+    // 起始态由 harness 在 X 层直接摆好，**不借用被测的那个按钮**去摆：用产品路径准备前置态，
+    // 一旦产品坏了就会连带把本条的起始态弄错，于是判词说的是另一回事。
     let shot = shots.join("control-maximize.png");
+    let normalized = ensure_not_maximized(conn, root_window, window);
     click_at(&mut enigo, button(geometry::MAXIMIZE_FROM_RIGHT), false)?;
     let maximized = Background::wait_until(STATE_TIMEOUT, || is_maximized(conn, window));
     let _ = screenshot::capture(conn, root_window, &shot);
-    record_bool(
-        collector,
-        "control_maximize_works",
-        maximized,
-        "点最大化按钮后 `_NET_WM_STATE` 带上了 `_NET_WM_STATE_MAXIMIZED_VERT/HORZ`",
-        "点最大化按钮后窗口状态未变；capabilities 里少了 `core:window:allow-toggle-maximize` \
-         会让它静默无效（注意 `allow-internal-toggle-maximize` 是**另一条**命令）",
-        &shot,
-    )?;
+    if normalized {
+        record_bool(
+            collector,
+            "control_maximize_works",
+            maximized,
+            "起始态已归一为非最大化，点最大化按钮后 `_NET_WM_STATE` 带上了 \
+             `_NET_WM_STATE_MAXIMIZED_VERT/HORZ`",
+            "起始态已归一为非最大化，点最大化按钮后窗口状态仍未变；capabilities 里少了 \
+             `core:window:allow-toggle-maximize` 会让它静默无效（注意 \
+             `allow-internal-toggle-maximize` 是**另一条**命令）",
+            &shot,
+        )?;
+    } else {
+        collector.record(
+            "control_maximize_works",
+            Verdict::NotExecuted,
+            "起始态归一失败：harness 请求窗口管理器清除最大化态之后，窗口仍处于最大化。\
+             此时点「最大化」按钮不会有可观测的状态迁移，而那证不了按钮坏没坏",
+            Some("一个会响应 `_NET_WM_STATE` 客户端消息的窗口管理器".to_owned()),
+            Some(relative_shot(&shot)),
+        )?;
+    }
 
-    // 还原。
+    // 还原。前置条件是「窗口此刻确实是最大化的」，而那正是上一条要判的事。
+    // 上一条没成立时本条无从判定——把它也记成 FAIL 会把**一个**缺陷报成两个。
     let shot = shots.join("control-restore.png");
-    click_at(&mut enigo, button(geometry::MAXIMIZE_FROM_RIGHT), false)?;
-    let restored = Background::wait_until(STATE_TIMEOUT, || !is_maximized(conn, window));
-    let _ = screenshot::capture(conn, root_window, &shot);
-    record_bool(
-        collector,
-        "control_restore_works",
-        restored,
-        "再点同一个按钮后最大化状态被清除，窗口还原",
-        "再点同一个按钮后窗口仍处于最大化",
-        &shot,
-    )?;
+    if maximized {
+        click_at(&mut enigo, button(geometry::MAXIMIZE_FROM_RIGHT), false)?;
+        let restored = Background::wait_until(STATE_TIMEOUT, || !is_maximized(conn, window));
+        let _ = screenshot::capture(conn, root_window, &shot);
+        record_bool(
+            collector,
+            "control_restore_works",
+            restored,
+            "再点同一个按钮后最大化状态被清除，窗口还原",
+            "再点同一个按钮后窗口仍处于最大化",
+            &shot,
+        )?;
+    } else {
+        let _ = screenshot::capture(conn, root_window, &shot);
+        collector.record(
+            "control_restore_works",
+            Verdict::NotExecuted,
+            "窗口此刻不是最大化态，「再点同一个按钮把它还原」这个动作没有前置条件；\
+             最大化本身由 `control_maximize_works` 判定，这里不重复报告同一个缺陷",
+            Some("`control_maximize_works` 先成立".to_owned()),
+            Some(relative_shot(&shot)),
+        )?;
+    }
 
     // 最小化。
     let shot = shots.join("control-minimize.png");
@@ -981,21 +1024,62 @@ fn chinese_input_keeps_ui_responsive(
     std::thread::sleep(Duration::from_millis(500));
 
     // 响应性判据：窗口是否还能被最大化并还原。冻住的窗口不会迁移状态。
+    //
+    // 两次双击的落点都必须**当场**从 `title_point` 重读，不能复用上面那份 `geom`：
+    // 第一次双击把窗口移到 (0,0) 并铺满屏幕，用旧几何算出来的点落进内容区，
+    // 于是还原那一下静默无效、窗口留在最大化态。本机实测过那个后果——它不会让本条变红
+    // （本条只判「状态迁移过」），而是把最大化态泄漏给后面的 `control_maximize_works`
+    // 与 `control_restore_works`，让那两条各自看到相反的起始态、判词整体错位一格：
+    // 前者说「状态未变」、后者说「仍处于最大化」，两句互相矛盾，却都指着没坏的产品。
     let before = is_maximized(conn, window);
-    let drag_point = (
-        geom.0 + geometry::title_text_x(),
-        geom.1 + geometry::mid_y(),
-    );
-    click_at(enigo, drag_point, true)?;
+    click_at(enigo, title_point(conn, window), true)?;
     let toggled = Background::wait_until(STATE_TIMEOUT, || is_maximized(conn, window) != before);
     if toggled {
-        click_at(enigo, drag_point, true)?;
+        click_at(enigo, title_point(conn, window), true)?;
         Background::wait_until(STATE_TIMEOUT, || is_maximized(conn, window) == before);
     }
     Ok(toggled)
 }
 
+/// 让紧接着的那次按下成为一条**新**连击链的第一次，即 `e.detail == 1`。
+///
+/// GTK 按「时间够近 + 位置够近」把连续的按下并进同一条连击链，`e.detail` 逐次累加。
+/// 而 Tauri 的拖动区处理只认两个值——`detail == 1` 发起拖动、`detail == 2` 切换最大化，
+/// 见 `tauri` 的 `scripts/drag.js` 里那句 `(e.detail === 1 || e.detail === 2)`。
+/// **`detail >= 3` 被这个守卫整体排除，于是既不拖动也不最大化，静默什么都不做。**
+///
+/// 本机实测（tauri 2.10.3 + WebKitGTK + Openbox）：在标题文字上双击一次再**在同一像素**
+/// 按下拖动，第三次按下的 `e.detail` 是 3，X 上一条 `_NET_WM_MOVERESIZE` 都不会发出，
+/// 窗口一动不动；把指针先移开再等过连击时间窗、同一动作重做一次，窗口立刻跟随移动。
+/// 所以「点了没反应」在合成输入下往往是**上一条断言留下的连击链**，而不是产品坏了——
+/// 真人不会在半秒内、同一像素上先双击再按下拖动。
+///
+/// 时间与距离都取远超 GTK 默认值（400 毫秒 / 5 像素）的余量，因为这两个值可被主题与
+/// 用户设置改写，harness 不该依赖某个具体数字。
+fn break_click_chain(enigo: &mut Enigo, target: (i32, i32)) -> Result<()> {
+    let park = chain_escape_point(target);
+    enigo
+        .move_mouse(park.0, park.1, Coordinate::Abs)
+        .context("移开指针以打断连击链失败")?;
+    std::thread::sleep(CHAIN_ESCAPE_WAIT);
+    Ok(())
+}
+
+/// 打断连击链时把指针停到哪。朝屏幕内侧让开，避免算出负坐标（X 会拒绝那种移动，
+/// 于是指针留在原地、链没被打断，而调用方看不出区别）。
+const fn chain_escape_point(target: (i32, i32)) -> (i32, i32) {
+    const fn away(v: i32) -> i32 {
+        if v > CHAIN_ESCAPE_PX {
+            v - CHAIN_ESCAPE_PX
+        } else {
+            v.saturating_add(CHAIN_ESCAPE_PX)
+        }
+    }
+    (away(target.0), away(target.1))
+}
+
 fn click_at(enigo: &mut Enigo, point: (i32, i32), double: bool) -> Result<()> {
+    break_click_chain(enigo, point)?;
     enigo
         .move_mouse(point.0, point.1, Coordinate::Abs)
         .context("移动指针失败")?;
@@ -1015,6 +1099,9 @@ fn click_at(enigo: &mut Enigo, point: (i32, i32), double: bool) -> Result<()> {
 }
 
 fn drag(enigo: &mut Enigo, from: (i32, i32), by: (i32, i32)) -> Result<()> {
+    // 见 `break_click_chain`：紧跟在别处点击之后的这一下若并进同一条连击链，
+    // `e.detail` 会到 3，Tauri 的拖动区处理直接忽略，窗口一动不动。
+    break_click_chain(enigo, from)?;
     enigo
         .move_mouse(from.0, from.1, Coordinate::Abs)
         .context("移动指针失败")?;
@@ -1156,6 +1243,40 @@ fn is_maximized(conn: &RustConnection, window: Window) -> bool {
     }
 }
 
+/// 请求窗口管理器清除最大化态，并等到它真的清除。已经是非最大化时是空操作。
+///
+/// 走 EWMH 的 `_NET_WM_STATE` 客户端消息，即窗口管理器自己那条路，刻意不碰产品的任何按钮。
+fn ensure_not_maximized(conn: &RustConnection, root: Window, window: Window) -> bool {
+    use x11rb::protocol::xproto::{ClientMessageEvent, EventMask};
+
+    if !is_maximized(conn, window) {
+        return true;
+    }
+    let Some((state, vert, horz)) = intern(conn, b"_NET_WM_STATE").and_then(|state| {
+        let vert = intern(conn, b"_NET_WM_STATE_MAXIMIZED_VERT")?;
+        let horz = intern(conn, b"_NET_WM_STATE_MAXIMIZED_HORZ")?;
+        Some((state, vert, horz))
+    }) else {
+        return false;
+    };
+    // data: action(0 = remove), 第一个属性, 第二个属性, source(1 = 普通应用)
+    let event = ClientMessageEvent::new(32, window, state, [0, vert, horz, 1, 0]);
+    if conn
+        .send_event(
+            false,
+            root,
+            EventMask::SUBSTRUCTURE_NOTIFY | EventMask::SUBSTRUCTURE_REDIRECT,
+            event,
+        )
+        .is_err()
+        || conn.flush().is_err()
+    {
+        return false;
+    }
+    Background::wait_until(STATE_TIMEOUT, || !is_maximized(conn, window));
+    !is_maximized(conn, window)
+}
+
 fn is_hidden(conn: &RustConnection, window: Window) -> bool {
     let state = wm_state(conn, window);
     intern(conn, b"_NET_WM_STATE_HIDDEN").is_some_and(|atom| state.contains(&atom))
@@ -1268,5 +1389,95 @@ mod tests {
         let binary = SystemTime::UNIX_EPOCH + Duration::from_secs(20);
 
         assert!(artifact_is_current(binary, source));
+    }
+
+    /// 本文件自己的源码。下面几条守卫扫它，因为它们要守的事实在**有副作用的函数体里**，
+    /// 而那些函数要真实的 X 会话才跑得起来——真机验收只在有会话时跑，`make ci` 每次都跑。
+    const SELF_SOURCE: &str = include_str!("linux.rs");
+
+    /// 取一个函数从签名到下一个顶层 `fn` 之间的正文。
+    fn body_of(name: &str) -> &'static str {
+        let signature = format!("\nfn {name}(");
+        let start = SELF_SOURCE
+            .find(&signature)
+            .unwrap_or_else(|| panic!("源码里找不到 `fn {name}`；改名了就同步改这条守卫"))
+            + signature.len();
+        let rest = &SELF_SOURCE[start..];
+        rest.find("\nfn ").map_or(rest, |end| &rest[..end])
+    }
+
+    #[test]
+    fn escape_point_is_farther_than_gtk_double_click_distance() {
+        // GTK 默认 `gtk-double-click-distance` 是 5 px：只有落点足够近才算同一条连击链。
+        const GTK_DEFAULT_DISTANCE: i32 = 5;
+
+        for target in [(0, 0), (3, 4), (218, 170), (1531, 20), (i32::MAX, i32::MAX)] {
+            let park = chain_escape_point(target);
+            assert!(
+                (park.0 - target.0).abs() > GTK_DEFAULT_DISTANCE
+                    && (park.1 - target.1).abs() > GTK_DEFAULT_DISTANCE,
+                "{target:?} 的让开点 {park:?} 离得不够远，连击链不会被打断"
+            );
+            assert!(
+                park.0 >= 0 && park.1 >= 0,
+                "{target:?} 的让开点 {park:?} 有负坐标；X 会拒绝这次移动，\
+                 于是指针留在原地、链根本没断，而调用方看不出区别"
+            );
+        }
+    }
+
+    #[test]
+    fn escape_wait_outlasts_gtk_double_click_time() {
+        // GTK 默认 `gtk-double-click-time` 是 400 毫秒。
+        assert!(
+            CHAIN_ESCAPE_WAIT > Duration::from_millis(400),
+            "等待短于 GTK 的双击时间窗，连击链不会断"
+        );
+    }
+
+    #[test]
+    fn synthetic_clicks_break_the_click_chain_first() {
+        // 这两行看起来像可删的多余等待，删掉的后果却是静默的：紧跟在别处点击之后的那一下
+        // `e.detail` 会累加到 3，而 Tauri 的拖动区处理只认 1 与 2（见 `break_click_chain`
+        // 的文档），于是既不拖动也不最大化，报告把它写成「标题栏拖不动」，指着没坏的产品。
+        // 匹配**调用**形态而不是名字：注释里也会提到这个函数，只查名字的守卫会被自己的
+        // 解释文字满足，于是删掉那行调用它照样绿。这一点是注入失败实测出来的。
+        for name in ["click_at", "drag"] {
+            assert!(
+                body_of(name).contains("break_click_chain(enigo"),
+                "`{name}` 没有先打断连击链"
+            );
+        }
+    }
+
+    #[test]
+    fn responsiveness_probe_rereads_geometry_for_each_double_click() {
+        let body = body_of("chinese_input_keeps_ui_responsive");
+        let rereads = body.matches("title_point(conn, window)").count();
+
+        assert!(
+            rereads >= 2,
+            "两次双击都必须当场重读几何（当前只有 {rereads} 处）：第一次双击把窗口移到 (0,0) \
+             并铺满，复用旧几何算出的点落进内容区，还原那一下静默无效，于是最大化态泄漏给 \
+             `control_maximize_works` 与 `control_restore_works`，让那两条判词整体错位一格"
+        );
+    }
+
+    #[test]
+    fn restore_assertion_requires_maximize_to_have_succeeded() {
+        let body = body_of("os_assertions");
+
+        assert!(
+            body.contains("ensure_not_maximized("),
+            "最大化断言必须先把起始态归一，否则它继承的是上一条断言的残留态"
+        );
+        assert!(
+            !body_of("ensure_not_maximized").contains("click_at"),
+            "归一不能借用被测按钮：产品一坏就会连带把起始态弄错，于是判词说的是另一回事"
+        );
+        assert!(
+            body.contains("if maximized {"),
+            "还原断言必须以「最大化确实成立」为前置；否则一个缺陷会被报成两个 FAIL"
+        );
     }
 }
