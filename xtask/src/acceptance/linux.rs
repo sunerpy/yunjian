@@ -18,7 +18,7 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use enigo::{Button, Coordinate, Direction, Enigo, Keyboard as _, Mouse as _, Settings};
@@ -57,7 +57,7 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
     std::fs::create_dir_all(&shots).with_context(|| format!("创建 {} 失败", shots.display()))?;
 
     // --- 产物：先判定，因为后面每一条都依赖它 ---
-    let artifact_ok = check_artifact(&app, collector)?;
+    let artifact_ok = check_artifact(root, &app, collector)?;
     check_installer(root, collector)?;
 
     if !artifact_ok {
@@ -94,6 +94,7 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
     let env = vec![
         ("DISPLAY", session.display.clone()),
         ("TAURI_WEBVIEW_AUTOMATION", "true".to_owned()),
+        ("YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK", "1".to_owned()),
     ];
     emit("  探测 WebDriver 握手（真实 tauri-driver + WebKitWebDriver，无 mock）");
     let probe = webdriver::connect(&app, &env)?;
@@ -119,20 +120,39 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
     match driver {
         Some(driver) => webdriver_assertions(&driver, &shots, collector)?,
         None => {
-            let when = "一个 WebKitGTK 的自动化握手可用、且 WebView 真的会绘制的宿主机。\
-                 本机（Ubuntu 24.04 容器 + WebKitGTK 2.52.3 + Xvfb，无 GPU）实测：\
-                 应用进程起来了、真实窗口映射成功、`TAURI_WEBVIEW_AUTOMATION=true` 已透传、\
-                 WebKit 的 inspector server 端口也在监听，但 `POST /session` 一直挂到超时；\
-                 同一环境下 WebView 一个像素也没画（见 `webview_paints` 一节），\
-                 两件事同源。或改用 `@wdio/tauri-service` 的 embedded WebDriver 方案。";
+            let when = "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；\
+                 也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`";
             for declared in super::DECLARED {
                 if declared.channel == super::Channel::WebDriver {
+                    let (detail, executable_when) = if declared.id
+                        == "voice_round_succeeds_end_to_end"
+                        && audio == 0
+                    {
+                        (
+                            format!(
+                                "WebDriver 会话未能建立，且本次探测到的音频输入设备数为 {audio}；\
+                                 DOM 与真实采集链均无法执行。握手探测结果：{}",
+                                probe_facts.detail
+                            ),
+                            format!(
+                                "{when}；另需至少一个非 monitor 的可采集音频输入设备及可用语音模型"
+                            ),
+                        )
+                    } else {
+                        (
+                            format!(
+                                "WebDriver 会话未能建立，DOM 层事实无法观测；\
+                                 刻意不用 mock 或 stub 顶替。握手探测结果：{}",
+                                probe_facts.detail
+                            ),
+                            when.to_owned(),
+                        )
+                    };
                     collector.record(
                         declared.id,
                         Verdict::NotExecuted,
-                        "WebDriver 会话未能建立，DOM 层事实无法观测；\
-                         刻意不用 mock 或 stub 顶替（那会把真机验收退化成单元测试）",
-                        Some(when.to_owned()),
+                        detail,
+                        Some(executable_when),
                         None,
                     )?;
                 }
@@ -158,12 +178,31 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
     })
 }
 
-fn check_artifact(app: &Path, collector: &mut Collector) -> Result<bool> {
+fn check_artifact(root: &Path, app: &Path, collector: &mut Collector) -> Result<bool> {
     if !app.is_file() {
         collector.record(
             "artifact_present",
             Verdict::Fail,
             format!("{} 不存在", app.display()),
+            None,
+            None,
+        )?;
+        return Ok(false);
+    }
+    let binary_modified = app
+        .metadata()
+        .and_then(|metadata| metadata.modified())
+        .with_context(|| format!("读取 {} 修改时间失败", app.display()))?;
+    let (newest_input, newest_path) = newest_desktop_input(root)?;
+    if !artifact_is_current(binary_modified, newest_input) {
+        collector.record(
+            "artifact_present",
+            Verdict::Fail,
+            format!(
+                "{} 早于桌面源码输入 {}，拒绝用陈旧二进制裁决当前源码",
+                app.display(),
+                newest_path.display()
+            ),
             None,
             None,
         )?;
@@ -200,6 +239,48 @@ fn check_artifact(app: &Path, collector: &mut Collector) -> Result<bool> {
         )?;
         Ok(false)
     }
+}
+
+fn artifact_is_current(binary_modified: SystemTime, newest_input: SystemTime) -> bool {
+    binary_modified >= newest_input
+}
+
+fn newest_desktop_input(root: &Path) -> Result<(SystemTime, std::path::PathBuf)> {
+    let mut newest = (SystemTime::UNIX_EPOCH, root.to_path_buf());
+    for relative in ["Cargo.toml", "Cargo.lock", "app", "crates"] {
+        newest_modified(&root.join(relative), &mut newest)?;
+    }
+    Ok(newest)
+}
+
+fn newest_modified(path: &Path, newest: &mut (SystemTime, std::path::PathBuf)) -> Result<()> {
+    let metadata = path
+        .metadata()
+        .with_context(|| format!("读取桌面构建输入 {} 失败", path.display()))?;
+    if metadata.is_dir() {
+        if path
+            .file_name()
+            .is_some_and(|name| name == "node_modules" || name == "__tests__" || name == "tests")
+        {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(path)
+            .with_context(|| format!("遍历桌面构建输入 {} 失败", path.display()))?
+        {
+            newest_modified(&entry?.path(), newest)?;
+        }
+    } else if !path.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy();
+        name.contains(".test.") || name.contains(".spec.")
+    }) {
+        let modified = metadata
+            .modified()
+            .with_context(|| format!("读取桌面构建输入 {} 修改时间失败", path.display()))?;
+        if modified > newest.0 {
+            *newest = (modified, path.to_path_buf());
+        }
+    }
+    Ok(())
 }
 
 fn check_installer(root: &Path, collector: &mut Collector) -> Result<()> {
@@ -478,7 +559,8 @@ fn os_assertions(
     let mut command = Command::new(app);
     command
         .env("DISPLAY", &session.display)
-        .env("TAURI_WEBVIEW_AUTOMATION", "false");
+        .env("TAURI_WEBVIEW_AUTOMATION", "false")
+        .env("YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK", "1");
     let mut app_process = Background::spawn("yunjian-desktop", &mut command)?;
 
     let window = wait_for_window(conn, root_window);
@@ -519,11 +601,12 @@ fn os_assertions(
         || "像素读取失败".to_owned(),
         |p| {
             format!(
-                "主色 #{:02x}{:02x}{:02x} 占 {:.4}%",
+                "主色 #{:02x}{:02x}{:02x} 占 {:.4}%，显著颜色区 {} 个",
                 p.dominant[0],
                 p.dominant[1],
                 p.dominant[2],
-                p.dominant_share * 100.0
+                p.dominant_share * 100.0,
+                p.significant_colors
             )
         },
     );
@@ -571,8 +654,13 @@ fn os_assertions(
         collector.record(
             "app_exits_cleanly",
             Verdict::NotExecuted,
-            "退出这条以「点关闭按钮」为入口，而按钮没有被画出来，所以这条链没有被走过",
-            Some("同上：一个 WebView 会绘制的宿主机".to_owned()),
+            "应用的正常退出入口是托盘菜单「退出」；本次 Xvfb + Openbox 会话没有托盘宿主，\
+             harness 无法显示并点击该菜单，未用 kill 信号冒充正常退出",
+            Some(
+                "带 StatusNotifier/AppIndicator 托盘宿主的交互式 Linux 桌面，\
+                 并由 harness 观测托盘项后点击「退出」"
+                    .to_owned(),
+            ),
             None,
         )?;
         return Ok(());
@@ -781,7 +869,6 @@ fn os_assertions(
         Background::wait_until(STATE_TIMEOUT, || !is_hidden(conn, window));
     }
 
-    // 关闭。
     let shot = shots.join("control-close.png");
     let geom = window_geometry(conn, window);
     click_at(
@@ -792,55 +879,36 @@ fn os_assertions(
         ),
         false,
     )?;
-    let gone = Background::wait_until(Duration::from_secs(10), || {
+    let hidden_to_tray = Background::wait_until(Duration::from_secs(10), || {
         !top_level_windows(conn, root_window).contains(&window)
     });
+    let process_still_running = app_process.child.try_wait()?.is_none();
     let _ = screenshot::capture(conn, root_window, &shot);
     record_bool(
         collector,
         "control_close_works",
-        gone,
-        "点关闭按钮后窗口从 `_NET_CLIENT_LIST` 消失",
-        "点关闭按钮后窗口仍在 `_NET_CLIENT_LIST` 里",
+        hidden_to_tray && process_still_running,
+        "点关闭按钮后主窗口从 `_NET_CLIENT_LIST` 消失，应用进程仍在运行，符合驻留托盘契约",
+        if hidden_to_tray {
+            "主窗口虽已隐藏，但应用进程也退出了，破坏驻留托盘契约"
+        } else {
+            "点关闭按钮后主窗口仍在 `_NET_CLIENT_LIST` 里"
+        },
         &shot,
     )?;
 
-    // --- 干净退出 ---
-    // std 的 `Child` 没有带超时的 wait，所以轮询 `try_wait`：等不到就是没退，
-    // 而「没退」本身就是要报告的观测结果。
-    let mut exit = None;
-    Background::wait_until(Duration::from_secs(10), || {
-        match app_process.child.try_wait() {
-            Ok(Some(status)) => {
-                exit = Some(status);
-                true
-            }
-            _ => false,
-        }
-    });
-    match exit {
-        Some(status) if status.success() => collector.record(
-            "app_exits_cleanly",
-            Verdict::Pass,
-            "关闭窗口后进程自行退出，退出码 0",
-            None,
-            None,
-        )?,
-        Some(status) => collector.record(
-            "app_exits_cleanly",
-            Verdict::Fail,
-            format!("进程退出码为 {status:?}，不是 0"),
-            None,
-            None,
-        )?,
-        None => collector.record(
-            "app_exits_cleanly",
-            Verdict::Fail,
-            "关闭窗口后 10 秒内进程没有退出",
-            None,
-            None,
-        )?,
-    }
+    collector.record(
+        "app_exits_cleanly",
+        Verdict::NotExecuted,
+        "应用的正常退出入口是托盘菜单「退出」；本次 Xvfb + Openbox 会话没有托盘宿主，\
+         harness 无法显示并点击该菜单，未用 kill 信号冒充正常退出",
+        Some(
+            "带 StatusNotifier/AppIndicator 托盘宿主的交互式 Linux 桌面，\
+             并由 harness 观测托盘项后点击「退出」"
+                .to_owned(),
+        ),
+        None,
+    )?;
     Ok(())
 }
 
@@ -1125,9 +1193,38 @@ fn tray_icon(collector: &mut Collector) -> Result<()> {
     collector.record(
         "tray_icon_correct",
         Verdict::NotExecuted,
-        "应用尚未创建托盘图标（`yunjian-app` 里没有 tray 接线），因此没有可观测的托盘项。\
-         图标资产本身的透明度由 `xtask verify-icons` 逐字节守着",
-        Some("在应用里接入托盘后，由 StatusNotifier 侧观测托盘项".to_owned()),
+        "应用已通过 `TrayIconBuilder` 创建托盘图标，但本次 Xvfb + Openbox 会话没有\
+         StatusNotifier/AppIndicator 托盘宿主，harness 因而没有可观测的托盘项；\
+         图标资产透明度仍由 `xtask verify-icons` 逐字节守卫",
+        Some(
+            "带 StatusNotifier/AppIndicator 托盘宿主的交互式 Linux 桌面，\
+             并由 harness 从托盘协议侧观测图标"
+                .to_owned(),
+        ),
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_artifact_older_than_its_inputs_is_rejected() {
+        let source = SystemTime::UNIX_EPOCH + Duration::from_secs(20);
+        let binary = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+
+        assert!(
+            !artifact_is_current(binary, source),
+            "陈旧二进制不得用于裁决当前源码；否则报告会把已修复问题重新报成产品缺陷"
+        );
+    }
+
+    #[test]
+    fn desktop_artifact_newer_than_its_inputs_is_accepted() {
+        let source = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+        let binary = SystemTime::UNIX_EPOCH + Duration::from_secs(20);
+
+        assert!(artifact_is_current(binary, source));
+    }
 }

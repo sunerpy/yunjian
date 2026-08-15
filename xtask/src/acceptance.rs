@@ -211,7 +211,7 @@ pub(crate) const DECLARED: &[Declared] = &[
     },
     Declared {
         id: "control_close_works",
-        what: "点自绘标题栏的关闭按钮，窗口关闭且进程退出",
+        what: "点自绘标题栏的关闭按钮，主窗口隐藏到托盘且进程继续运行",
         channel: Channel::OsHarness,
         needs_screenshot: true,
     },
@@ -283,7 +283,7 @@ pub(crate) const DECLARED: &[Declared] = &[
     },
     Declared {
         id: "app_exits_cleanly",
-        what: "应用正常退出，退出码为 0，不留孤儿进程",
+        what: "从托盘菜单选择「退出」后，应用以退出码 0 正常结束且不留孤儿进程",
         channel: Channel::Process,
         needs_screenshot: false,
     },
