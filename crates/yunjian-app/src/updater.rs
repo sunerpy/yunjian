@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Manager, Resource, Runtime};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_plugin_updater::Update;
+#[cfg(desktop)]
+use tauri_plugin_updater::UpdaterExt;
 
 const MAIN_WINDOW: &str = "main";
 const STARTUP_CHECK_DELAY: Duration = Duration::from_secs(5);

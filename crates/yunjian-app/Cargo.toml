@@ -23,6 +23,13 @@ build = "build.rs"
 [lib]
 name = "yunjian_app"
 path = "src/lib.rs"
+# `cdylib` 是 Tauri 移动端的硬要求，不是可选优化：生成的 Android 外壳用
+# `System.loadLibrary("yunjian_app")` 加载动态库，`tauri android build` 因此在
+# `target/aarch64-linux-android/release/libyunjian_app.so` 找不到产物时直接中止
+# （实测报 `Library artifact not found ... Make sure your Cargo.toml file has a
+# [lib] block with crate-type = ["staticlib", "cdylib", "rlib"]`）。
+# `rlib` 必须保留，否则 `yunjian-desktop` 与集成测试链接不到这个库目标。
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 # 可执行文件叫 `yunjian-desktop` 而不是 `yunjian`：后者是 `yunjian-cli` 的产物名
 # （`crates/yunjian-cli/Cargo.toml` 里唯一的产品名落点），同名会让两个 crate 争抢
