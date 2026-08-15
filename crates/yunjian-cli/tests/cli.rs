@@ -920,7 +920,7 @@ fn walk_sources(dir: &Path, root: &Path, found: &mut Vec<PathBuf>) {
             let Ok(text) = std::fs::read_to_string(&path) else {
                 continue;
             };
-            if text.contains("allow(clippy::print_stdout") {
+            if text.contains(concat!("allow(clippy::", "print_stdout")) {
                 found.push(path.strip_prefix(root).unwrap_or(&path).to_path_buf());
             }
         }
