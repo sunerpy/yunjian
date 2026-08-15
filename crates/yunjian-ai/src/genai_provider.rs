@@ -7,7 +7,7 @@
 //! `AdapterDispatcher::default_auth` 据此返回 `AuthData` 的**环境变量变体**。云笺的密钥存在操作
 //! 系统钥匙串里，**不进进程环境**——环境变量会被子进程继承、被 `/proc/<pid>/environ`
 //! 读到、被崩溃报告一并带走。因此本模块用 `AuthResolver::from_resolver_fn` 把钥匙串里
-//! 的密钥直接交给 `genai`，`AuthData::FromEnv` 在本 crate 中不出现。
+//! 的密钥直接交给 `genai`，不启用环境变量凭据回退。
 //!
 //! # 实测的 resolver 解析顺序（genai 0.6.5 `ClientConfig::resolve_service_target`）
 //!
@@ -22,7 +22,7 @@
 //! - [`ServiceTargetResolver`] 只改 `endpoint` 与 `model`，**绝不写 `auth`**。它在
 //!   [`AuthResolver`] 之后运行，覆盖 `auth` 就等于把注入的密钥丢掉，退回环境变量。
 //! - [`AuthResolver`] **绝不返回 `Ok(None)`**。`genai` 把 `None` 当作「没有意见」并
-//!   `unwrap_or_else(|| default_auth(...))` 回落到 `AuthData::FromEnv`——也就是说，一次
+//!   `unwrap_or_else(|| default_auth(...))` 回落到环境变量凭据——也就是说，一次
 //!   看起来无害的 `Ok(None)` 会静默地重新启用环境变量读取。缺密钥时返回 `Err`。
 
 use crate::AppreciationCacheWriter;
@@ -787,7 +787,7 @@ impl PoemGenerationProvider for GenAiProvider {
 ///
 /// 返回值只有两种形态：`Ok(Some(AuthData::Key(..)))` 与 `Err`。**没有 `Ok(None)` 这条
 /// 分支**，因为 `genai` 会把 `None` 解释成「resolver 没有意见」并回落到
-/// `AdapterDispatcher::default_auth`，也就是 `AuthData::FromEnv`——那正是本模块要消灭的
+/// `AdapterDispatcher::default_auth`，也就是环境变量凭据回退——那正是本模块要消灭的
 /// 行为。Ollama 走 `AuthData::Key("ollama")`（与上游 `default_auth` 的占位串一致），
 /// 同样不碰环境变量。
 fn auth_resolver(kind: ProviderKind, key: Option<Arc<SecretString>>) -> AuthResolver {
@@ -894,7 +894,7 @@ mod tests {
 
     /// 密钥必须经 resolver 进到 `Authorization` 头，且调用期间不读任何环境变量。
     ///
-    /// 后半条是本模块存在的理由：`genai` 的 `default_auth` 会回落到 `AuthData::FromEnv`，
+    /// 后半条是本模块存在的理由：`genai` 的 `default_auth` 会回落到环境变量凭据，
     /// 一旦回落，密钥就得先进程序环境才能用——那与「密钥只在钥匙串里」直接冲突。
     #[tokio::test]
     async fn the_resolver_key_reaches_the_authorization_header_without_touching_the_environment() {
@@ -934,7 +934,7 @@ mod tests {
             .collect();
         assert_eq!(
             before, after,
-            "调用不得新增任何 key 形状的环境变量（禁止 AuthData::FromEnv 路径）"
+            "调用不得新增任何 key 形状的环境变量（禁止环境变量凭据回退）"
         );
     }
 

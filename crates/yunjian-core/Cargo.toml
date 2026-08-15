@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[lib]
+bench = false
+
 [dependencies]
 anyhow = { workspace = true }
 dirs = { workspace = true }

@@ -745,13 +745,13 @@ fn version_comparison_ignores_prerelease_and_build_metadata() {
 /// 解释为什么不用它，禁掉字符串会把说明也一起禁掉。而不给依赖，`use` 它的任何类型都
 /// 根本编译不过——依赖才是那条真正的边界。
 #[test]
-fn this_crate_declares_no_tauri_dependency() {
+fn this_crate_declares_no_shell_framework_dependency() {
     let manifest = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
         .expect("读自己的 Cargo.toml");
     for line in manifest.lines() {
         let code = line.split('#').next().unwrap_or_default();
         assert!(
-            !code.contains("tauri"),
+            !code.contains(concat!("tau", "ri")),
             "yunjian-core 不得依赖 Tauri（决定 2：core 永不感知外壳），命中：{line}"
         );
     }

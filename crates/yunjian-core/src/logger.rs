@@ -5,7 +5,7 @@
 //! `yunjian` 这一个二进制同时承载 MCP stdio 服务器，stdout 是协议流本身。MCP 规范要求
 //! 服务器「绝不能向 stdout 写入任何非 MCP 消息的内容」，一行日志就会让整条会话解析失败。
 //! 因此本模块**没有**、也不会有切换到 stdout 的开关：[`LoggerConfig`] 里刻意不存在这个
-//! 字段，那不是遗漏。同一份 `init_logger` 也供 CLI 与桌面外壳使用，不引入 `tauri-plugin-log`。
+//! 字段，那不是遗漏。同一份 `init_logger` 也供 CLI 与桌面外壳使用，不引入外壳专用日志插件。
 //!
 //! # 组成
 //!

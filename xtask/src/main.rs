@@ -111,14 +111,20 @@ enum Commands {
         /// 未请求的规模在报告里如实标为 NOT MEASURED。
         #[arg(long = "scale", value_name = "SCALE")]
         scales: Vec<String>,
-        /// `chinese-poetry` 按锁定 revision 的检出目录。`--render-only` 时不需要。
-        #[arg(long, required_unless_present = "render_only")]
+        /// `chinese-poetry` 检出目录。默认使用随仓 fixture；实测完整语料时显式覆盖。
+        #[arg(
+            long,
+            default_value = "crates/yunjian-corpus/tests/fixtures/chinese_poetry"
+        )]
         chinese_poetry_dir: Option<std::path::PathBuf>,
-        /// `Werneror/Poetry` 按锁定 revision 的检出目录。`--render-only` 时不需要。
-        #[arg(long, required_unless_present = "render_only")]
+        /// `Werneror/Poetry` 检出目录。默认使用随仓 fixture；实测完整语料时显式覆盖。
+        #[arg(long, default_value = "crates/yunjian-corpus/tests/fixtures/werneror")]
         werneror_dir: Option<std::path::PathBuf>,
-        /// `charlesix59/chinese_word_rhyme` 按锁定 revision 的检出目录。`--render-only` 时不需要。
-        #[arg(long, required_unless_present = "render_only")]
+        /// `charlesix59/chinese_word_rhyme` 检出目录。默认使用随仓 fixture；完整实测时显式覆盖。
+        #[arg(
+            long,
+            default_value = "crates/yunjian-corpus/tests/fixtures/rhyme_book"
+        )]
         rhyme_dir: Option<std::path::PathBuf>,
         /// 每条查询重复测量的次数，p50/p95 取自这些样本。
         #[arg(long, default_value_t = 25)]
@@ -380,10 +386,9 @@ fn main() -> anyhow::Result<()> {
             render_only: false,
         }) => corpus_measure::run(
             scales,
-            // clap 的 `required_unless_present` 已保证非 render-only 时三者都在。
-            chinese_poetry_dir.expect("clap 应已要求 --chinese-poetry-dir"),
-            werneror_dir.expect("clap 应已要求 --werneror-dir"),
-            rhyme_dir.expect("clap 应已要求 --rhyme-dir"),
+            chinese_poetry_dir.expect("clap 应已提供 chinese-poetry 默认目录"),
+            werneror_dir.expect("clap 应已提供 Werneror 默认目录"),
+            rhyme_dir.expect("clap 应已提供韵书默认目录"),
             repeats,
             artifact_budget_mib * 1024 * 1024,
             keep_databases,
@@ -469,5 +474,39 @@ fn main() -> anyhow::Result<()> {
         ),
         Some(Commands::Acceptance { platform, set }) => acceptance::run(&platform, &set),
         None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn corpus_measure_uses_the_shipped_fixture_directories_by_default() {
+        let cli = Cli::try_parse_from(["xtask", "corpus-measure", "--scale", "10k"])
+            .expect("计划中的无路径验收入口必须可解析");
+
+        let Some(Commands::CorpusMeasure {
+            chinese_poetry_dir,
+            werneror_dir,
+            rhyme_dir,
+            ..
+        }) = cli.command
+        else {
+            panic!("应解析为 corpus-measure");
+        };
+
+        assert_eq!(
+            chinese_poetry_dir,
+            Some("crates/yunjian-corpus/tests/fixtures/chinese_poetry".into())
+        );
+        assert_eq!(
+            werneror_dir,
+            Some("crates/yunjian-corpus/tests/fixtures/werneror".into())
+        );
+        assert_eq!(
+            rhyme_dir,
+            Some("crates/yunjian-corpus/tests/fixtures/rhyme_book".into())
+        );
     }
 }
