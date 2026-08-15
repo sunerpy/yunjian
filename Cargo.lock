@@ -8191,6 +8191,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "yunjian-mobile"
+version = "0.1.0"
+dependencies = [
+ "secrecy",
+ "serde",
+ "sha2 0.11.0",
+ "toml 0.8.23",
+ "yunjian-ai",
+ "yunjian-core",
+ "yunjian-recite",
+ "yunjian-voice",
+]
+
+[[package]]
 name = "yunjian-recite"
 version = "0.1.0"
 dependencies = [

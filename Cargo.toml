@@ -6,6 +6,7 @@ members = [
   "crates/yunjian-ai",
   "crates/yunjian-recite",
   "crates/yunjian-voice",
+  "crates/yunjian-mobile",
   "crates/yunjian-mcp",
   "crates/yunjian-cli",
   "crates/yunjian-app",

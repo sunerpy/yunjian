@@ -27,27 +27,28 @@ recitation practice, and an MCP server that lets an AI assistant query your poet
 
 Implemented on `main` **and covered by tests**:
 
-| Component           | Status   | Notes                                                                                                 |
-| ------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| Engineering base    | done     | 8-crate workspace, pinned versions, runtime `config.toml` discovery, tracing to stderr only           |
-| stdout ban          | done     | Clippy denies `println!` and `std::io::stdout` workspace-wide, one CLI exit                           |
-| Licence gate        | done     | `verify-sources` / `verify-models` check every asset's licence and SHA-256, MIT / Apache-2.0 only     |
-| Corpus pipeline     | done     | Canonical records, append-only `stable_id`, 平水韵 and 词林正韵 ingested, dedup and conflict verdicts |
-| Index selection     | measured | FTS5 `detail` mode and the n-gram table settled by measurement, not by decree                         |
-| Corpus artifact     | done     | 474k Tang–Song poems bundled (211 MiB gzip), search structures derived on first launch                |
-| Voice base          | verified | Native build and linking on five targets, 16 kHz mono capture on Linux, per-platform permissions      |
-| Classical CER       | measured | Measured on synthetic speech; the verdict is that CER is advisory only, never a score                 |
-| Core search         | done     | Body, title, author, dynasty, first line, last character, tag and rhyme search plus poem detail       |
-| Command line        | done     | `yunjian search/show/author/rhyme/corpus`, stable `--json` envelope, exit codes 0/1/2/3               |
-| MCP server          | done     | `yunjian mcp` over stdio with three read-only tools; `mcp install` writes both client shapes          |
-| AI appreciation     | done     | BYOK in the OS keychain only, cancellable streaming, two-tier cache, open-weight pre-generation       |
-| Recitation practice | done     | Cloze / first-character / masking modes on one scoring kernel, FSRS review scheduling                 |
-| Read-aloud and ASR  | done     | Per-音步 TTS with the 破读 lexicon, streaming dual-decode recognition; `voice` is off by default      |
-| Desktop app         | done     | Tauri v2 + React: custom titlebar, reading, settings, recitation and voice, non-blocking IPC          |
+| Component           | Status      | Notes                                                                                                        |
+| ------------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
+| Engineering base    | done        | 8-crate workspace, pinned versions, runtime `config.toml` discovery, tracing to stderr only                  |
+| stdout ban          | done        | Clippy denies `println!` and `std::io::stdout` workspace-wide, one CLI exit                                  |
+| Licence gate        | done        | `verify-sources` / `verify-models` check every asset's licence and SHA-256, MIT / Apache-2.0 only            |
+| Corpus pipeline     | done        | Canonical records, append-only `stable_id`, 平水韵 and 词林正韵 ingested, dedup and conflict verdicts        |
+| Index selection     | measured    | FTS5 `detail` mode and the n-gram table settled by measurement, not by decree                                |
+| Corpus artifact     | done        | 474k Tang–Song poems bundled (211 MiB gzip), search structures derived on first launch                       |
+| Voice base          | verified    | Native build and linking on five targets, 16 kHz mono capture on Linux, per-platform permissions             |
+| Classical CER       | measured    | Measured on synthetic speech; the verdict is that CER is advisory only, never a score                        |
+| Core search         | done        | Body, title, author, dynasty, first line, last character, tag and rhyme search plus poem detail              |
+| Command line        | done        | `yunjian search/show/author/rhyme/corpus`, stable `--json` envelope, exit codes 0/1/2/3                      |
+| MCP server          | done        | `yunjian mcp` over stdio with three read-only tools; `mcp install` writes both client shapes                 |
+| AI appreciation     | done        | BYOK in the OS keychain only, cancellable streaming, two-tier cache, open-weight pre-generation              |
+| Recitation practice | done        | Cloze / first-character / masking modes on one scoring kernel, FSRS review scheduling                        |
+| Read-aloud and ASR  | done        | Per-音步 TTS with the 破读 lexicon, streaming dual-decode recognition; `voice` is off by default             |
+| Desktop app         | done        | Tauri v2 + React: custom titlebar, reading, settings, recitation and voice, non-blocking IPC                 |
+| The mobile app      | façade done | `yunjian-mobile` covers all four domain crates; no binding is built while the device verdict is undetermined |
 
 **Not implemented, or not yet verified**:
 
-- **The mobile app** — the `yunjian-mobile` façade, its UI and its distribution pipeline do not exist yet; they need physical Android / iOS devices, `adb` and signing identities.
+- **The mobile shell and distribution** — the device verdict remains `undetermined`; the binding, UI and distribution pipeline still need physical Android / iOS devices, `adb` and signing identities.
 - **Real-machine desktop acceptance** — of 20 pre-declared assertions, 3 PASS and 17 NOT EXECUTED on Linux (under a GPU-less container plus Xvfb, WebKitGTK composites into a GL surface X cannot read back); Windows / macOS have no interactive session and no signing identity.
 - **The first tag** — the release pipeline now covers five CLI targets, desktop installers on three platforms, updater signatures, and per-asset SHA-256 files, but no first release tag has been cut; real-machine desktop acceptance and signing credentials remain release prerequisites.
 - **The bundled appreciation dataset** — the pipeline and its gates exist, but no open-weight inference is available here, so `dataset/` holds only a README; not one line was fabricated.
