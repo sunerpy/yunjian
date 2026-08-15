@@ -45,18 +45,20 @@ token 只交给 GitHub CLI，不写入安装脚本的临时目录。自定义 `Y
 
 ## CLI 归档
 
-发布管线生成以下 CLI 归档，全部启用 `voice,mcp`，并把 voice 所需动态库放在归档内：
+发布管线生成以下 CLI 归档，全部显式启用 `voice,mcp`。Linux 产物必须是无动态依赖的 musl
+可执行文件；macOS 与 Windows 归档同时携带 voice 所需动态库：
 
-| 系统    | 目标                        | 归档     |
-| ------- | --------------------------- | -------- |
-| Linux   | `x86_64-unknown-linux-gnu`  | `tar.gz` |
-| Linux   | `aarch64-unknown-linux-gnu` | `tar.gz` |
-| macOS   | `x86_64-apple-darwin`       | `tar.gz` |
-| macOS   | `aarch64-apple-darwin`      | `tar.gz` |
-| Windows | `x86_64-pc-windows-msvc`    | `zip`    |
+| 系统    | 目标                         | 归档     |
+| ------- | ---------------------------- | -------- |
+| Linux   | `x86_64-unknown-linux-musl`  | `tar.gz` |
+| Linux   | `aarch64-unknown-linux-musl` | `tar.gz` |
+| macOS   | `x86_64-apple-darwin`        | `tar.gz` |
+| macOS   | `aarch64-apple-darwin`       | `tar.gz` |
+| Windows | `x86_64-pc-windows-msvc`     | `zip`    |
+| Windows | `aarch64-pc-windows-msvc`    | `zip`    |
 
-Linux CLI 以 glibc 2.31 为上限。sherpa-onnx 没有可用于 `voice` 的 musl 预编译库，所以安装脚本
-会先兼容探测旧版 musl 资产，再回退到当前 GNU 资产——回退链本身有测试盯着。
+两个 Linux 目标都由 `cargo-zigbuild` 构建，发布门禁使用 `readelf` 拒绝带 `NEEDED` 动态依赖的
+可执行文件。安装脚本优先选择 musl 资产，并保留 GNU 资产候选项，仅用于兼容旧版发布。
 
 ## 桌面安装包与自动更新
 

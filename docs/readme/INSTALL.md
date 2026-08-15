@@ -50,20 +50,22 @@ downloads.
 
 ## CLI archives
 
-The release pipeline produces these CLI archives with both `voice,mcp` enabled and the native voice
-libraries included:
+The release pipeline produces these CLI archives with `voice,mcp` explicitly enabled. Linux artifacts
+must be musl executables with no dynamic dependencies; macOS and Windows archives also carry the native
+voice libraries they need:
 
-| OS      | Target                      | Archive  |
-| ------- | --------------------------- | -------- |
-| Linux   | `x86_64-unknown-linux-gnu`  | `tar.gz` |
-| Linux   | `aarch64-unknown-linux-gnu` | `tar.gz` |
-| macOS   | `x86_64-apple-darwin`       | `tar.gz` |
-| macOS   | `aarch64-apple-darwin`      | `tar.gz` |
-| Windows | `x86_64-pc-windows-msvc`    | `zip`    |
+| OS      | Target                       | Archive  |
+| ------- | ---------------------------- | -------- |
+| Linux   | `x86_64-unknown-linux-musl`  | `tar.gz` |
+| Linux   | `aarch64-unknown-linux-musl` | `tar.gz` |
+| macOS   | `x86_64-apple-darwin`        | `tar.gz` |
+| macOS   | `aarch64-apple-darwin`       | `tar.gz` |
+| Windows | `x86_64-pc-windows-msvc`     | `zip`    |
+| Windows | `aarch64-pc-windows-msvc`    | `zip`    |
 
-Linux CLI binaries target a glibc 2.31 ceiling. sherpa-onnx does not provide a musl prebuilt library
-usable with `voice`, so the installer probes legacy musl assets for compatibility before falling back
-to the current GNU asset — the fallback chain itself has a test.
+Both Linux targets are built with `cargo-zigbuild`, and the release gate uses `readelf` to reject an
+executable with any `NEEDED` dynamic dependency. The installer prefers musl assets and retains GNU
+asset candidates only for compatibility with older releases.
 
 ## Desktop installers and automatic updates
 
