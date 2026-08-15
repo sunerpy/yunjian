@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "set": "full",
+  "generated_date": "2026-08-15",
+  "app_version": "0.1.0",
+  "commit_sha": "dedd49c7f455475d788c900a8a9bb299b0705ad5",
+  "all_pass": false,
+  "platforms": [
+    {
+      "platform": "android",
+      "physical_device_used": false,
+      "device_model": "NOT EXECUTED: 需物理设备",
+      "os_version": "NOT EXECUTED: 需物理设备",
+      "driver_probe": {
+        "command": "adb devices -l",
+        "available": false,
+        "exit_code": null,
+        "stdout": "",
+        "stderr": "No such file or directory (os error 2)"
+      },
+      "assertions": [
+        {
+          "id": "install_and_launch",
+          "what": "安装真实移动端产物并启动到可交互首屏",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "corpus_first_run_materialization",
+          "what": "首次运行显示语料下载、校验与原子物化进度且不崩溃",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "two_char_search_returns_results",
+          "what": "输入两字查询“明月”并返回至少一条结果",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "reading_view_citations_and_ai_appreciation",
+          "what": "阅读页显示带出处的集评与明确标注、未经人工审校的 AI 赏析",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "typed_recitation_scores_correctly",
+          "what": "完成一轮打字背诵并得到与输入一致的评分结果",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "voice_recitation_round_succeeds_end_to_end",
+          "what": "语音背诵从授权、采集、识别到反馈端到端成功",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "voice_permission_denied_degrades",
+          "what": "拒绝麦克风权限后降级到打字模式并显示具体原因",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "chinese_ime_prefilled_field_visible",
+          "what": "中文输入法向已有内容的字段输入且键盘不遮挡输入框",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "background_return_preserves_layout",
+          "what": "应用进入后台再返回时页面不空白、视图不折叠",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "app_exits_cleanly",
+          "what": "由自动化驱动正常退出且不崩溃、不遗留孤儿进程",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "physical_device_used": false,
+      "device_model": "NOT EXECUTED: 需物理设备",
+      "os_version": "NOT EXECUTED: 需物理设备",
+      "driver_probe": {
+        "command": "xcrun devicectl list devices",
+        "available": false,
+        "exit_code": null,
+        "stdout": "",
+        "stderr": "No such file or directory (os error 2)"
+      },
+      "assertions": [
+        {
+          "id": "install_and_launch",
+          "what": "安装真实移动端产物并启动到可交互首屏",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "corpus_first_run_materialization",
+          "what": "首次运行显示语料下载、校验与原子物化进度且不崩溃",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "two_char_search_returns_results",
+          "what": "输入两字查询“明月”并返回至少一条结果",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "reading_view_citations_and_ai_appreciation",
+          "what": "阅读页显示带出处的集评与明确标注、未经人工审校的 AI 赏析",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "typed_recitation_scores_correctly",
+          "what": "完成一轮打字背诵并得到与输入一致的评分结果",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "voice_recitation_round_succeeds_end_to_end",
+          "what": "语音背诵从授权、采集、识别到反馈端到端成功",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "voice_permission_denied_degrades",
+          "what": "拒绝麦克风权限后降级到打字模式并显示具体原因",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "chinese_ime_prefilled_field_visible",
+          "what": "中文输入法向已有内容的字段输入且键盘不遮挡输入框",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "background_return_preserves_layout",
+          "what": "应用进入后台再返回时页面不空白、视图不折叠",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "app_exits_cleanly",
+          "what": "由自动化驱动正常退出且不崩溃、不遗留孤儿进程",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：No such file or directory (os error 2)；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        }
+      ]
+    }
+  ]
+}

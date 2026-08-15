@@ -472,6 +472,107 @@ fn mobile_report_serializes_the_three_stable_selection_literals() {
 }
 
 #[test]
+fn mobile_full_predeclares_every_real_device_assertion() {
+    assert_eq!(
+        mobile::FULL_DECLARED
+            .iter()
+            .map(|assertion| assertion.id)
+            .collect::<Vec<_>>(),
+        [
+            "install_and_launch",
+            "corpus_first_run_materialization",
+            "two_char_search_returns_results",
+            "reading_view_citations_and_ai_appreciation",
+            "typed_recitation_scores_correctly",
+            "voice_recitation_round_succeeds_end_to_end",
+            "voice_permission_denied_degrades",
+            "chinese_ime_prefilled_field_visible",
+            "background_return_preserves_layout",
+            "app_exits_cleanly",
+        ],
+        "todo 71 的十项真机断言必须在执行前完整冻结"
+    );
+    for assertion in mobile::FULL_DECLARED {
+        assert!(assertion.needs_screenshot, "每项真机断言都必须要求截图");
+        assert!(
+            !assertion.exact_command.trim().is_empty(),
+            "断言 `{}` 必须给出自动化执行命令",
+            assertion.id
+        );
+        assert!(
+            !assertion.executable_when.trim().is_empty(),
+            "断言 `{}` 必须声明物理设备前置条件",
+            assertion.id
+        );
+    }
+}
+
+#[test]
+fn unavailable_mobile_devices_produce_a_complete_auditable_full_report() {
+    let report = mobile::build_unexecuted_full_report();
+    assert!(
+        !report.all_pass,
+        "存在 NOT EXECUTED 时 all_pass 必须为 false"
+    );
+    assert_eq!(report.platforms.len(), 2, "报告必须同时覆盖 Android 与 iOS");
+    assert!(!report.app_version.trim().is_empty());
+    assert!(!report.commit_sha.trim().is_empty());
+
+    for platform in &report.platforms {
+        assert!(!platform.physical_device_used);
+        assert!(platform.device_model.starts_with("NOT EXECUTED:"));
+        assert!(platform.os_version.starts_with("NOT EXECUTED:"));
+        assert_eq!(platform.assertions.len(), mobile::FULL_DECLARED.len());
+        for (actual, declared) in platform.assertions.iter().zip(mobile::FULL_DECLARED) {
+            assert_eq!(actual.id, declared.id);
+            assert_eq!(actual.verdict, Verdict::NotExecuted);
+            assert!(!actual.detail.trim().is_empty());
+            assert!(!actual.executable_when.trim().is_empty());
+            assert!(!actual.exact_command.trim().is_empty());
+            assert!(actual.screenshot.is_none(), "未执行时不得伪造截图");
+        }
+    }
+
+    let encoded = serde_json::to_string(&report).expect("serialize full report");
+    mobile::validate_full_report_json(&encoded).expect("完整的未执行报告也必须通过结构校验");
+}
+
+#[test]
+fn mobile_full_parser_rejects_an_unlisted_assertion_and_blank_verdict() {
+    let report = mobile::build_unexecuted_full_report();
+    let mut value = serde_json::to_value(report).expect("serialize full report");
+    value["platforms"][0]["assertions"][0]["id"] = "injected_unlisted_assertion".into();
+    let error = mobile::validate_full_report_json(&value.to_string())
+        .expect_err("未声明 assertion id 必须被解析器拒绝");
+    assert!(error.to_string().contains("未声明"), "{error}");
+
+    let mut value = serde_json::to_value(mobile::build_unexecuted_full_report())
+        .expect("serialize full report");
+    value["platforms"][0]["assertions"][0]["verdict"] = "".into();
+    mobile::validate_full_report_json(&value.to_string()).expect_err("空 verdict 必须被解析器拒绝");
+}
+
+#[test]
+fn generated_mobile_full_report_passes_the_same_parser() {
+    let report_dir = repo_root().join("docs/reports");
+    let mut reports = std::fs::read_dir(&report_dir)
+        .expect("报告目录必须存在")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("mobile-qa-") && name.ends_with(".json"))
+        })
+        .collect::<Vec<_>>();
+    reports.sort();
+    let path = reports.last().expect("必须先生成 mobile-qa JSON 报告");
+    let encoded = std::fs::read_to_string(path).expect("必须能读取 mobile-qa JSON 报告");
+    mobile::validate_full_report_json(&encoded)
+        .unwrap_or_else(|error| panic!("生成报告 {} 校验失败：{error}", path.display()));
+}
+
+#[test]
 fn foreign_platforms_report_a_reason_and_an_executable_condition() {
     for platform in [Platform::Windows, Platform::MacOs] {
         let (reason, when) = foreign_platform_gap(platform);

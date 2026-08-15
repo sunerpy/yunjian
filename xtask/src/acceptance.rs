@@ -48,7 +48,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::verify_sources::emit;
 
@@ -111,7 +111,7 @@ mod geometry {
 }
 
 /// 一条断言由哪种通道执行。声明时绑定，运行期不得更换。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Channel {
     /// DOM 层事实，只能由真实 WebDriver 会话回答。
@@ -123,7 +123,7 @@ pub(crate) enum Channel {
 }
 
 /// 一条断言的裁决。**没有第四种取值**——「跑了但说不清」不是允许的结论。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) enum Verdict {
     /// 执行了，且断言成立。
@@ -510,8 +510,14 @@ pub(crate) fn run(platform: &str, set: &str) -> Result<()> {
         }
         return mobile::run(&repo_root(), platform);
     }
+    if set == "full" {
+        if !matches!(platform, Platform::Android | Platform::Ios) {
+            bail!("移动真机断言集 full 只接受 android | ios");
+        }
+        return mobile::run_full(&repo_root(), platform);
+    }
     if set != "desktop" {
-        bail!("未知断言集 `{set}`；只接受 desktop | spike");
+        bail!("未知断言集 `{set}`；只接受 desktop | spike | full");
     }
     if matches!(platform, Platform::Android | Platform::Ios) {
         bail!("桌面断言集 desktop 只接受 win | mac | linux");

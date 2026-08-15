@@ -20,6 +20,15 @@ use serde_json::Value;
 use super::{Platform, Verdict, commit_sha, os_build, today};
 use crate::verify_sources::emit;
 
+mod full;
+
+#[cfg(test)]
+pub(crate) use full::{FULL_DECLARED, build_unexecuted_full_report, validate_full_report_json};
+
+pub(super) fn run_full(root: &Path, platform: Platform) -> Result<()> {
+    full::run(root, platform)
+}
+
 const REPORT_JSON: &str = "docs/reports/mobile-spike.json";
 const REPORT_MARKDOWN: &str = "docs/reports/mobile-spike.md";
 const EVIDENCE_LOG: &str = ".omo/evidence/task-68-yunjian.log";
