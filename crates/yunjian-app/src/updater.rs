@@ -10,6 +10,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 const MAIN_WINDOW: &str = "main";
 const STARTUP_CHECK_DELAY: Duration = Duration::from_secs(5);
+const DISABLE_STARTUP_CHECK: &str = "YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UpdateTarget {
@@ -243,6 +244,10 @@ fn prompt_update<R: Runtime>(app: AppHandle<R>, info: UpdateInfo) {
 }
 
 pub(crate) fn start_delayed_check<R: Runtime>(app: AppHandle<R>) {
+    if std::env::var_os(DISABLE_STARTUP_CHECK).is_some() {
+        tracing::debug!("启动更新检查已由运行环境禁用");
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(STARTUP_CHECK_DELAY).await;
         match check(&app).await {
@@ -250,7 +255,6 @@ pub(crate) fn start_delayed_check<R: Runtime>(app: AppHandle<R>) {
             Ok(None) => tracing::debug!("当前已是最新版本"),
             Err(message) => {
                 tracing::warn!(error = %message, "启动更新检查失败");
-                show_error(&app, message);
             }
         }
     });

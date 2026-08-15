@@ -128,3 +128,35 @@ fn updater_plugin_and_startup_check_are_wired_into_the_builder() {
         "setup 必须调度非阻塞的启动更新检查"
     );
 }
+
+#[test]
+fn background_startup_check_failure_never_opens_a_modal_dialog() {
+    let updater = source("src/updater.rs");
+    let delayed_check = updater
+        .split_once("pub(crate) fn start_delayed_check")
+        .map(|(_, body)| body)
+        .expect("updater.rs 必须实现 start_delayed_check");
+    let delayed_check = delayed_check
+        .split_once("#[cfg(test)]")
+        .map_or(delayed_check, |(body, _)| body);
+
+    assert!(
+        delayed_check.contains("tracing::warn!"),
+        "后台启动检查失败仍要写日志，不能静默吞掉"
+    );
+    assert!(
+        !delayed_check.contains("show_error("),
+        "后台启动检查失败不得弹原生模态框：它会抢走首屏焦点并吞掉标题栏、输入框的真实交互。\
+         用户主动点击检查或安装时仍可显示错误"
+    );
+}
+
+#[test]
+fn startup_check_has_an_acceptance_isolation_switch() {
+    let updater = source("src/updater.rs");
+    assert!(
+        updater.contains("YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK")
+            && updater.contains("var_os(DISABLE_STARTUP_CHECK)"),
+        "桌面交互验收必须能隔离外部更新服务，避免提示框抢走被测窗口的输入"
+    );
+}
