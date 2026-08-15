@@ -43,6 +43,12 @@
 use yunjian_core::{Config, LoggerConfig, init_config, init_logger};
 
 mod ipc;
+// 托盘是桌面独占的：`tauri::menu` 与 `tauri::tray` 在 tauri 里分别由 `#[cfg(desktop)]`
+// 与 `#[cfg(all(desktop, feature = "tray-icon"))]` 门住，Android 目标上这两个模块**不存在**
+// （实测报 `could not find menu in tauri` 并附 `the item is gated here`）。
+// 因此门禁必须加在模块声明这一层，而不是在 `tray.rs` 内部逐个 import 上——
+// 后者会让 `tray::setup` 与 `tray::handle_window_event` 这两个符号在移动端半存在。
+#[cfg(desktop)]
 mod tray;
 mod updater;
 pub mod voice_ipc;
@@ -58,6 +64,7 @@ pub const APP: &str = "yunjian";
 /// Tauri 构建失败（WebView 运行时缺失、系统缺少 GTK/WebKit 运行库）时 panic。
 /// 这里刻意不吞：一个起不来的窗口没有可降级的形态，静默返回只会得到一个既没有窗口
 /// 也没有解释的进程。
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (config, config_error) = match init_config(None, APP) {
         Ok(config) => (config.clone(), None),
@@ -81,9 +88,12 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
-    ipc::configure_builder(builder, config)
-        .on_window_event(tray::handle_window_event)
+    let builder = ipc::configure_builder(builder, config);
+    #[cfg(desktop)]
+    let builder = builder.on_window_event(tray::handle_window_event);
+    builder
         .setup(move |app| {
+            #[cfg(desktop)]
             tray::setup(app)?;
             updater::start_delayed_check(app.handle().clone());
             start_asset_sync(startup_config.clone());
