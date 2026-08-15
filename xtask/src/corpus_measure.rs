@@ -61,11 +61,63 @@ pub(crate) const DEFAULT_ARTIFACT_BUDGET_MIB: u64 = 300;
 /// 查询 p95 预算，毫秒。与 todo 43 的选型门槛同一个数。
 const DEFAULT_P95_BUDGET_MS: f64 = 150.0;
 
+/// 三个上游的**随仓 fixture** 默认目录。`main.rs` 的 `default_value` 直接引用它们：
+/// 默认值在两处各写一遍，就会有一天只改了一处，而 [`InputSource::classify`] 正是
+/// 靠「这个目录是不是那个默认值」来判断本次输入是 fixture 还是真实检出。
+pub const FIXTURE_CHINESE_POETRY_DIR: &str = "crates/yunjian-corpus/tests/fixtures/chinese_poetry";
+pub const FIXTURE_WERNEROR_DIR: &str = "crates/yunjian-corpus/tests/fixtures/werneror";
+pub const FIXTURE_RHYME_DIR: &str = "crates/yunjian-corpus/tests/fixtures/rhyme_book";
+
 /// 冷启动首查之外的每条查询，丢弃的预热轮数。
 const WARMUP: usize = 3;
 
 /// 语料构建的 `corpus_version`。与 `corpus-quality` 保持一致。
 const CORPUS_VERSION: &str = "0.1.0";
+
+// ---------------------------------------------------------------- 输入来源
+
+/// 本次实测读的是随仓 fixture 还是按锁定 revision 的真实检出。
+///
+/// # 为什么它必须是一等概念
+///
+/// 规模（[`Scale`]）定义的是**真实上游**上的一个子集：`10k` 要读九个唐宋分桶，
+/// 其中六个（`唐末宋初.csv`、四个 `宋_*.csv`、`宋末元初.csv`）在锁定 revision 上
+/// 动辄十几 MB，**刻意没有签进 fixture**（见
+/// [`FIXTURE_BUCKETS`](yunjian_corpus::ingest::werneror::FIXTURE_BUCKETS)）。
+/// 拿规模的分桶清单去问 fixture 目录，必然撞上「白名单声明了它就必须存在」这条
+/// 正确的断言，然后把一个**输入选择错误**报成一次数据缺失。
+///
+/// 这正是 todo 20 假绿的成因：那次失败被记成 `state=not_measured`、退出码仍是 0，
+/// 并且顺手把报告里真实的 10k 实测行降级掉了。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InputSource {
+    Fixture,
+    Upstream,
+}
+
+impl InputSource {
+    fn classify(root: &Path, werneror_dir: &Path) -> Self {
+        let candidate = if werneror_dir.is_absolute() {
+            werneror_dir.to_path_buf()
+        } else {
+            root.join(werneror_dir)
+        };
+        match (
+            candidate.canonicalize(),
+            root.join(FIXTURE_WERNEROR_DIR).canonicalize(),
+        ) {
+            (Ok(given), Ok(fixture)) if given == fixture => Self::Fixture,
+            _ => Self::Upstream,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Fixture => "随仓 fixture",
+            Self::Upstream => "锁定 revision 的真实检出",
+        }
+    }
+}
 
 // ---------------------------------------------------------------- 规模
 
@@ -677,6 +729,7 @@ pub fn run(
             .collect::<Result<Vec<_>>>()?
     };
     let root = repo_root()?;
+    let source = InputSource::classify(&root, &werneror_dir);
     let verdict_bytes = std::fs::read(root.join(INDEX_VERDICT))
         .with_context(|| format!("读取 {INDEX_VERDICT} 失败"))?;
     let manifest_bytes = std::fs::read(root.join(SOURCES_TOML))
@@ -693,6 +746,11 @@ pub fn run(
             .query_row("SELECT sqlite_version()", [], |row| row.get::<_, String>(0))?;
 
     emit("== 真实语料索引体积与查询延迟实测 ==");
+    emit(&format!(
+        "输入来源：{}（{}）",
+        source.label(),
+        werneror_dir.display()
+    ));
     emit(&format!(
         "预算：gzip 工件 <= {} MB，p95 <= {DEFAULT_P95_BUDGET_MS} ms；每条查询 {WARMUP} 轮预热 + {repeats} 轮测量",
         artifact_budget_bytes / (1024 * 1024)
@@ -726,12 +784,8 @@ pub fn run(
     let mut rows = Vec::new();
     for scale in ALL_SCALES {
         if !requested.contains(&scale) {
-            if let Some(row) = previous.iter().find(|row| {
-                row.scale == scale.key()
-                    && row.artifact_shape == ArtifactShape::Shipped
-                    && row.state == MeasurementState::Measured
-            }) {
-                rows.push(row.clone());
+            if let Some(row) = previous_shipped_row(&previous, scale) {
+                rows.push(row);
                 continue;
             }
             rows.push(ScaleRow {
@@ -750,6 +804,7 @@ pub fn run(
         emit(&format!("-- 规模 {}：{}", scale.key(), scale.description()));
         let outcome = measure_scale(
             scale,
+            source,
             &build_dir,
             &chinese_poetry_dir,
             &werneror_dir,
@@ -760,6 +815,34 @@ pub fn run(
             artifact_budget_bytes,
             keep_databases,
         );
+        // fixture 输入量到的是**管线**而不是发布物：分桶被裁到 fixture 提供的那几个，
+        // 首数、体积与延迟都不是这个规模在真实上游上的值。所以它绝不能写进报告——
+        // 写进去等于用一份 7 首诗的数字冒充 1 万首的预算依据。已实测的那一行原样留下。
+        if source == InputSource::Fixture {
+            let smoke = outcome.with_context(|| {
+                format!(
+                    "在 {} 上验证规模 {} 的测量管线失败",
+                    source.label(),
+                    scale.key()
+                )
+            })?;
+            emit(&format!(
+                "   管线自检通过：{} 首（fixture 裁剪后）、gzip {} B、最差 p95 {:.3} ms。\
+                 这些数字**不写进报告**，报告沿用已实测的真实上游行。",
+                smoke.poem_count, smoke.gzip_bytes, smoke.worst_p95_ms
+            ));
+            let row = previous_shipped_row(&previous, scale).with_context(|| {
+                format!(
+                    "报告里没有规模 {} 的随包形态实测行，而本次输入是 {}，量不出可发布的数字。\
+                     按 corpus/sources.toml 的锁定 revision 检出三个上游后，\
+                     用 --chinese-poetry-dir/--werneror-dir/--rhyme-dir 指向它们重跑。",
+                    scale.key(),
+                    source.label()
+                )
+            })?;
+            rows.push(row);
+            continue;
+        }
         match outcome {
             Ok(measurement) => {
                 emit(&format!(
@@ -799,6 +882,7 @@ pub fn run(
         }
     }
 
+    ensure_requested_measured(&rows, &requested)?;
     rows.extend(carried);
     let verdict = decide(&rows, artifact_budget_bytes, SHIPPED_DEFAULT_SCOPE.key());
     let report = MeasuredReport {
@@ -843,6 +927,53 @@ pub fn run(
     }
     emit(&format!("已写出 {REPORT_JSON} 与 {REPORT_MD}"));
     Ok(())
+}
+
+/// 被请求的规模里有一个没测出来，就必须**非零退出**，而且不写报告。
+///
+/// # 这一条挡住的是什么
+///
+/// 老行为是：实测失败 → 该行标 `state=not_measured` → 报告照写 → 退出 0。于是
+/// `cargo run -p xtask -- corpus-measure --scale 10k` 这条验收命令永远通过，而它
+/// 还顺手把报告里原本真实的 10k 实测行**降级**掉了——命令绿、产物坏、证据没了。
+/// 一句话：**退出码 0 不等于验收通过**；产出机器可读结果的命令必须自己断言那个
+/// 结果的语义字段。
+///
+/// 失败时刻意不写报告：一次失败的测量不是测量，用它覆盖一份好报告会毁掉证据。
+fn ensure_requested_measured(rows: &[ScaleRow], requested: &[Scale]) -> Result<()> {
+    let unmeasured = requested
+        .iter()
+        .filter_map(|scale| {
+            rows.iter()
+                .find(|row| row.scale == scale.key() && row.state == MeasurementState::NotMeasured)
+        })
+        .map(|row| {
+            format!(
+                "{}：{}",
+                row.scale,
+                row.blocked_reason.as_deref().unwrap_or("未写阻塞原因")
+            )
+        })
+        .collect::<Vec<_>>();
+    if unmeasured.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "被请求的 {} 个规模没有测出实测值，报告未改写：{}",
+        unmeasured.len(),
+        unmeasured.join("；")
+    );
+}
+
+fn previous_shipped_row(previous: &[ScaleRow], scale: Scale) -> Option<ScaleRow> {
+    previous
+        .iter()
+        .find(|row| {
+            row.scale == scale.key()
+                && row.artifact_shape == ArtifactShape::Shipped
+                && row.state == MeasurementState::Measured
+        })
+        .cloned()
 }
 
 const ALL_SCALES: [Scale; 3] = [Scale::Sample10k, Scale::TangSong, Scale::Full];
@@ -898,6 +1029,7 @@ pub(crate) fn assemble_shipped_input(
 ) -> Result<yunjian_corpus::db::CorpusDbInput> {
     build::assemble(
         scale,
+        InputSource::Upstream,
         chinese_poetry_dir,
         werneror_dir,
         rhymes,
@@ -989,6 +1121,7 @@ fn disk_kind() -> String {
 #[allow(clippy::too_many_arguments)]
 fn measure_scale(
     scale: Scale,
+    source: InputSource,
     build_dir: &Path,
     chinese_poetry_dir: &Path,
     werneror_dir: &Path,
@@ -1002,6 +1135,7 @@ fn measure_scale(
     let started = Instant::now();
     let input = build::assemble(
         scale,
+        source,
         chinese_poetry_dir,
         werneror_dir,
         rhymes,

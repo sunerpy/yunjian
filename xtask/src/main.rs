@@ -112,19 +112,13 @@ enum Commands {
         #[arg(long = "scale", value_name = "SCALE")]
         scales: Vec<String>,
         /// `chinese-poetry` 检出目录。默认使用随仓 fixture；实测完整语料时显式覆盖。
-        #[arg(
-            long,
-            default_value = "crates/yunjian-corpus/tests/fixtures/chinese_poetry"
-        )]
+        #[arg(long, default_value = corpus_measure::FIXTURE_CHINESE_POETRY_DIR)]
         chinese_poetry_dir: Option<std::path::PathBuf>,
         /// `Werneror/Poetry` 检出目录。默认使用随仓 fixture；实测完整语料时显式覆盖。
-        #[arg(long, default_value = "crates/yunjian-corpus/tests/fixtures/werneror")]
+        #[arg(long, default_value = corpus_measure::FIXTURE_WERNEROR_DIR)]
         werneror_dir: Option<std::path::PathBuf>,
         /// `charlesix59/chinese_word_rhyme` 检出目录。默认使用随仓 fixture；完整实测时显式覆盖。
-        #[arg(
-            long,
-            default_value = "crates/yunjian-corpus/tests/fixtures/rhyme_book"
-        )]
+        #[arg(long, default_value = corpus_measure::FIXTURE_RHYME_DIR)]
         rhyme_dir: Option<std::path::PathBuf>,
         /// 每条查询重复测量的次数，p50/p95 取自这些样本。
         #[arg(long, default_value_t = 25)]

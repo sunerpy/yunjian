@@ -14,7 +14,9 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use yunjian_corpus::ingest::werneror::{Bucket, CLASSICAL_BUCKETS};
+use yunjian_corpus::ingest::werneror::{
+    Bucket, CLASSICAL_BUCKETS, FIXTURE_BUCKETS, buckets_by_file,
+};
 use yunjian_corpus::quality::{
     BASELINE_JSON, Baseline, DEFECTS_JSON, DEFECTS_MD, DISPOSITIONS_JSON, PipelineOutcome,
     ReasonCode, load_supplement, run_pipeline, write_artifacts,
@@ -29,20 +31,6 @@ const CUSTOM_SCOPE: &str = "custom";
 const CHINESE_POETRY_FIXTURES: &str = "crates/yunjian-corpus/tests/fixtures/chinese_poetry";
 const WERNEROR_FIXTURES: &str = "crates/yunjian-corpus/tests/fixtures/werneror";
 const SUPPLEMENT_FIXTURES: &str = "crates/yunjian-corpus/tests/fixtures/quality";
-
-/// fixture 目录里在古典白名单上的分桶。
-///
-/// `当代.csv` 与 `未来.csv` 刻意不列——前者是已知近现代桶，后者根本不在白名单上，
-/// 两者都必须由策略排除而不是由这份名单排除。
-const FIXTURE_BUCKETS: [&str; 7] = [
-    "先秦.csv",
-    "秦.csv",
-    "魏晋末南北朝初.csv",
-    "隋末唐初.csv",
-    "唐.csv",
-    "宋末金初.csv",
-    "辽.csv",
-];
 
 const BASELINE_NOTE: &str = "由 `cargo run -p xtask -- corpus-quality --write-baseline` 生成。\
 范围是随仓 fixture 加 tests/fixtures/quality/ 的补充记录，逐 code 容差按 \
@@ -62,16 +50,7 @@ fn repo_root() -> Result<PathBuf> {
 }
 
 fn fixture_buckets() -> Result<Vec<Bucket>> {
-    FIXTURE_BUCKETS
-        .iter()
-        .map(|file| {
-            CLASSICAL_BUCKETS
-                .iter()
-                .find(|bucket| bucket.file == *file)
-                .copied()
-                .with_context(|| format!("古典白名单里没有 fixture 分桶 {file}"))
-        })
-        .collect()
+    Ok(buckets_by_file(FIXTURE_BUCKETS).context("按 fixture 名单取分桶")?)
 }
 
 fn run_scope(

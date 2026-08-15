@@ -7,18 +7,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// 就说明白名单漏了。
 const MODERN_SENTINELS: [&str; 4] = ["占位作者甲", "占位作者乙", "占位作者丙", "占位作者丁"];
 
-/// fixture 中实际存在的古典分桶（其余 21 个在锁定 revision 上动辄十几 MB，
-/// 不入库 fixture）。
-const FIXTURE_BUCKETS: [&str; 7] = [
-    "先秦.csv",
-    "秦.csv",
-    "魏晋末南北朝初.csv",
-    "隋末唐初.csv",
-    "唐.csv",
-    "宋末金初.csv",
-    "辽.csv",
-];
-
 fn fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/werneror")
 }
@@ -31,20 +19,8 @@ fn sources_manifest() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/sources.toml")
 }
 
-/// 从白名单里按文件名取出 fixture 覆盖的那几个分桶。
-///
-/// 刻意不在测试里重新声明 `dynasty_label` 与期望行数：那样测试就成了第二份
-/// 白名单，两份一旦漂移，测试会继续通过而产品行为已经变了。
 fn fixture_buckets() -> Vec<Bucket> {
-    FIXTURE_BUCKETS
-        .iter()
-        .map(|file| {
-            *CLASSICAL_BUCKETS
-                .iter()
-                .find(|bucket| bucket.file == *file)
-                .unwrap_or_else(|| panic!("白名单里没有 fixture 分桶 {file}"))
-        })
-        .collect()
+    buckets_by_file(FIXTURE_BUCKETS).expect("fixture 分桶都应在白名单上")
 }
 
 fn ingest_fixture(covered: &CoveredWorks) -> WernerorOutcome {
@@ -156,6 +132,48 @@ fn allow_list_is_the_manifest_and_holds_no_modern_bucket() {
         .map(|file| (*file).to_owned())
         .collect();
     assert_eq!(known, withheld, "已知现代分桶名单应与清单里被扣留的一致");
+}
+
+/// `FIXTURE_BUCKETS` 必须逐条等于 fixture 目录里真实存在且在白名单上的 CSV。
+///
+/// 它扫真实目录而不读任何记录值：两边任一侧漂移都会让「按 fixture 裁剪分桶」的
+/// 调用方去要一个不存在的文件——那正是 `corpus-measure --scale 10k` 曾经报成
+/// 「数据缺失」的成因。常量自锁的 7 是为了挡住「测试红了就把新文件加进名单」这条
+/// 捷径：真要改 fixture 覆盖范围，先改方案。
+#[test]
+fn fixture_bucket_list_matches_the_fixture_directory() {
+    assert_eq!(
+        FIXTURE_BUCKETS.len(),
+        7,
+        "要调整 fixture 覆盖范围先改方案，不要改这条断言"
+    );
+    let allow_list: BTreeSet<&str> = CLASSICAL_BUCKETS.iter().map(|bucket| bucket.file).collect();
+    let on_disk: BTreeSet<String> = std::fs::read_dir(fixture_root())
+        .expect("读取 werneror fixture 目录")
+        .map(|entry| {
+            entry
+                .expect("目录项")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|name| allow_list.contains(name.as_str()))
+        .collect();
+    let declared: BTreeSet<String> = FIXTURE_BUCKETS
+        .iter()
+        .map(|file| (*file).to_owned())
+        .collect();
+    assert_eq!(
+        declared, on_disk,
+        "FIXTURE_BUCKETS 与 fixture 目录里在白名单上的 CSV 不一致"
+    );
+    for bucket in buckets_by_file(FIXTURE_BUCKETS).expect("fixture 分桶都应在白名单上") {
+        assert!(
+            fixture_root().join(bucket.file).is_file(),
+            "fixture 目录缺 {}",
+            bucket.file
+        );
+    }
 }
 
 #[test]
