@@ -925,6 +925,7 @@ fn today() -> String {
 
 pub(crate) mod device_farm;
 pub(crate) mod linux;
+pub(crate) mod measurements;
 pub(crate) mod mobile;
 pub(crate) mod screenshot;
 pub(crate) mod webdriver;
