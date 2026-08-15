@@ -115,6 +115,19 @@ describe("检索", () => {
     expect(screen.getByTestId("search-error").textContent).toContain("语料库还没就位");
   });
 
+  // Tauri 的 `invoke` 失败时 reject 的是**字符串**，不是 `Error`。只判 `instanceof Error`
+  // 会让真实原因整条丢掉，界面上只剩一句「检索失败」——真机验收里正是这句话把一次
+  // IPC 失败伪装成了「检索功能坏了」，而它本可以自己说出坏在哪。
+  it("检索被字符串 reject 时也显示原因", async () => {
+    search(
+      portFixture({
+        searchText: () => Promise.reject("数据库错误：attempt to write a readonly database"),
+      }),
+    );
+    await submit("明月");
+    expect(screen.getByTestId("search-error").textContent).toContain("readonly database");
+  });
+
   it("点结果行回调 poem_id", async () => {
     const port = portFixture({
       searchText: () => Promise.resolve(page([hit("p-1", "静夜思", "李白", "床前明月光", 2)])),

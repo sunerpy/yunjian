@@ -20,7 +20,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use enigo::{Button, Coordinate, Direction, Enigo, Keyboard as _, Mouse as _, Settings};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _, Window};
@@ -41,9 +41,14 @@ const SHOT_DIR: &str = "desktop-qa";
 /// 等窗口出现的上限。debug 构建首帧要几秒。
 const WINDOW_TIMEOUT: Duration = Duration::from_secs(30);
 /// 等窗口状态迁移的上限。窗口管理器处理一次请求是毫秒级，给足余量。
+///
+/// **不是这个值的问题**：本轮把它加到 20 秒，`control_maximize_works` 与
+/// `control_restore_works` 的判词完全不变，因此那两条不是等得不够久。
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 /// 等 WebView 画出第一帧的上限。debug 构建要加载并执行整个前端包。
 const PAINT_TIMEOUT: Duration = Duration::from_secs(20);
+/// 等 React 把首屏挂到 DOM 上的上限。实测约 2 秒，取 20 秒余量。
+const MOUNT_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// 执行 Linux 断言集。
 ///
@@ -491,6 +496,12 @@ fn webdriver_assertions(driver: &Session, shots: &Path, collector: &mut Collecto
     // 两字检索。`search-input` / `search-submit` / `result-row` 是 app/src/search 里
     // 真实存在的 data-testid，不是猜的。
     let two_char = (|| -> Result<String> {
+        if !driver.wait_for("[data-testid='search-input']", MOUNT_TIMEOUT) {
+            bail!(
+                "等了 {} 秒，`[data-testid='search-input']` 仍未出现在 DOM 里",
+                MOUNT_TIMEOUT.as_secs()
+            );
+        }
         driver.send_keys("[data-testid='search-input']", "明月")?;
         driver.click("[data-testid='search-submit']")?;
         std::thread::sleep(Duration::from_secs(2));
@@ -739,13 +750,19 @@ fn os_assertions(
         )?;
     }
     // 还原，后面的按钮断言从非最大化态开始。
+    //
+    // 落点必须**重新**从当前几何算：最大化把窗口移到 (0,0) 并加宽，用最大化之前那份
+    // 几何算出来的点已经落在内容区而不是标题栏上，于是这一下什么也不做、窗口留在最大化态。
+    // 那个残留状态会让紧随其后的拖拽断言必然失败——最大化的窗口按定义拖不动——
+    // 而报告里会写成「标题文字拖不动」，指着一处没坏的前端。
     if after {
-        click_at(&mut enigo, drag_point, true)?;
+        click_at(&mut enigo, title_point(conn, window), true)?;
         Background::wait_until(STATE_TIMEOUT, || !is_maximized(conn, window));
     }
 
     // --- 从标题文字拖拽 ---
     let shot = shots.join("drag-from-title-text.png");
+    let still_maximized = is_maximized(conn, window);
     let origin = window_geometry(conn, window);
     let from = (
         origin.0 + geometry::title_text_x(),
@@ -758,7 +775,20 @@ fn os_assertions(
     });
     let after_drag = window_geometry(conn, window);
     let _ = screenshot::capture(conn, root_window, &shot);
-    if moved {
+    if still_maximized {
+        collector.record(
+            "drag_from_title_text",
+            Verdict::NotExecuted,
+            "拖拽开始前窗口仍处于最大化态，而最大化的窗口按定义不可拖动；\
+             此时「位置没变」证不了标题栏拖动坏没坏，故不记 FAIL",
+            Some(
+                "一个能把窗口从最大化态还原下来的会话；还原本身由 \
+                 `control_restore_works` 单独判定"
+                    .to_owned(),
+            ),
+            Some(relative_shot(&shot)),
+        )?;
+    } else if moved {
         collector.record(
             "drag_from_title_text",
             Verdict::Pass,
@@ -777,9 +807,11 @@ fn os_assertions(
             "drag_from_title_text",
             Verdict::Fail,
             format!(
-                "按住标题文字拖动后窗口位置未变（仍在 {:?}）；\
-                 裸 `data-tauri-drag-region` 只在容器自身命中时生效，\
-                 点在标题文字上不会拖动——这正是该属性必须取 `deep` 的原因",
+                "按住标题文字（窗口内 {},{}）拖动后窗口位置未变（仍在 {:?}）；\
+                 窗口当时不是最大化态，落点在自绘标题栏的文字上，\
+                 因此这是标题栏拖动本身没有生效",
+                geometry::title_text_x(),
+                geometry::mid_y(),
                 (origin.0, origin.1)
             ),
             None,
@@ -813,8 +845,14 @@ fn os_assertions(
     }
 
     // --- 三个窗口控件 ---
-    let geom = window_geometry(conn, window);
+    //
+    // 每次点击**前**重新读几何，不复用一份快照。最大化会同时改变窗口的位置与宽度
+    // （实测 1200 宽居中的窗口最大化成 1280 宽、原点移到 0,0），而按钮 x 是从窗口
+    // 右缘往左数出来的。用最大化之前那份几何去算「还原」那一下，落点会偏 40 px ——
+    // 恰好落进最小化按钮，于是「还原」把窗口最小化了、随后的「最小化」又点在按钮区
+    // 之外。两条都变红，而读起来像是产品的还原与最小化都坏了。
     let button = |nth: i32| {
+        let geom = window_geometry(conn, window);
         (
             geom.0 + geometry::button_center_x(i32::from(geom.2), nth),
             geom.1 + geometry::mid_y(),
@@ -870,15 +908,7 @@ fn os_assertions(
     }
 
     let shot = shots.join("control-close.png");
-    let geom = window_geometry(conn, window);
-    click_at(
-        &mut enigo,
-        (
-            geom.0 + geometry::button_center_x(i32::from(geom.2), geometry::CLOSE_FROM_RIGHT),
-            geom.1 + geometry::mid_y(),
-        ),
-        false,
-    )?;
+    click_at(&mut enigo, button(geometry::CLOSE_FROM_RIGHT), false)?;
     let hidden_to_tray = Background::wait_until(Duration::from_secs(10), || {
         !top_level_windows(conn, root_window).contains(&window)
     });
@@ -1069,6 +1099,18 @@ fn window_geometry(conn: &RustConnection, window: Window) -> (i32, i32, u16, u16
         (i32::from(t.dst_x), i32::from(t.dst_y))
     });
     (x, y, geom.width, geom.height)
+}
+
+/// 标题文字上一点的**当前**屏幕坐标。
+///
+/// 每次调用都重读几何。最大化与还原都会同时改变窗口的位置与尺寸，缓存一份快照复用，
+/// 落点就会在状态迁移之后落到内容区里，而那种点击是静默无效的。
+fn title_point(conn: &RustConnection, window: Window) -> (i32, i32) {
+    let geom = window_geometry(conn, window);
+    (
+        geom.0 + geometry::title_text_x(),
+        geom.1 + geometry::mid_y(),
+    )
 }
 
 fn frame_extents(conn: &RustConnection, window: Window) -> Option<Vec<u32>> {
