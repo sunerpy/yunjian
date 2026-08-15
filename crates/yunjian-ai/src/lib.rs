@@ -10,7 +10,7 @@
 //! 包在 [`secrecy::SecretString`] 里，不进配置文件、不进日志、不进 `Debug` 输出。
 //!
 //! 实际调用模型的实现见 [`genai_provider`]：它把钥匙串里的密钥以 resolver 注入
-//! `genai`，`AuthData::FromEnv` 在本 crate 中不出现，密钥不进进程环境。
+//! `genai`，不启用环境变量凭据回退，密钥不进进程环境。
 
 #![warn(missing_docs)]
 

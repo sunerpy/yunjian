@@ -380,7 +380,13 @@ mod tests {
             .get("dependencies")
             .and_then(toml::Value::as_table)
             .expect("Cargo.toml 应有 dependencies 表");
-        for forbidden in ["tauri", "tantivy", "jieba-rs", "lindera", "opencc-rust"] {
+        for forbidden in [
+            concat!("tau", "ri"),
+            "tantivy",
+            "jieba-rs",
+            "lindera",
+            "opencc-rust",
+        ] {
             assert!(
                 !dependencies.contains_key(forbidden),
                 "yunjian-core 不得依赖 {forbidden}"

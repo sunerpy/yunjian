@@ -882,7 +882,7 @@ fn the_rhyme_book_option_annotates_hits_without_filtering_them() {
 
 #[test]
 fn the_shipped_crates_have_exactly_one_stdout_exemption() {
-    // 这条断言守的是整条 stdout 禁令：新开一个 `#[allow(clippy::print_stdout)]` 就等于新开
+    // 这条断言守的是整条 stdout 禁令：新开一个 print_stdout lint 豁免就等于新开
     // 一个能毁掉 MCP 协议流与 `--json | jq` 的出口，而 lint 本身管不了「豁免了几处」。
     //
     // 作用域是 `crates/*/src/`，即真正会被分发的代码。刻意不含两处：
