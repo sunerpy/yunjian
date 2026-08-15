@@ -374,12 +374,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 随包 MeloTTS 中文包的目录。缺失即失败而不是跳过：跳过会让「没跑」冒充「通过」。
+    // 下面三条要么读真实 VITS 词典、要么真跑合成，缺模型时无法执行，因此都挂
+    // `cfg_attr(not(melo_model_present), ignore = ...)`。条件由 `build.rs` 在构建期按目录
+    // 存在性供给——`ignore` 只接受字面量，运行期判目录再 `return` 会让 harness 打印 `ok`，
+    // 那是「没跑」冒充「通过」。挂 `ignore` 则在输出里留下一行带理由的 `ignored`，
+    // 而模型在位时照常真跑。理由字面量逐条重复（属性不接受 const），与
+    // `crates/yunjian-cli/tests/install_scripts.rs` 门控 POSIX 脚本用例的写法一致。
+
+    /// 随包 MeloTTS 中文包的目录。
+    ///
+    /// 断言保留是刻意的：调用方已被 `melo_model_present` 门控，走到这里说明 cfg 说「在」，
+    /// 那么目录不在就是环境在编译与执行之间被改坏了，此时**必须变红**而不是跳过。
     fn vits_dir() -> PathBuf {
         let dir = crate::models::cache_root().join("vits-melo-tts-zh_en");
         assert!(
             dir.is_dir(),
-            "缺少模型目录 {}。\n\
+            "缺少模型目录 {}，但构建期探测认为它存在——环境在编译与执行之间变了。\n\
              跑 `yunjian models fetch vits-melo-tts-zh_en`，或用 YUNJIAN_MODEL_DIR 指向已有目录。",
             dir.display()
         );
@@ -397,6 +407,10 @@ mod tests {
     /// 这条断言之所以有力，是因为音素**没有一个是手写的**——它们全部借自词典自身，于是
     /// 「产出期望拼音」不是一句声明，而是可以和词典对齐的事实。
     #[test]
+    #[cfg_attr(
+        not(melo_model_present),
+        ignore = "缺少 models/cache/vits-melo-tts-zh_en：本用例读真实 VITS 词典或真跑合成，缺模型无法执行；跑 `yunjian models fetch vits-melo-tts-zh_en` 或用 YUNJIAN_MODEL_DIR 指向已有缓存后重跑"
+    )]
     fn the_three_golden_readings_compile_to_the_expected_phonemes() {
         let index = real_index();
         let poyin = Poyin::shipped().expect("随仓破读词表应可解析");
@@ -430,6 +444,10 @@ mod tests {
 
     /// 覆写词典写进模型目录后，VITS 的词典参数必须把它排在基础词典之后。
     #[test]
+    #[cfg_attr(
+        not(melo_model_present),
+        ignore = "缺少 models/cache/vits-melo-tts-zh_en：本用例读真实 VITS 词典或真跑合成，缺模型无法执行；跑 `yunjian models fetch vits-melo-tts-zh_en` 或用 YUNJIAN_MODEL_DIR 指向已有缓存后重跑"
+    )]
     fn installing_the_override_lexicon_writes_one_line_per_override() {
         let source = vits_dir();
         let scratch = std::env::temp_dir().join("yunjian-poyin-install");
@@ -472,6 +490,10 @@ mod tests {
     ///
     /// 这是整条链路的端到端证明：真实模型逐音步合成，Rust 侧插静音，再用 RMS 把静音量回来。
     #[test]
+    #[cfg_attr(
+        not(melo_model_present),
+        ignore = "缺少 models/cache/vits-melo-tts-zh_en：本用例读真实 VITS 词典或真跑合成，缺模型无法执行；跑 `yunjian models fetch vits-melo-tts-zh_en` 或用 YUNJIAN_MODEL_DIR 指向已有缓存后重跑"
+    )]
     fn real_synthesis_has_the_configured_boundary_silence() {
         let mut synthesizer = Synthesizer::new(&vits_dir()).expect("合成器应可构造");
         let prosody = Prosody::CLASSICAL;

@@ -114,12 +114,7 @@ pub fn run(corpus_db: PathBuf, out_dir: Option<PathBuf>) -> Result<()> {
     emit(&format!("随包库：{}", corpus_db.display()));
     emit(&format!("审计库：{}（不随包）", audit_db.display()));
 
-    if !corpus_db.exists() {
-        bail!(
-            "随包库不存在 {}；先跑 `cargo run -p xtask -- corpus-build`",
-            corpus_db.display()
-        );
-    }
+    crate::prerequisite::require_corpus_db(&corpus_db)?;
     if !audit_db.exists() {
         bail!(
             "审计库不存在 {}；跨文件守恒无法校验，而守恒是打包的前置条件。\

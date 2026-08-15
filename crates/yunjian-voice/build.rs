@@ -13,6 +13,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LIBCLANG_PATH");
     println!("cargo:rerun-if-env-changed=SHERPA_LIB_PATH");
 
+    declare_model_cfgs();
+
     if std::env::var_os("CARGO_FEATURE_VOICE").is_none() {
         return;
     }
@@ -26,6 +28,60 @@ fn main() {
              不需要语音时去掉 `--features voice` 即可正常构建词典与默写功能。\n\n"
         );
     }
+}
+
+/// 需要真实权重的测试各自依赖的模型目录，以及它落地时打开的 cfg 名。
+///
+/// # 为什么要在构建期探测，而不是在测试里判目录
+///
+/// 这些测试要么真跑推理，要么读真实词典，缺模型时无法执行。三种处理方式里只有一种诚实：
+///
+/// - `assert!(dir.is_dir())`：缺模型时**变红**，而红的原因与被测契约无关（原状，F1 把
+///   todo 54 判 FAIL 就是撞在这上面）；
+/// - 运行时 `if !dir.is_dir() { return; }`：harness 打印 `ok`，**「没跑」冒充「通过」**；
+/// - `#[cfg_attr(not(<cfg>), ignore = "<原因>")]`：测试输出里留下一行 `ignored` 及理由，
+///   而模型在位时照常真跑。
+///
+/// `cfg_attr` 的条件必须是编译期常量，所以由本 build script 供给。这与
+/// `crates/yunjian-cli/tests/install_scripts.rs` 用 `not(unix)` 门控 POSIX 脚本用例
+/// 是同一个手法，只是条件来源不同。
+///
+/// # 陈旧性与其边界
+///
+/// cfg 在编译期定，模型是运行期文件。下面对模型目录与 `YUNJIAN_MODEL_DIR` 都声明了
+/// rerun，因此「下载完模型再跑测试」会触发重编译并让 cfg 翻转。反向的陈旧
+/// （cfg 说在、目录被删）由测试里保留的 `is_dir` 断言兜住：那时应当变红，
+/// 因为环境在两次动作之间被改坏了。
+const WEIGHT_BACKED_MODELS: &[(&str, &str)] = &[
+    ("vits-melo-tts-zh_en", "melo_model_present"),
+    ("kitten-nano-en-v0_2-fp16", "kitten_model_present"),
+    ("sherpa-onnx-whisper-tiny", "whisper_tiny_model_present"),
+];
+
+fn declare_model_cfgs() {
+    println!("cargo:rerun-if-env-changed=YUNJIAN_MODEL_DIR");
+    let root = model_cache_root();
+    for (model, cfg) in WEIGHT_BACKED_MODELS {
+        println!("cargo::rustc-check-cfg=cfg({cfg})");
+        let dir = root.join(model);
+        println!("cargo:rerun-if-changed={}", dir.display());
+        if dir.is_dir() {
+            println!("cargo:rustc-cfg={cfg}");
+        }
+    }
+}
+
+/// 必须与 `crate::models::cache_root()` 同口径：`YUNJIAN_MODEL_DIR` 覆盖，
+/// 否则仓库内 `models/cache`。两处口径分叉会让 cfg 与测试看的是不同目录。
+fn model_cache_root() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("YUNJIAN_MODEL_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").expect("cargo 提供 manifest 目录"))
+        .join("..")
+        .join("..")
+        .join("models")
+        .join("cache")
 }
 
 /// `dist.json` 声明有官方预编译产物的目标三元组。不在表内的目标会让

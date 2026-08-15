@@ -25,6 +25,7 @@ mod corpus_package;
 mod corpus_quality;
 mod index_spike;
 mod pregenerate;
+mod prerequisite;
 mod provider_calls;
 mod verify_icons;
 mod verify_models;

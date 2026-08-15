@@ -4,8 +4,13 @@
 //! 断言选 RMS 而不是长度：长度对得上但全零的缓冲区能骗过任何长度断言，
 //! 而那正是链接成功、推理却没跑起来时的典型产物。
 //!
-//! 模型缺失时本测试**失败**而不是跳过。跳过会让「没跑」伪装成「通过」，
-//! 这在一个专门用来证明通路成立的 spike 里是最坏的结果。
+//! # 模型缺失时的行为
+//!
+//! 两条冒烟各挂 `cfg_attr(not(<模型>_present), ignore = ...)`，条件由 `build.rs` 在构建期
+//! 按模型目录存在性供给。**这不是「缺模型就算过」**：`ignore` 会在测试输出里留下一行
+//! `ignored` 与理由，而运行期判目录再 `return` 会让 harness 打印 `ok`——后者才是
+//! 「没跑」伪装成「通过」。两条依赖不同模型（合成用 Kitten、识别用 whisper-tiny），
+//! 所以门控也是两个独立的 cfg，缺一个不会把另一个一起静默掉。
 
 #![cfg(feature = "voice")]
 
@@ -18,13 +23,14 @@ const TTS_MODEL: &str = "kitten-nano-en-v0_2-fp16";
 /// 合成语音的 RMS 实测在 0.05 量级；1e-3 足以排除静音又不至于因音量波动误报。
 const SILENCE_FLOOR: f32 = 1e-3;
 
+/// 断言保留是刻意的：调用方已被构建期 cfg 门控，走到这里说明 cfg 说「在」，
+/// 那么目录不在就是环境在编译与执行之间被改坏了，此时必须变红而不是跳过。
 fn model_dir(name: &str) -> PathBuf {
     let dir = asr::model_root().join(name);
     assert!(
         dir.is_dir(),
-        "缺少模型目录 {}。\n\
-         按 docs/VOICE-BUILD.zh.md「冒烟模型」一节下载，或用 YUNJIAN_MODEL_DIR 指向已有目录。\n\
-         本测试刻意不跳过：跳过会让「没跑」冒充「通过」。",
+        "缺少模型目录 {}，但构建期探测认为它存在——环境在编译与执行之间变了。\n\
+         按 docs/VOICE-BUILD.zh.md「冒烟模型」一节下载，或用 YUNJIAN_MODEL_DIR 指向已有目录。",
         dir.display()
     );
     dir
@@ -55,6 +61,10 @@ fn out_dir() -> PathBuf {
 }
 
 #[test]
+#[cfg_attr(
+    not(kitten_model_present),
+    ignore = "缺少 models/cache/kitten-nano-en-v0_2-fp16：本用例真跑合成，缺权重无法执行；按 docs/VOICE-BUILD.zh.md「冒烟模型」一节下载，或用 YUNJIAN_MODEL_DIR 指向已有缓存后重跑"
+)]
 fn smoke_synthesis_writes_non_silent_wav() {
     let mut synth = tts::Synthesizer::new(&model_dir(TTS_MODEL)).expect("合成器可构造");
     let audio = synth
@@ -124,6 +134,10 @@ fn resample_linear(samples: &[f32], from: u32, to: u32) -> Vec<f32> {
 }
 
 #[test]
+#[cfg_attr(
+    not(whisper_tiny_model_present),
+    ignore = "缺少 models/cache/sherpa-onnx-whisper-tiny：本用例真跑识别，缺权重无法执行；按 docs/VOICE-BUILD.zh.md「冒烟模型」一节下载，或用 YUNJIAN_MODEL_DIR 指向已有缓存后重跑"
+)]
 fn smoke_recognition_of_bundled_wav_yields_text() {
     let wav = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")

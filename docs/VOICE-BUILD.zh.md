@@ -256,8 +256,35 @@ tar xf sherpa-onnx-whisper-tiny.tar.bz2 && tar xf kitten-nano-en-v0_2-fp16.tar.b
 
 解包后分别约 245 MiB 与 42 MiB。目录位置可用 `YUNJIAN_MODEL_DIR` 覆盖。
 
-冒烟用例刻意**在模型缺失时失败而不是跳过**：跳过会让「没跑」冒充「通过」，
-在一个专门用来证明通路成立的 spike 里那是最坏的结果。
+朗读（`tts::tests`）另需 MeloTTS 中文包，它是唯一不牵扯 GPL-3.0 数据的中文音色：
+
+```bash
+cd models/cache
+curl -sSL -O https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-melo-tts-zh_en.tar.bz2
+tar xf vits-melo-tts-zh_en.tar.bz2
+```
+
+### 模型缺失时这些用例显示为 `ignored`，不是「通过」
+
+需要真实权重的用例挂 `#[cfg_attr(not(<模型>_present), ignore = "<原因>")]`，条件由
+`crates/yunjian-voice/build.rs` 在**构建期**按模型目录存在性供给：
+
+| 用例                                                                       | 需要的模型                 | cfg                          |
+| -------------------------------------------------------------------------- | -------------------------- | ---------------------------- |
+| `tts::tests::the_three_golden_readings_compile_to_the_expected_phonemes`   | `vits-melo-tts-zh_en`      | `melo_model_present`         |
+| `tts::tests::installing_the_override_lexicon_writes_one_line_per_override` | `vits-melo-tts-zh_en`      | `melo_model_present`         |
+| `tts::tests::real_synthesis_has_the_configured_boundary_silence`           | `vits-melo-tts-zh_en`      | `melo_model_present`         |
+| `smoke_synthesis_writes_non_silent_wav`                                    | `kitten-nano-en-v0_2-fp16` | `kitten_model_present`       |
+| `smoke_recognition_of_bundled_wav_yields_text`                             | `sherpa-onnx-whisper-tiny` | `whisper_tiny_model_present` |
+
+**为什么不在运行期判目录后 `return`**：那样 harness 打印 `ok`，「没跑」就冒充了「通过」，
+而这在一个专门用来证明通路成立的 spike 里是最坏的结果。`ignore` 会在输出里留下一行
+`ignored` 加上确切原因，缺什么、怎么补一眼可见。原先的写法是**缺模型即失败**，红的原因
+与被测契约无关，于是「环境缺前置」被读成「实现有缺陷」（F1 审计据此把 todo 44/54 判 FAIL）。
+
+`build.rs` 对模型目录与 `YUNJIAN_MODEL_DIR` 都声明了 rerun，所以补齐模型后重跑会触发
+重编译并解除门控，不必手动 `cargo clean`。反向的陈旧（cfg 说在、目录被删）由用例里保留的
+`is_dir` 断言兜住——那时应当变红。
 
 ## 流式识别与双路解码
 
