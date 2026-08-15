@@ -56,6 +56,20 @@ async function submit(query: string) {
 }
 
 describe("检索", () => {
+  it("已有文本再次聚焦后仍可继续输入且不会提前发请求", () => {
+    const searchText = vi.fn(() => Promise.resolve(page([])));
+    search(portFixture({ searchText }));
+    const input = screen.getByTestId("search-input") as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "明月" } });
+    fireEvent.blur(input);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "明月千里" } });
+
+    expect(input.value).toBe("明月千里");
+    expect(searchText).not.toHaveBeenCalled();
+  });
+
   it("提交检索词后列出命中并高亮", async () => {
     const port = portFixture({
       searchText: () => Promise.resolve(page([hit("p-1", "静夜思", "李白", "床前明月光", 2)])),
