@@ -17,6 +17,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use serde_json::Value;
 
+use super::measurements::{self, MeasurementsByCriterion};
 use super::{Platform, Verdict, commit_sha, device_farm, os_build, today};
 use crate::verify_sources::emit;
 
@@ -32,6 +33,12 @@ pub(super) fn run_full(root: &Path, platform: Platform) -> Result<()> {
 const REPORT_JSON: &str = "docs/reports/mobile-spike.json";
 const REPORT_MARKDOWN: &str = "docs/reports/mobile-spike.md";
 const EVIDENCE_LOG: &str = ".omo/evidence/task-68-yunjian.log";
+
+/// 真机日志的落点。由 `aws devicefarm` 一轮 run 的 artifacts 下载而来，
+/// 内容是 `.aws/devicefarm/spike-measure.sh` 打印的 `YUNJIAN-MEASURE` 行。
+///
+/// 文件不存在时四条判据保持 `NOT EXECUTED`——**缺日志不是产品失败**。
+const DEVICE_LOG: &str = "docs/reports/device-farm-android-measurements.log";
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DeclaredCriterion {
@@ -196,32 +203,116 @@ pub(crate) fn build_unexecuted_report(platform: Platform) -> MobileReport {
             stderr: "unit-test constructor: platform driver was not invoked".to_owned(),
         },
         Vec::new(),
+        &MeasurementsByCriterion::new(),
     )
+}
+
+/// 四条判据的阈值判定。**只在必需测量值全部齐备后才会被调用**，
+/// 所以这里可以直接取值，不必再处理缺键。
+fn threshold_for(
+    id: &str,
+) -> fn(&std::collections::BTreeMap<String, String>) -> Result<(), String> {
+    match id {
+        "microphone_capture" => |values| {
+            let rate = values.get("sample_rate_hz").map(String::as_str);
+            if rate != Some("16000") {
+                return Err(format!("识别器硬要求 16 kHz，实测 {rate:?}"));
+            }
+            let channels = values.get("channel_count").map(String::as_str);
+            if channels != Some("1") {
+                return Err(format!("识别器硬要求单声道，实测 {channels:?}"));
+            }
+            let rms = values
+                .get("rms")
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .unwrap_or(0.0);
+            if rms <= 0.0 {
+                return Err(format!("采到的是静音，RMS={rms}"));
+            }
+            Ok(())
+        },
+        "corpus_materialization" => |values| {
+            if values.get("sha256_verified").map(String::as_str) != Some("true") {
+                return Err("SHA-256 校验未通过".to_owned());
+            }
+            if values.get("atomic_install").map(String::as_str) != Some("true") {
+                return Err("语料未原子落盘".to_owned());
+            }
+            if values.get("crashed").map(String::as_str) == Some("true") {
+                return Err("物化过程中应用崩溃".to_owned());
+            }
+            let seconds = values
+                .get("duration_seconds")
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .unwrap_or(f64::MAX);
+            if seconds >= 60.0 {
+                return Err(format!("物化耗时 {seconds} 秒，超过 60 秒阈值"));
+            }
+            Ok(())
+        },
+        "chinese_ime" => |values| {
+            if values.get("target_sdk").map(String::as_str) != Some("35") {
+                return Err(format!(
+                    "判据要求 targetSdk 35，实测 {:?}",
+                    values.get("target_sdk")
+                ));
+            }
+            let overlap = values
+                .get("keyboard_overlap_px")
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .unwrap_or(f64::MAX);
+            if overlap != 0.0 {
+                return Err(format!("键盘遮挡输入框 {overlap} px"));
+            }
+            if values.get("input_visible").map(String::as_str) != Some("true") {
+                return Err("输入框在输入过程中不可见".to_owned());
+            }
+            if values.get("visual_viewport_updated").map(String::as_str) != Some("true") {
+                return Err("visualViewport 未随键盘更新".to_owned());
+            }
+            if values
+                .get("entered_text")
+                .is_none_or(|text| text.trim().is_empty())
+            {
+                return Err("没有成功提交中文文本".to_owned());
+            }
+            Ok(())
+        },
+        // iOS TestFlight。**用户已决定不发商店**，因此这条判据不会有测量值，
+        // 永远停在 NOT EXECUTED；阈值函数保留只为让四条判据的处理保持同构。
+        _ => |values| {
+            if values.get("upload_succeeded").map(String::as_str) != Some("true") {
+                return Err("TestFlight 上传未成功".to_owned());
+            }
+            Ok(())
+        },
+    }
 }
 
 fn build_report(
     platform: Platform,
     preflight: ToolProbe,
     physical_devices: Vec<PhysicalDevice>,
+    device: &MeasurementsByCriterion,
 ) -> MobileReport {
     let criteria = DECLARED
         .iter()
-        .map(|declared| CriterionResult {
-            id: declared.id,
-            what: declared.what,
-            threshold: declared.threshold,
-            driver: declared.driver,
-            verdict: Verdict::NotExecuted,
-            measurement: declared
-                .required_measurements
-                .iter()
-                .map(|key| (*key, Value::Null))
-                .collect(),
-            detail: format!(
-                "NOT EXECUTED：本轮没有满足 `{}` 所需的完整物理设备、测试载体与凭据；没有用模拟器或宿主机数据顶替",
-                declared.id
-            ),
-            executable_when: declared.executable_when.to_owned(),
+        .map(|declared| {
+            let outcome = measurements::judge(
+                declared.required_measurements,
+                device.get(declared.id),
+                threshold_for(declared.id),
+            );
+            CriterionResult {
+                id: declared.id,
+                what: declared.what,
+                threshold: declared.threshold,
+                driver: declared.driver,
+                verdict: outcome.verdict,
+                measurement: outcome.measurement,
+                detail: outcome.detail,
+                executable_when: declared.executable_when.to_owned(),
+            }
         })
         .collect::<Vec<_>>();
     let verdict = selection_verdict(
@@ -269,7 +360,8 @@ pub(super) fn run(root: &Path, platform: Platform) -> Result<()> {
         }
         None => probe_driver(platform),
     };
-    let report = build_report(platform, preflight, Vec::new());
+    let device = load_device_measurements(root, platform);
+    let report = build_report(platform, preflight, Vec::new(), &device);
     validate_consistency(&report)?;
     let paths = write_report(root, &report)?;
     append_evidence(root, &report, &paths)?;
@@ -296,6 +388,35 @@ pub(super) fn run(root: &Path, platform: Platform) -> Result<()> {
         bail!("移动端实测出现 FAIL，选型已强制为 uniffi_native");
     }
     Ok(())
+}
+
+/// 读取真机回传的测量日志。
+///
+/// 只有 Android 有这条路：iOS 侧连产物都造不出来（缺 macOS 与 Xcode），
+/// 给它读一个永远不存在的文件只会让日志里多一行误导性的「未找到」。
+fn load_device_measurements(root: &Path, platform: Platform) -> MeasurementsByCriterion {
+    if platform != Platform::Android {
+        return MeasurementsByCriterion::new();
+    }
+    let path = root.join(DEVICE_LOG);
+    match fs::read_to_string(&path) {
+        Ok(text) => {
+            let parsed = measurements::parse_measurements(&text);
+            emit(&format!(
+                "  真机测量日志 {}；识别到 {} 条判据的回传",
+                path.display(),
+                parsed.len()
+            ));
+            parsed
+        }
+        Err(_) => {
+            emit(&format!(
+                "  未找到真机测量日志 {}；四条判据保持 NOT EXECUTED",
+                path.display()
+            ));
+            MeasurementsByCriterion::new()
+        }
+    }
 }
 
 fn probe_driver(platform: Platform) -> ToolProbe {

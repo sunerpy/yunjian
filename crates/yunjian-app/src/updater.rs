@@ -6,12 +6,25 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Manager, Resource, Runtime};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_plugin_updater::Update;
+#[cfg(desktop)]
+use tauri_plugin_updater::UpdaterExt;
 
 const MAIN_WINDOW: &str = "main";
 const STARTUP_CHECK_DELAY: Duration = Duration::from_secs(5);
 const DISABLE_STARTUP_CHECK: &str = "YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK";
 
+// 整个平台键枚举按 `desktop` 门住，而不是给它补一个「移动端」变体。两条理由：
+//
+// 1. 发布清单只为三个桌面目标签 updater 产物，移动端根本没有可下载的更新包——
+//    补一个变体就得给它编一个平台键，而那个键在 `latest.json` 里不存在。
+// 2. `tests/updater_contract.rs` 断言映射键**精确等于**发布清单的三个键。在 Android
+//    上把枚举整体去掉，三个 `=> "..."` 字面量在源码里保持原样，契约不必为了移动端放宽。
+//
+// 于是 Android 上该类型不存在，取而代之的是下面 `updater()` 里那条走
+// `sanitize_update_error("platform")` 的分支——它复用了既有的
+// 「当前平台的更新包尚未发布」文案，不新增一种用户可见语义。
+#[cfg(desktop)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UpdateTarget {
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
@@ -22,6 +35,7 @@ enum UpdateTarget {
     LinuxX86_64,
 }
 
+#[cfg(desktop)]
 impl UpdateTarget {
     fn current() -> Self {
         #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
@@ -92,11 +106,19 @@ fn sanitize_update_error(error: &str) -> String {
     }
 }
 
+#[cfg(desktop)]
 fn updater<R: Runtime>(app: &AppHandle<R>) -> Result<tauri_plugin_updater::Updater, String> {
     app.updater_builder()
         .target(UpdateTarget::current().as_str())
         .build()
         .map_err(|error| sanitize_update_error(&error.to_string()))
+}
+
+// 移动端没有 updater 产物，所以这里在**构造 updater 之前**就失败，而不是拿一个空平台键
+// 去请求 `latest.json` 后拿 404 当「无更新」——两者对用户是不同的事实。
+#[cfg(not(desktop))]
+fn updater<R: Runtime>(_app: &AppHandle<R>) -> Result<tauri_plugin_updater::Updater, String> {
+    Err(sanitize_update_error("platform"))
 }
 
 async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<Option<UpdateInfo>, String> {
@@ -274,6 +296,7 @@ mod tests {
         assert!(!message.contains("proxy-secret"));
     }
 
+    #[cfg(desktop)]
     #[test]
     fn current_target_is_one_of_the_release_manifest_keys() {
         assert!(!UpdateTarget::current().as_str().is_empty());
