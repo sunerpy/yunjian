@@ -1,0 +1,42 @@
+# AWS Device Farm 远端真机驱动配置
+#
+# Device Farm **只在 us-west-2** 提供服务，而本仓库的 CodeBuild runner 在 us-east-2。
+# 这不是可调的偏好，是服务的可用区域，所以 `region` 由 `xtask` 校验为固定值。
+#
+# 下面两个平台的 `device_pool_arn` 都是**已在账号 891377171033 中真实创建并实测可达**的
+# 静态设备池。Android 池锁定 Google Pixel 8 / Android 15（SDK 35），正是判据三要求的
+# `targetSdk 35` 目标面。
+#
+# `enabled = false` 的平台表示远端链路尚未打通，`blocked_reason` 说明差什么。
+# 产物不存在时验收报告仍写 NOT EXECUTED——池里有真机不等于真机上装过云笺。
+
+schema_version = 1
+region = "us-west-2"
+project_arn = "arn:aws:devicefarm:us-west-2:891377171033:project:9b17cc74-307c-4fdb-b97c-90dc308a8a62"
+billing_method = "METERED"
+locale = "zh_CN"
+job_timeout_minutes = 30
+
+[android]
+enabled = true
+device_pool_arn = "arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9"
+app_artifact = "target/mobile/yunjian-spike.apk"
+app_upload_type = "ANDROID_APP"
+test_package_artifact = "target/mobile/spike-tests.zip"
+test_package_upload_type = "APPIUM_NODE_TEST_PACKAGE"
+test_spec = ".aws/devicefarm/spike-android.yml"
+test_type = "APPIUM_NODE"
+build_command = "aws codebuild start-build --project-name yunjian-android-spike --region us-east-2"
+blocked_reason = ""
+
+[ios]
+enabled = false
+device_pool_arn = "arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9"
+app_artifact = "target/mobile/yunjian-spike.ipa"
+app_upload_type = "IOS_APP"
+test_package_artifact = "target/mobile/spike-xcuitest.zip"
+test_package_upload_type = "XCTEST_UI_TEST_PACKAGE"
+test_spec = ".aws/devicefarm/spike-ios.yml"
+test_type = "XCTEST_UI"
+build_command = "aws codebuild start-build --project-name yunjian-ios-spike --region us-west-2"
+blocked_reason = "Device Farm 会用通配 provisioning profile 重签名，因此不必注册设备 UDID；但产出 .ipa 仍需 macOS 与 Xcode，需先建 MAC_ARM CodeBuild fleet 并验证 tauri#15066 对 iOS 26 SDK 的链接失败是否已解除"

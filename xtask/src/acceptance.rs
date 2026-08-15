@@ -923,6 +923,7 @@ fn today() -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
+pub(crate) mod device_farm;
 pub(crate) mod linux;
 pub(crate) mod mobile;
 pub(crate) mod screenshot;

@@ -13,7 +13,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use super::super::{Platform, Verdict, commit_sha, read_app_version, today};
+use super::super::{Platform, Verdict, commit_sha, device_farm, read_app_version, today};
 use crate::verify_sources::emit;
 
 const EVIDENCE_LOG: &str = ".omo/evidence/task-71-yunjian.log";
@@ -172,7 +172,8 @@ pub(super) fn run(root: &Path, requested: Platform) -> Result<()> {
         FULL_DECLARED.len()
     ));
 
-    let mut report = build_report(root, Some((requested, probe_driver(requested))))?;
+    let probe = resolve_probe(root, requested)?;
+    let mut report = build_report(root, Some((requested, probe)))?;
     merge_existing_other_platform(root, requested, &mut report)?;
     report.all_pass = derived_all_pass(&report);
     validate_full_report(&report)?;
@@ -289,6 +290,32 @@ fn unexecuted_platform(platform: Platform, probe: DriverProbe) -> FullPlatformRe
             })
             .collect(),
     }
+}
+
+/// 优先用 AWS Device Farm 远端真机驱动；未配置时回落到本地 `adb` / `xcrun`。
+///
+/// 无论走哪条路，产物不齐时十项断言仍是 `NOT EXECUTED`：远端池可达证明的是「有真机」，
+/// 不是「真机上装过我们的应用」。
+fn resolve_probe(root: &Path, platform: Platform) -> Result<DriverProbe> {
+    let Some(status) =
+        device_farm::load(root)?.and_then(|config| device_farm::status(root, &config, platform))
+    else {
+        return Ok(probe_driver(platform));
+    };
+    emit(&format!(
+        "  远端真机驱动 AWS Device Farm；{}",
+        status.reason
+    ));
+    for step in &status.plan {
+        emit(&format!("    调度步骤 {step}"));
+    }
+    Ok(DriverProbe {
+        command: status.probe.command,
+        available: status.probe.available,
+        exit_code: status.probe.exit_code,
+        stdout: status.probe.stdout,
+        stderr: status.probe.stderr,
+    })
 }
 
 fn probe_driver(platform: Platform) -> DriverProbe {

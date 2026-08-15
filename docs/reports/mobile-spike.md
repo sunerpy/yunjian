@@ -6,24 +6,37 @@
 
 ## 本次运行
 
-| 项             | 值                                           |
-| -------------- | -------------------------------------------- |
-| 请求平台       | `ios`                                        |
-| 日期           | `2026-08-15`                                 |
-| 提交           | `ec6cbc9eb4135b6ebbefd7f51dac530fc83a0cf6`   |
-| 宿主 OS        | `Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws` |
-| 前置探测       | `xcrun devicectl list devices`               |
-| 工具可用       | `false`                                      |
-| 工具退出码     | `None`                                       |
-| 已识别物理设备 | `0`                                          |
+| 项             | 值                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 请求平台       | `android`                                                                                                                                                                                              |
+| 日期           | `2026-08-15`                                                                                                                                                                                           |
+| 提交           | `7e8109ac4871558a1a1d5e17e215cc6103b011e6`                                                                                                                                                             |
+| 宿主 OS        | `Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws`                                                                                                                                                           |
+| 前置探测       | `aws devicefarm get-device-pool --arn arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9 --region us-west-2 --output json` |
+| 工具可用       | `true`                                                                                                                                                                                                 |
+| 工具退出码     | `Some(0)`                                                                                                                                                                                              |
+| 已识别物理设备 | `0`                                                                                                                                                                                                    |
 
 ### 前置探测原始输出
 
 ```text
 stdout:
-
+{
+    "devicePool": {
+        "arn": "arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9",
+        "name": "yunjian-probe-pixel8-a15",
+        "type": "PRIVATE",
+        "rules": [
+            {
+                "attribute": "ARN",
+                "operator": "IN",
+                "value": "[\"arn:aws:devicefarm:us-west-2::device:DE5BD47FF3BD42C3A14BF7A6EFB1BFE7\"]"
+            }
+        ]
+    }
+}
 stderr:
-No such file or directory (os error 2)
+
 ```
 
 ## 四项预声明判据

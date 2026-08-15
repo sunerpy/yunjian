@@ -17,7 +17,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{Platform, Verdict, commit_sha, os_build, today};
+use super::{Platform, Verdict, commit_sha, device_farm, os_build, today};
 use crate::verify_sources::emit;
 
 mod full;
@@ -248,7 +248,27 @@ pub(super) fn run(root: &Path, platform: Platform) -> Result<()> {
     emit("== 移动端可行性门禁（四项阈值在执行前声明）==");
     emit(&format!("  请求平台 {}  断言集 spike", platform.as_str()));
 
-    let preflight = probe_driver(platform);
+    let remote =
+        device_farm::load(root)?.and_then(|config| device_farm::status(root, &config, platform));
+    let preflight = match remote {
+        Some(status) => {
+            emit(&format!(
+                "  远端真机驱动 AWS Device Farm；{}",
+                status.reason
+            ));
+            for step in &status.plan {
+                emit(&format!("    调度步骤 {step}"));
+            }
+            ToolProbe {
+                command: status.probe.command,
+                available: status.probe.available,
+                exit_code: status.probe.exit_code,
+                stdout: status.probe.stdout,
+                stderr: status.probe.stderr,
+            }
+        }
+        None => probe_driver(platform),
+    };
     let report = build_report(platform, preflight, Vec::new());
     validate_consistency(&report)?;
     let paths = write_report(root, &report)?;
