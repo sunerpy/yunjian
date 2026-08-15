@@ -331,9 +331,8 @@ enum Commands {
         render_only: bool,
     },
 
-    /// 桌面端真机验收：在**交互式桌面会话**里安装并拉起应用，逐条判定一张
-    /// **执行之前就已声明**的断言集，写出 `docs/reports/desktop-qa-<日期>.{json,md}`
-    /// 与每条 UI 断言的截图。
+    /// 桌面真机验收或移动端可行性门禁。移动门禁缺少物理设备、签名或商店凭据时
+    /// 如实写 `NOT EXECUTED`，不会编造测量值或框架选型。
     ///
     /// 绿色构建只证明某个缺陷没有复现，不证明产品能用；session 0 里再绿也证不了
     /// WebView 能显示。因此 UI 断言走真实 WebDriver（Linux 上 `tauri-driver` +
@@ -344,10 +343,10 @@ enum Commands {
     /// `all_pass` 取最严格语义（零 FAIL 且零 NOT EXECUTED），因为终验会消费它，
     /// 而它最容易造成的误读是「三平台都过了」。
     Acceptance {
-        /// 目标平台：`win` | `mac` | `linux`。
+        /// 目标平台：`win` | `mac` | `linux` | `android` | `ios`。
         #[arg(long)]
         platform: String,
-        /// 断言集名。目前只有 `desktop`。
+        /// 断言集名：桌面平台用 `desktop`，移动平台用 `spike`。
         #[arg(long, default_value = "desktop")]
         set: String,
     },
