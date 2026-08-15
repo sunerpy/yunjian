@@ -471,6 +471,237 @@ fn mobile_report_serializes_the_three_stable_selection_literals() {
     );
 }
 
+/// 一份让判据①②③全部 PASS 的设备侧日志。判据④刻意不给测量值：用户已决定不做 iOS 提交。
+///
+/// `overrides` 按 `("<criterion> <key>", "<value>")` 覆盖单个测量值，于是每条断言只需说清
+/// 它改了哪一个量，不必各自维护一份完整日志。
+fn android_device_log(overrides: &[(&str, &str)]) -> String {
+    let mut lines: Vec<(String, String)> = [
+        ("microphone_capture device_model", "Pixel 8"),
+        ("microphone_capture os_build", "15/35"),
+        ("microphone_capture sample_rate_hz", "16000"),
+        ("microphone_capture channel_count", "1"),
+        ("microphone_capture rms", "0.0031"),
+        (
+            "microphone_capture permission_plugin",
+            "record_audio_granted+modify_audio_settings_granted",
+        ),
+        ("corpus_materialization device_model", "Pixel 8"),
+        ("corpus_materialization os_build", "15/35"),
+        ("corpus_materialization artifact_bytes", "223113374"),
+        ("corpus_materialization sha256_verified", "true"),
+        ("corpus_materialization duration_seconds", "41.2"),
+        ("corpus_materialization atomic_install", "true"),
+        ("corpus_materialization crashed", "false"),
+        (
+            "corpus_materialization production_path",
+            "yunjian_core::assets::AssetResolver::{discover,new}+sync",
+        ),
+        ("chinese_ime device_model", "Pixel 8"),
+        ("chinese_ime os_build", "15/35"),
+        ("chinese_ime target_sdk", "35"),
+        ("chinese_ime edge_to_edge", "true"),
+        ("chinese_ime entered_text", "云笺"),
+        ("chinese_ime keyboard_overlap_px", "0"),
+        ("chinese_ime input_visible", "true"),
+        ("chinese_ime visual_viewport_updated", "true"),
+    ]
+    .iter()
+    .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+    .collect();
+    for (key, value) in overrides {
+        let slot = lines
+            .iter_mut()
+            .find(|(existing, _)| existing == key)
+            .unwrap_or_else(|| panic!("覆盖的测量键 `{key}` 不在基线日志里，写错了就该红"));
+        slot.1 = (*value).to_owned();
+    }
+    lines
+        .iter()
+        .map(|(key, value)| format!("YUNJIAN-MEASURE {key}={value}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn verdict_of(criterion: &str, report: &mobile::MobileReport) -> Verdict {
+    report
+        .criteria
+        .iter()
+        .find(|item| item.id == criterion)
+        .unwrap_or_else(|| panic!("报告里没有判据 `{criterion}`"))
+        .verdict
+}
+
+#[test]
+fn three_android_criteria_can_reach_pass_from_a_real_device_log() {
+    let report = mobile::build_report_from_device_log(Platform::Android, &android_device_log(&[]));
+    for criterion in [
+        "microphone_capture",
+        "corpus_materialization",
+        "chinese_ime",
+    ] {
+        assert_eq!(
+            verdict_of(criterion, &report),
+            Verdict::Pass,
+            "判据 `{criterion}` 在测量值齐备且达阈值时必须能拿到 PASS，否则门禁根本不可执行：{:?}",
+            report
+                .criteria
+                .iter()
+                .find(|item| item.id == criterion)
+                .map(|item| &item.detail)
+        );
+    }
+    assert_eq!(
+        verdict_of("ios_testflight_submission", &report),
+        Verdict::NotExecuted,
+        "用户已决定不做 iOS 提交，它既不该是 PASS 也不该是 FAIL"
+    );
+    mobile::validate_consistency(&report).expect("一致性校验必须通过");
+}
+
+#[test]
+fn three_passes_plus_the_out_of_scope_ios_criterion_still_yields_undetermined() {
+    let report = mobile::build_report_from_device_log(Platform::Android, &android_device_log(&[]));
+    assert_eq!(
+        report.verdict,
+        mobile::SelectionVerdict::Undetermined,
+        "一条范围外的判据既不是 FAIL 也不是 PASS，顶层只能是 undetermined"
+    );
+    assert!(
+        report.verdict_rationale.contains("判据④"),
+        "顶层裁决必须说明它为何停在这里：{}",
+        report.verdict_rationale
+    );
+    assert!(
+        !report.verdict_rationale.trim().is_empty()
+            && report.verdict_rationale.contains("undetermined")
+    );
+}
+
+#[test]
+fn the_targetsdk_the_build_actually_shipped_is_a_failure_not_a_relaxed_threshold() {
+    let report = mobile::build_report_from_device_log(
+        Platform::Android,
+        &android_device_log(&[("chinese_ime target_sdk", "36")]),
+    );
+    assert_eq!(
+        verdict_of("chinese_ime", &report),
+        Verdict::Fail,
+        "判据声明的是 targetSdk 35；实测 36 必须判 FAIL，而不是把阈值放宽到 >= 35"
+    );
+    assert_eq!(
+        report.verdict,
+        mobile::SelectionVerdict::UniffiNative,
+        "任一 FAIL 必须强制 uniffi_native"
+    );
+    mobile::validate_consistency(&report).expect("FAIL 也要能通过一致性校验");
+}
+
+#[test]
+fn an_injected_failure_makes_tauri_mobile_unreachable() {
+    for (key, value) in [
+        ("microphone_capture rms", "0"),
+        ("microphone_capture sample_rate_hz", "48000"),
+        ("microphone_capture channel_count", "2"),
+        (
+            "microphone_capture permission_plugin",
+            "record_audio_denied+modify_audio_settings_granted",
+        ),
+        ("corpus_materialization sha256_verified", "false"),
+        ("corpus_materialization duration_seconds", "72.5"),
+        ("corpus_materialization atomic_install", "false"),
+        ("corpus_materialization crashed", "true"),
+        ("chinese_ime keyboard_overlap_px", "184"),
+        ("chinese_ime edge_to_edge", "false"),
+        ("chinese_ime input_visible", "false"),
+        ("chinese_ime visual_viewport_updated", "false"),
+    ] {
+        let report = mobile::build_report_from_device_log(
+            Platform::Android,
+            &android_device_log(&[(key, value)]),
+        );
+        assert_eq!(
+            report.verdict,
+            mobile::SelectionVerdict::UniffiNative,
+            "把 `{key}` 设成 `{value}` 后选型必须落到 uniffi_native，门禁不能被谈过去"
+        );
+        assert_ne!(
+            report.verdict,
+            mobile::SelectionVerdict::TauriMobile,
+            "存在 FAIL 时 tauri_mobile 必须不可达"
+        );
+        mobile::validate_consistency(&report).expect("注入失败后仍须自洽");
+    }
+}
+
+#[test]
+fn a_zero_overlap_outside_edge_to_edge_does_not_earn_a_pass() {
+    let report = mobile::build_report_from_device_log(
+        Platform::Android,
+        &android_device_log(&[("chinese_ime edge_to_edge", "false")]),
+    );
+    let criterion = report
+        .criteria
+        .iter()
+        .find(|item| item.id == "chinese_ime")
+        .expect("chinese_ime");
+    assert_eq!(criterion.verdict, Verdict::Fail);
+    assert!(
+        criterion.detail.contains("edge-to-edge"),
+        "必须点明失败在边到边这一项，否则读者会以为是遮挡量的问题：{}",
+        criterion.detail
+    );
+}
+
+#[test]
+fn a_missing_device_measurement_is_still_not_executed_rather_than_failed() {
+    // 只把一项换成 UNAVAILABLE，其余保持可通过：结果必须是 NOT EXECUTED 而不是 FAIL，
+    // 否则一次「设备没测到」会替产品背一个失败，并把选型推向 uniffi_native。
+    let log = format!(
+        "{}\nYUNJIAN-MEASURE-UNAVAILABLE chinese_ime entered_text reason=soft_keyboard_never_appeared",
+        android_device_log(&[]).replace("YUNJIAN-MEASURE chinese_ime entered_text=云笺\n", "")
+    );
+    let report = mobile::build_report_from_device_log(Platform::Android, &log);
+    assert_eq!(
+        verdict_of("chinese_ime", &report),
+        Verdict::NotExecuted,
+        "缺一项必需测量值只能是 NOT EXECUTED"
+    );
+    assert_eq!(report.verdict, mobile::SelectionVerdict::Undetermined);
+}
+
+#[test]
+fn every_amended_threshold_is_recorded_in_the_report_text() {
+    let report = mobile::build_unexecuted_report(Platform::Android);
+    let microphone = &report.criteria[0];
+    assert!(
+        microphone.threshold.contains("permission_plugin =="),
+        "判据①的权限路径阈值必须写在声明里，不能只活在代码里：{}",
+        microphone.threshold
+    );
+    for fragment in ["sample_rate_hz == 16000", "channel_count == 1", "rms > 0"] {
+        assert!(
+            microphone.threshold.contains(fragment),
+            "采集参数阈值不得在修订中被削弱，缺 `{fragment}`"
+        );
+    }
+    let ime = report
+        .criteria
+        .iter()
+        .find(|item| item.id == "chinese_ime")
+        .expect("chinese_ime");
+    assert!(
+        ime.threshold.contains("target_sdk == 35"),
+        "判据③的 targetSdk 阈值必须仍是等于 35：{}",
+        ime.threshold
+    );
+    assert!(
+        ime.threshold.contains("edge_to_edge == true"),
+        "新增的边到边必需项必须写进声明：{}",
+        ime.threshold
+    );
+}
+
 #[test]
 fn mobile_full_predeclares_every_real_device_assertion() {
     assert_eq!(

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  判据③被测界面的 manifest 片段。由 `.aws/buildspec-android-spike.yml` 合并进
+  `gen/android/app/src/main/AndroidManifest.xml`。
+
+  `android:exported="false"` 是刻意的：这个 Activity 只由同包的 instrumented 测试
+  用显式 Intent 启动，导出它会给冒烟 APK 开一个外部可拉起的入口。
+
+  `android:windowSoftInputMode` **不设**。边到边窗口里 `adjustResize` 已被系统忽略，
+  应用必须自己消费 ime 插入值——那正是判据③要检验的产品责任。写上它只会让读者以为
+  遮挡是由系统避让解决的。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="top.onethinker.yunjian.spike.SpikeWebViewActivity"
+            android:exported="false"
+            android:label="yunjian spike" />
+    </application>
+</manifest>
