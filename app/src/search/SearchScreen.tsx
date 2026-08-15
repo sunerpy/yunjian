@@ -34,6 +34,21 @@ interface PageState {
 
 const EMPTY_PAGE: PageState = { rows: [], totalEstimate: null, nextCursor: null };
 
+/**
+ * Tauri 的 `invoke` 失败时 reject 的是**字符串**，不是 `Error`。只认 `Error` 就会把
+ * 后端那句带 `code` 与 `hint` 的原因整条丢掉，界面上只剩一句「检索失败」——那句话
+ * 把一次可自解释的 IPC 失败读成了「检索功能坏了」，并让人去查一个没坏的地方。
+ */
+function reasonOf(cause: unknown): string {
+  if (cause instanceof Error) {
+    return cause.message;
+  }
+  if (typeof cause === "string" && cause.trim() !== "") {
+    return cause;
+  }
+  return "检索失败";
+}
+
 export default function SearchScreen({ port, onOpen }: SearchScreenProps) {
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
@@ -106,7 +121,7 @@ export default function SearchScreen({ port, onOpen }: SearchScreenProps) {
         })
         .catch((cause: unknown) => {
           setPage(EMPTY_PAGE);
-          setError(cause instanceof Error ? cause.message : "检索失败");
+          setError(reasonOf(cause));
         });
     },
     [fetchPage],
