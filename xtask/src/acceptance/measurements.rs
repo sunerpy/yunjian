@@ -179,10 +179,10 @@ fn typed(raw: &str) -> Value {
     if let Ok(number) = raw.parse::<i64>() {
         return Value::Number(number.into());
     }
-    if let Ok(number) = raw.parse::<f64>() {
-        if let Some(number) = serde_json::Number::from_f64(number) {
-            return Value::Number(number);
-        }
+    if let Ok(number) = raw.parse::<f64>()
+        && let Some(number) = serde_json::Number::from_f64(number)
+    {
+        return Value::Number(number);
     }
     Value::String(raw.to_owned())
 }
