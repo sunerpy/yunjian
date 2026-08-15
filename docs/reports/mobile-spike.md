@@ -10,7 +10,7 @@
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 请求平台       | `android`                                                                                                                                                                                              |
 | 日期           | `2026-08-15`                                                                                                                                                                                           |
-| 提交           | `7e8109ac4871558a1a1d5e17e215cc6103b011e6`                                                                                                                                                             |
+| 提交           | `905ac55a6d7f8a755108362fd2331b9edc27f581`                                                                                                                                                             |
 | 宿主 OS        | `Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws`                                                                                                                                                           |
 | 前置探测       | `aws devicefarm get-device-pool --arn arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9 --region us-west-2 --output json` |
 | 工具可用       | `true`                                                                                                                                                                                                 |
@@ -46,15 +46,15 @@ stderr:
 - **verdict**: `NOT EXECUTED`
 - **threshold**: Android 与 iOS 均满足 sample_rate_hz == 16000、channel_count == 1、rms > 0
 - **driver**: Android: adb + instrumented test APK；iOS: xcrun devicectl + XCUITest bundle
-- **detail**: NOT EXECUTED：本轮没有满足 `microphone_capture` 所需的完整物理设备、测试载体与凭据；没有用模拟器或宿主机数据顶替
+- **detail**: NOT EXECUTED：真机已回传部分测量值，但以下必需项仍缺：sample_rate_hz（设备侧报告 needs_in_app_audiorecord）；channel_count（设备侧报告 needs_in_app_audiorecord）；rms（设备侧报告 needs_in_app_audiorecord_and_device_farm_has_no_audio_injection）；permission_plugin（设备侧报告 needs_in_app_instrumentation）。缺项不记 FAIL——未执行不是产品失败
 - **可执行条件**: 同时备妥已授权 USB 调试的物理 Android、已注册到签名身份的物理 iOS、两端已安装的 instrumented 测试包，并授予麦克风权限
 - **measurement**:
 
 ```json
 {
   "channel_count": null,
-  "device_model": null,
-  "os_build": null,
+  "device_model": "Pixel 8",
+  "os_build": "15/35",
   "permission_plugin": null,
   "rms": null,
   "sample_rate_hz": null
@@ -66,7 +66,7 @@ stderr:
 - **verdict**: `NOT EXECUTED`
 - **threshold**: 下载 .db.gz、SHA-256 校验成功、原子落入 app storage，duration_seconds < 60 且 crashed == false
 - **driver**: adb + instrumented test APK，调用与生产 corpus fetch 相同的下载、校验、解压和原子替换路径
-- **detail**: NOT EXECUTED：本轮没有满足 `corpus_materialization` 所需的完整物理设备、测试载体与凭据；没有用模拟器或宿主机数据顶替
+- **detail**: NOT EXECUTED：真机已回传部分测量值，但以下必需项仍缺：artifact_bytes（设备侧报告 needs_in_app_production_fetch）；sha256_verified（设备侧报告 needs_in_app_production_fetch）；duration_seconds（设备侧报告 needs_in_app_production_fetch）；atomic_install（设备侧报告 needs_in_app_production_fetch）；crashed（设备侧报告 needs_in_app_production_fetch）；production_path（设备侧报告 needs_in_app_production_fetch）。缺项不记 FAIL——未执行不是产品失败
 - **可执行条件**: 连接一台已授权 USB 调试的中端物理 Android，安装调用生产语料物化路径的 instrumented test APK，并提供可下载的 .db.gz 发布工件与 SHA-256
 - **measurement**:
 
@@ -75,9 +75,9 @@ stderr:
   "artifact_bytes": null,
   "atomic_install": null,
   "crashed": null,
-  "device_model": null,
+  "device_model": "Pixel 8",
   "duration_seconds": null,
-  "os_build": null,
+  "os_build": "15/35",
   "production_path": null,
   "sha256_verified": null
 }
@@ -88,18 +88,18 @@ stderr:
 - **verdict**: `NOT EXECUTED`
 - **threshold**: target_sdk == 35、中文提交成功、keyboard_overlap_px == 0，输入框始终可见且 visualViewport 正常更新
 - **driver**: adb + targetSdk 35 instrumented test APK；物理键盘输入法交互由设备端测试记录 viewport 与控件边界
-- **detail**: NOT EXECUTED：本轮没有满足 `chinese_ime` 所需的完整物理设备、测试载体与凭据；没有用模拟器或宿主机数据顶替
+- **detail**: NOT EXECUTED：真机已回传部分测量值，但以下必需项仍缺：entered_text（设备侧报告 needs_in_app_instrumentation）；keyboard_overlap_px（设备侧报告 needs_in_app_instrumentation）；input_visible（设备侧报告 needs_in_app_instrumentation）；visual_viewport_updated（设备侧报告 needs_in_app_instrumentation）。缺项不记 FAIL——未执行不是产品失败
 - **可执行条件**: 连接已授权的物理 Android，安装 targetSdk 35 测试 APK，启用可输入中文的软键盘，并由设备端 instrumentation 记录输入文本、键盘遮挡和 visualViewport
 - **measurement**:
 
 ```json
 {
-  "device_model": null,
+  "device_model": "Pixel 8",
   "entered_text": null,
   "input_visible": null,
   "keyboard_overlap_px": null,
-  "os_build": null,
-  "target_sdk": null,
+  "os_build": "15/35",
+  "target_sdk": 36,
   "visual_viewport_updated": null
 }
 ```
@@ -109,7 +109,7 @@ stderr:
 - **verdict**: `NOT EXECUTED`
 - **threshold**: xcode_major >= 26、ios_sdk_major >= 26、archive_link_succeeded == true、upload_succeeded == true 且 testflight_build_id 非空
 - **driver**: xcrun devicectl + XCUITest bundle + xcodebuild archive + App Store Connect upload
-- **detail**: NOT EXECUTED：本轮没有满足 `ios_testflight_submission` 所需的完整物理设备、测试载体与凭据；没有用模拟器或宿主机数据顶替
+- **detail**: NOT EXECUTED：真机已回传部分测量值，但以下必需项仍缺：device_model（设备侧未回传）；os_build（设备侧未回传）；xcode_version（设备侧未回传）；ios_sdk_version（设备侧未回传）；archive_link_succeeded（设备侧未回传）；upload_succeeded（设备侧未回传）；testflight_build_id（设备侧未回传）。缺项不记 FAIL——未执行不是产品失败
 - **可执行条件**: 在安装 Xcode 26 与 iOS 26 SDK 的 macOS 上连接已注册到签名身份的物理 iOS 设备，配置 Distribution 证书、provisioning profile 与 App Store Connect 上传凭据
 - **measurement**:
 
