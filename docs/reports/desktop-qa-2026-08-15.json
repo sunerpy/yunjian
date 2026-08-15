@@ -4,7 +4,7 @@
   "set": "desktop",
   "date": "2026-08-15",
   "app_version": "0.1.0",
-  "commit_sha": "38b1b4ca84fa08ec66d2a0974d1b6f75d7f3e55e",
+  "commit_sha": "dd5e93ede048b44087eddd0d84e9c4ce520deadd",
   "os_build": "Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws",
   "session": {
     "display_kind": "virtual",
@@ -12,15 +12,15 @@
     "window_manager": "Openbox",
     "webdriver": {
       "attempted": true,
-      "succeeded": false,
-      "detail": "`POST /session` 未能返回会话：POST http://127.0.0.1:4444/session 失败。本机实测：应用进程真的起来了、真实窗口映射成功、WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` 从不向它建立连接，请求一直挂到超时。"
+      "succeeded": true,
+      "detail": "会话建立成功，DOM 层断言由真实 WebDriver 执行。"
     },
     "audio_input_devices": 0
   },
   "all_pass": false,
-  "executed_pass": 3,
-  "failed": 0,
-  "not_executed": 17,
+  "executed_pass": 9,
+  "failed": 3,
+  "not_executed": 8,
   "platforms_not_executed": [
     {
       "platform": "windows",
@@ -40,7 +40,7 @@
       "channel": "process",
       "screenshot_required": false,
       "verdict": "PASS",
-      "detail": "/config/workspace/ProdDir/AI/yunjian/.omo/worktrees/fix-desktop-defects/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库",
+      "detail": "/config/workspace/ProdDir/AI/yunjian/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库",
       "executable_when": null,
       "screenshot": null
     },
@@ -50,8 +50,8 @@
       "channel": "process",
       "screenshot_required": false,
       "verdict": "NOT EXECUTED",
-      "detail": "/config/workspace/ProdDir/AI/yunjian/.omo/worktrees/fix-desktop-defects/target/debug/bundle 下没有安装包产物；本次验收跑的是未打包的构建产物，因此「安装后从安装路径启动」这条链没有被执行",
-      "executable_when": "先 `cargo tauri build`（Linux 上还需 `dpkg-deb` 与 `librsvg2-dev`），再由 harness 安装到一个临时 root 并从该路径启动。NSIS 静默安装时**只等安装器进程本身**，不要等整棵进程树——完成页会把应用作为子进程拉起来，等进程树会永远等不完。",
+      "detail": "发现产物 appimage、rpm、deb，但本 harness 尚未实现安装后启动",
+      "executable_when": "实现安装到临时 root 并从该路径启动的步骤",
       "screenshot": null
     },
     {
@@ -69,70 +69,70 @@
       "what": "窗口没有窗口管理器绘制的边框（decorations: false 生效），标题栏由应用自绘",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "PASS",
+      "detail": "`_NET_FRAME_EXTENTS` = [0, 0, 0, 0]，窗口管理器没有绘制边框；标题栏由应用自绘",
+      "executable_when": null,
+      "screenshot": "desktop-qa/custom-titlebar.png"
     },
     {
       "id": "control_minimize_works",
       "what": "点自绘标题栏的最小化按钮，窗口真的最小化",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "PASS",
+      "detail": "点最小化按钮后 `_NET_WM_STATE` 带上了 `_NET_WM_STATE_HIDDEN`",
+      "executable_when": null,
+      "screenshot": "desktop-qa/control-minimize.png"
     },
     {
       "id": "control_maximize_works",
       "what": "点自绘标题栏的最大化按钮，窗口真的最大化",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "FAIL",
+      "detail": "点最大化按钮后窗口状态未变；capabilities 里少了 `core:window:allow-toggle-maximize` 会让它静默无效（注意 `allow-internal-toggle-maximize` 是**另一条**命令）",
+      "executable_when": null,
+      "screenshot": "desktop-qa/control-maximize.png"
     },
     {
       "id": "control_restore_works",
       "what": "最大化后再点同一个按钮，窗口真的还原",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "FAIL",
+      "detail": "再点同一个按钮后窗口仍处于最大化",
+      "executable_when": null,
+      "screenshot": "desktop-qa/control-restore.png"
     },
     {
       "id": "control_close_works",
       "what": "点自绘标题栏的关闭按钮，主窗口隐藏到托盘且进程继续运行",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "PASS",
+      "detail": "点关闭按钮后主窗口从 `_NET_CLIENT_LIST` 消失，应用进程仍在运行，符合驻留托盘契约",
+      "executable_when": null,
+      "screenshot": "desktop-qa/control-close.png"
     },
     {
       "id": "double_click_maximizes_exactly_once",
       "what": "双击标题栏恰好最大化一次（自己再挂一个双击处理器会双切换回原样）",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "PASS",
+      "detail": "双击前 maximized=false，一次双击后 maximized=true（恰好切换一次）",
+      "executable_when": null,
+      "screenshot": "desktop-qa/double-click-maximize.png"
     },
     {
       "id": "drag_from_title_text",
       "what": "按住标题文字本身拖动，窗口位置真的改变（data-tauri-drag-region=\"deep\"）",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "FAIL",
+      "detail": "按住标题文字（窗口内 18,20）拖动后窗口位置未变（仍在 (200, 150)）；窗口当时不是最大化态，落点在自绘标题栏的文字上，因此这是标题栏拖动本身没有生效",
+      "executable_when": null,
+      "screenshot": "desktop-qa/drag-from-title-text.png"
     },
     {
       "id": "taskbar_icon_correct",
@@ -160,8 +160,8 @@
       "channel": "web_driver",
       "screenshot_required": true,
       "verdict": "NOT EXECUTED",
-      "detail": "WebDriver 会话未能建立，DOM 层事实无法观测；刻意不用 mock 或 stub 顶替。握手探测结果：`POST /session` 未能返回会话：POST http://127.0.0.1:4444/session 失败。本机实测：应用进程真的起来了、真实窗口映射成功、WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` 从不向它建立连接，请求一直挂到超时。",
-      "executable_when": "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`",
+      "detail": "会话已建立，但本条的驱动步骤尚未实现",
+      "executable_when": "实现该条的 WebDriver 驱动步骤",
       "screenshot": null
     },
     {
@@ -169,20 +169,20 @@
       "what": "承 tauri#15436：聚焦已有内容的检索框并输入后，界面仍然响应（OS 层可证的那一半）",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "窗口内容不可观测：等了 20 秒，主色 #f8f8f8 占 100.0000%，显著颜色区 1 个。窗口本身是真的（已映射、`_NET_WM_NAME` 正确、`_NET_WM_ICON` 齐备），但 X `GetImage` 读回来的是一整片单色。本机分不清两种原因——前端根本没渲染，还是 WebKit 把内容合成到了一块 X 读不到的 GL 表面（日志里有 `libEGL warning: DRI3 error: Could not get DRI3 device`，指向后者）。两种情况下点击都落在空处，因此「点了按钮之后窗口状态没变」证不了任何关于产品的事——记成 FAIL 会是一个假故障，故记未执行",
-      "executable_when": "一个 WebKitGTK 会把内容真的合成到窗口上的宿主机。本机（无 GPU 的容器 + Xvfb）实测不会：`WEBKIT_DISABLE_COMPOSITING_MODE=1`、`WEBKIT_DISABLE_DMABUF_RENDERER=1`、`LIBGL_ALWAYS_SOFTWARE=1` 三个单独与组合都试过，读回来始终是单色。一台有真实显示与可用 GL 栈的 Linux 桌面登录会话即可",
-      "screenshot": "desktop-qa/webview-paint.png"
+      "verdict": "PASS",
+      "detail": "往检索框输入中文后再次聚焦并继续输入，窗口仍响应双击最大化，未冻结",
+      "executable_when": null,
+      "screenshot": "desktop-qa/ime-prefilled-no-freeze.png"
     },
     {
       "id": "two_char_search_returns_results",
       "what": "两字检索（明月）返回结果行",
       "channel": "web_driver",
       "screenshot_required": true,
-      "verdict": "NOT EXECUTED",
-      "detail": "WebDriver 会话未能建立，DOM 层事实无法观测；刻意不用 mock 或 stub 顶替。握手探测结果：`POST /session` 未能返回会话：POST http://127.0.0.1:4444/session 失败。本机实测：应用进程真的起来了、真实窗口映射成功、WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` 从不向它建立连接，请求一直挂到超时。",
-      "executable_when": "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`",
-      "screenshot": null
+      "verdict": "PASS",
+      "detail": "检索「明月」后摘要为「估计命中 7291 条，本页显示 20 条」",
+      "executable_when": null,
+      "screenshot": "desktop-qa/two-char-search.png"
     },
     {
       "id": "corpus_first_run_materialization",
@@ -190,8 +190,8 @@
       "channel": "web_driver",
       "screenshot_required": true,
       "verdict": "NOT EXECUTED",
-      "detail": "WebDriver 会话未能建立，DOM 层事实无法观测；刻意不用 mock 或 stub 顶替。握手探测结果：`POST /session` 未能返回会话：POST http://127.0.0.1:4444/session 失败。本机实测：应用进程真的起来了、真实窗口映射成功、WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` 从不向它建立连接，请求一直挂到超时。",
-      "executable_when": "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`",
+      "detail": "会话已建立，但本条的驱动步骤尚未实现",
+      "executable_when": "实现该条的 WebDriver 驱动步骤",
       "screenshot": null
     },
     {
@@ -200,8 +200,8 @@
       "channel": "web_driver",
       "screenshot_required": true,
       "verdict": "NOT EXECUTED",
-      "detail": "WebDriver 会话未能建立，DOM 层事实无法观测；刻意不用 mock 或 stub 顶替。握手探测结果：`POST /session` 未能返回会话：POST http://127.0.0.1:4444/session 失败。本机实测：应用进程真的起来了、真实窗口映射成功、WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` 从不向它建立连接，请求一直挂到超时。",
-      "executable_when": "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`",
+      "detail": "会话已建立，但本条的驱动步骤尚未实现",
+      "executable_when": "实现该条的 WebDriver 驱动步骤",
       "screenshot": null
     },
     {
@@ -210,8 +210,8 @@
       "channel": "web_driver",
       "screenshot_required": true,
       "verdict": "NOT EXECUTED",
-      "detail": "WebDriver 会话未能建立，且本次探测到的音频输入设备数为 0；DOM 与真实采集链均无法执行。握手探测结果：`POST /session` 未能返回会话：POST http://127.0.0.1:4444/session 失败。本机实测：应用进程真的起来了、真实窗口映射成功、WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` 从不向它建立连接，请求一直挂到超时。",
-      "executable_when": "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`；另需至少一个非 monitor 的可采集音频输入设备及可用语音模型",
+      "detail": "会话已建立，但本条的驱动步骤尚未实现",
+      "executable_when": "实现该条的 WebDriver 驱动步骤",
       "screenshot": null
     },
     {
@@ -220,8 +220,8 @@
       "channel": "web_driver",
       "screenshot_required": true,
       "verdict": "NOT EXECUTED",
-      "detail": "WebDriver 会话未能建立，DOM 层事实无法观测；刻意不用 mock 或 stub 顶替。握手探测结果：`POST /session` 未能返回会话：POST http://127.0.0.1:4444/session 失败。本机实测：应用进程真的起来了、真实窗口映射成功、WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` 从不向它建立连接，请求一直挂到超时。",
-      "executable_when": "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`",
+      "detail": "会话已建立，但本条的驱动步骤尚未实现",
+      "executable_when": "实现该条的 WebDriver 驱动步骤",
       "screenshot": null
     },
     {
