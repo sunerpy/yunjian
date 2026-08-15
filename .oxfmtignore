@@ -54,6 +54,8 @@ docs/reports/asr-cer-transcripts.jsonl
 # 文件名带日期，所以是通配而非逐个列出。
 docs/reports/desktop-qa-*.md
 docs/reports/desktop-qa-*.json
+docs/reports/mobile-qa-*.md
+docs/reports/mobile-qa-*.json
 crates/yunjian-voice/tests/fixtures/cer-poems.toml
 target/
 .omo/
