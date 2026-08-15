@@ -1,0 +1,114 @@
+name: mobile-distribution
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TAURI_CLI_VERSION: 2.11.4
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    outputs:
+      verdict: ${{ steps.verdict.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - id: verdict
+        run: echo "value=$(jq -r .verdict docs/reports/mobile-spike.json)" >> "$GITHUB_OUTPUT"
+      - name: 未选 binding 时生成诚实的 NOT EXECUTED 报告
+        run: cargo run -p xtask -- mobile-distribution
+
+  android:
+    needs: contract
+    if: needs.contract.outputs.verdict == 'tauri_mobile'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: app
+      - run: cargo install tauri-cli --version "=${TAURI_CLI_VERSION}" --locked
+      - name: 构建四个 split APK 与 AAB
+        run: cargo tauri android build --ci --split-per-abi --apk --aab --target aarch64 armv7 i686 x86_64
+        working-directory: crates/yunjian-app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android
+          path: |
+            crates/yunjian-app/gen/android/app/build/outputs/**/*.apk
+            crates/yunjian-app/gen/android/app/build/outputs/**/*.aab
+          if-no-files-found: error
+
+  ios:
+    needs: contract
+    if: needs.contract.outputs.verdict == 'tauri_mobile'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: app
+      - run: cargo install tauri-cli --version "=${TAURI_CLI_VERSION}" --locked
+      - name: 构建 App Store Connect archive
+        run: cargo tauri ios build --ci --export-method app-store-connect
+        working-directory: crates/yunjian-app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-ios
+          path: |
+            crates/yunjian-app/gen/apple/build/**/*.xcarchive/**
+            crates/yunjian-app/gen/apple/build/**/*.ipa
+          if-no-files-found: error
+
+  report:
+    needs: [contract, android, ios]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: 下载 Android 产物
+        if: needs.contract.outputs.verdict == 'tauri_mobile' && needs.android.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: mobile-android
+          path: mobile/artifacts/android
+      - name: 下载 iOS 产物
+        if: needs.contract.outputs.verdict == 'tauri_mobile' && needs.ios.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: mobile-ios
+          path: mobile/artifacts/ios
+      - name: 扫描产物并生成体积报告
+        if: needs.contract.outputs.verdict == 'tauri_mobile'
+        run: cargo run -p xtask -- mobile-distribution --artifacts-dir mobile/artifacts
+      - name: 裁决未定时保持 NOT EXECUTED
+        if: needs.contract.outputs.verdict != 'tauri_mobile'
+        run: cargo run -p xtask -- mobile-distribution
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-size-report
+          path: docs/reports/mobile-size.*

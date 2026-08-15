@@ -1,0 +1,61 @@
+Task 70: mobile shared UI and distribution evidence
+Date: 2026-08-15
+Branch: feat/mobile-ui
+Baseline: f19fcb7ec070c3a9627909f0c8abd19087336059
+
+$ npm test -- --run src/__tests__/mobileRoutes.test.tsx
+RESULT: PASS
+Test Files 1 passed (1)
+Tests 4 passed (4)
+
+NEGATIVE CONTROL:
+Temporarily removing the AI route kept `npm run typecheck` green but made the focused route suite fail 2 tests. The route was restored, and the focused suite returned to 4/4 PASS.
+
+$ npm run typecheck
+RESULT: PASS
+
+$ cargo test -p xtask mobile_distribution -- --nocapture
+RESULT: PASS
+Tests 4 passed, 0 failed
+Covered frozen 80 MiB APK ceiling, four split ABIs, forbidden corpus/voice assets, ABI detection, and incomplete-report semantics.
+
+$ cargo run -p xtask -- mobile-distribution
+RESULT: PASS (report generation command)
+Report semantics: PASS 0, FAIL 0, NOT EXECUTED 7, all_pass=false
+Reason: binding verdict is undetermined; no real APK/AAB/iOS archive or physical-device smoke evidence exists.
+Generated: docs/reports/mobile-size.md and docs/reports/mobile-size.json
+
+Tool probes recorded by the generated report:
+- tauri-cli 2.11.4: available
+- adb: unavailable
+- gradle: unavailable
+- sdkmanager: shim present but no Android SDK version configured
+- xcrun: unavailable
+
+$ make fmt
+RESULT: PASS
+
+$ lsp_diagnostics xtask/src/mobile_distribution.rs xtask/src/main.rs app/src/mobileRoutes.ts app/src/__tests__/mobileRoutes.test.tsx
+RESULT: PASS
+No diagnostics found in all changed Rust and TypeScript source files.
+
+$ export YUNJIAN_MODEL_DIR=/config/workspace/ProdDir/AI/yunjian/models/cache && make ci
+RESULT: PASS
+Gate summary: fmt-check, lint, test, mcp-conformance, frontend-test all passed.
+Frontend summary: 33 test files passed, 409 tests passed.
+
+$ export YUNJIAN_MODEL_DIR=/config/workspace/ProdDir/AI/yunjian/models/cache && cargo test --workspace --all-features --no-fail-fast
+RESULT: EXPECTED ENVIRONMENT-LIMITED FAILURE
+Only failed target: -p yunjian-voice --test capture
+Only failed test: captures_one_second_of_16k_mono_pcm_with_nonzero_rms
+Observed reason: all available capture paths were silent (RMS=0) or unavailable; the environment has no signal-bearing audio input. This is the pre-existing allowed hardware failure and is unrelated to Task 70.
+All other all-feature test targets continued and passed.
+
+Mobile build and device evidence:
+- Android per-ABI APK build: NOT EXECUTED (missing configured Android SDK/NDK, adb, selected binding, and physical device)
+- Android AAB build: NOT EXECUTED (same blockers)
+- iOS archive: NOT EXECUTED (Linux host; missing Xcode 26/iOS 26 SDK, signing identity, provisioning profile, selected binding, and physical device)
+- APK/AAB/IPA ZIP content scan: NOT EXECUTED (no real artifacts); implementation and unit guards are present
+- Instrumented physical-device search/typed-recitation/voice start-stop smoke: NOT EXECUTED (no authorized physical device)
+
+No mobile binding or generated Tauri/UniFFI project was created because docs/reports/mobile-spike.json remains `undetermined`.
