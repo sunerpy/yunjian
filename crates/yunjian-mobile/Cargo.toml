@@ -1,0 +1,23 @@
+[package]
+name = "yunjian-mobile"
+description = "云笺移动端共享门面：跨检索、赏析、背诵、语音与凭据的薄接线层"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+secrecy.workspace = true
+serde.workspace = true
+yunjian-ai = { path = "../yunjian-ai" }
+yunjian-core = { path = "../yunjian-core" }
+yunjian-recite = { path = "../yunjian-recite" }
+yunjian-voice = { path = "../yunjian-voice" }
+
+[dev-dependencies]
+toml.workspace = true
+
+[lints]
+workspace = true
