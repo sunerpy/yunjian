@@ -11,7 +11,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use yunjian_corpus::db::CorpusDbInput;
-use yunjian_corpus::ingest::werneror::{Bucket, CLASSICAL_BUCKETS};
+use yunjian_corpus::ingest::werneror::{
+    Bucket, CLASSICAL_BUCKETS, FIXTURE_BUCKETS, buckets_by_file,
+};
 use yunjian_corpus::model::{CanonicalRecord, Dynasty};
 use yunjian_corpus::normalize::Normalizer;
 use yunjian_corpus::quality::{Disposition, ReasonCode, run_pipeline};
@@ -21,7 +23,8 @@ use yunjian_corpus::tag::{TagVocabulary, assign_tags};
 use yunjian_corpus::{commentary, db::PoemTagRow};
 
 use super::{
-    CORPUS_VERSION_FOR_BUILD, RhymeConfidenceMeasurement, Scale, StructuralCleaningMeasurement,
+    CORPUS_VERSION_FOR_BUILD, InputSource, RhymeConfidenceMeasurement, Scale,
+    StructuralCleaningMeasurement,
 };
 
 /// 集评种子集在仓库里的位置。与 `xtask commentary-index` 读的是同一个目录。
@@ -29,6 +32,7 @@ const COMMENTARY_DIR: &str = "corpus/commentary";
 
 pub(super) fn assemble(
     scale: Scale,
+    source: InputSource,
     chinese_poetry_dir: &Path,
     werneror_dir: &Path,
     rhymes: &RhymeImport,
@@ -44,7 +48,7 @@ pub(super) fn assemble(
         }
     }
 
-    let buckets = resolve_buckets(scale)?;
+    let buckets = resolve_buckets(scale, source)?;
     let outcome = run_pipeline(
         chinese_poetry_dir,
         werneror_dir,
@@ -234,21 +238,32 @@ fn shippable_rhyme_entries(rhymes: &RhymeImport) -> Vec<yunjian_corpus::rhyme::R
     entries
 }
 
-fn resolve_buckets(scale: Scale) -> Result<Vec<Bucket>> {
-    let wanted = scale.werneror_buckets();
+/// 本次要读的分桶。
+///
+/// 规模声明的是**真实上游**上的分桶清单；fixture 目录只提供其中的一小部分
+/// （[`FIXTURE_BUCKETS`]，其余在锁定 revision 上动辄十几 MB，刻意不签入）。所以对
+/// fixture 输入必须求交集——不裁剪就会去要一个从来没打算存在的文件，把输入选择
+/// 错误伪装成数据缺失。裁剪只会缩小「读哪些」，白名单仍然是唯一的许可判据。
+fn resolve_buckets(scale: Scale, source: InputSource) -> Result<Vec<Bucket>> {
+    let declared: Vec<&str> = match scale.werneror_buckets() {
+        [] => CLASSICAL_BUCKETS.iter().map(|bucket| bucket.file).collect(),
+        wanted => wanted.to_vec(),
+    };
+    let wanted: Vec<&str> = match source {
+        InputSource::Upstream => declared,
+        InputSource::Fixture => declared
+            .into_iter()
+            .filter(|file| FIXTURE_BUCKETS.contains(file))
+            .collect(),
+    };
     if wanted.is_empty() {
-        return Ok(CLASSICAL_BUCKETS.to_vec());
+        bail!(
+            "规模 {} 在 {} 上没有任何可读分桶",
+            scale.key(),
+            source.label()
+        );
     }
-    wanted
-        .iter()
-        .map(|file| {
-            CLASSICAL_BUCKETS
-                .iter()
-                .find(|bucket| bucket.file == *file)
-                .copied()
-                .with_context(|| format!("古典白名单里没有分桶 {file}"))
-        })
-        .collect()
+    buckets_by_file(&wanted).map_err(Into::into)
 }
 
 fn derive_rhyme_groups(

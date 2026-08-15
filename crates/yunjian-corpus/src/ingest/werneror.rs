@@ -261,6 +261,45 @@ pub const KNOWN_MODERN_BUCKETS: &[&str] = &[
     "当代.csv",
 ];
 
+/// 随仓 fixture 目录里**实际提供**的古典分桶。
+///
+/// 它不是第二份白名单，而是「本仓能离线跑到的那一小块」：白名单 28 个分桶在锁定
+/// revision 上动辄十几 MB，全部签进 fixture 会让仓库体积失控，所以 fixture 只覆盖
+/// 这 7 个小桶。`当代.csv` 与 `未来.csv` 虽然也在 fixture 目录里，但刻意不列——
+/// 前者是已知近现代桶，后者根本不在白名单上，两者都必须由策略排除而不是由这份
+/// 名单排除。
+///
+/// **凡是接受「fixture 目录」作为输入的命令都必须按它裁剪分桶**，否则会去要一个
+/// 从来没打算签进来的文件，然后把这件事报成「数据缺失」。
+/// [`tests::fixture_bucket_list_matches_the_fixture_directory`] 扫真实目录守住它。
+pub const FIXTURE_BUCKETS: &[&str] = &[
+    "先秦.csv",
+    "秦.csv",
+    "魏晋末南北朝初.csv",
+    "隋末唐初.csv",
+    "唐.csv",
+    "宋末金初.csv",
+    "辽.csv",
+];
+
+/// 按文件名从古典白名单取出分桶，顺序与传入的名单一致。
+///
+/// 刻意不让调用方自己拼 [`Bucket`]：`dynasty_label` 与期望行数只能有一份声明，
+/// 各处重新写一遍就等于让白名单有第二个事实来源，两份漂移后调用方仍然通过而
+/// 产品行为已经变了。
+pub fn buckets_by_file(files: &[&str]) -> Result<Vec<Bucket>> {
+    files
+        .iter()
+        .map(|file| {
+            CLASSICAL_BUCKETS
+                .iter()
+                .find(|bucket| bucket.file == *file)
+                .copied()
+                .ok_or_else(|| corpus_error(format!("古典白名单里没有分桶 {file}")))
+        })
+        .collect()
+}
+
 /// 全部白名单分桶在锁定 revision 上的实测数据行数之和。
 pub fn expected_total_rows() -> usize {
     CLASSICAL_BUCKETS

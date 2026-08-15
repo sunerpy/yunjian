@@ -6,7 +6,7 @@
 
 - 声明预算：随包工件 gzip 后 <= **300 MB**，查询 p95 <= **150 ms**
 - 结论：`within_budget = true`（发布规模已实测：true）
-- 随包形态实测 2 行（10k（10000 首）gzip 4 MB、首启派生 9.1 s、审计库另存 332 MB；tang-song（474162 首）gzip 211 MB、首启派生 571.8 s、审计库另存 240 MB），全部 gzip <= 300 MB 且最差 p95 <= 150 ms，预算内。默认随包 tang-song，全量作为应用内可选下载。另有 3 行含 ngram 与审计表的实测保留在报告里，它们是拆分决策的依据而不是候选发布物。发布上限规模（full）已实测，缩小随包默认集的依据来自真实数字。
+- 随包形态实测 2 行（10k（10000 首）gzip 4 MB、首启派生 6.5 s、审计库另存 332 MB；tang-song（474043 首）gzip 213 MB、首启派生 484.1 s、审计库另存 331 MB），全部 gzip <= 300 MB 且最差 p95 <= 150 ms，预算内。默认随包 tang-song，全量作为应用内可选下载。另有 3 行含 ngram 与审计表的实测保留在报告里，它们是拆分决策的依据而不是候选发布物。发布上限规模（full）已实测，缩小随包默认集的依据来自真实数字。
 
 ## 参考机
 
@@ -26,8 +26,8 @@
 
 | 规模 | 形态 | 状态 | 首数 | 原始正文 MiB | poem 表 MiB | poem_fts MiB | FTS/poem | ngram MiB | ngram 行 | 索引/原文 | VACUUM 前 MiB | VACUUM 后 MiB | gzip MiB | 审计库 MiB | 首启派生 s | 最差 p95 ms | 体积预算 | 延迟预算 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10k | 随包形态（去派生结构、去审计表） | 实测 | 10000 | 2.17 | 10.16 | 6.90 | 0.68x | 72.94 | 1184776 | 36.87x | 14.58 | 13.96 | 4.86 | 332.47 | 9.1 | 1.436 | 通过 | 通过 |
-| tang-song | 随包形态（去派生结构、去审计表） | 实测 | 474162 | 101.78 | 494.72 | 228.66 | 0.46x | 3517.44 | 55730018 | 36.81x | 624.77 | 603.84 | 211.81 | 240.12 | 571.8 | 22.009 | 通过 | 通过 |
+| 10k | 随包形态（去派生结构、去审计表） | 实测 | 10000 | 2.17 | 10.16 | 6.90 | 0.68x | 72.94 | 1184776 | 36.87x | 14.58 | 13.96 | 4.86 | 332.47 | 6.5 | 1.065 | 通过 | 通过 |
+| tang-song | 随包形态（去派生结构、去审计表） | 实测 | 474043 | 101.77 | 481.41 | 228.65 | 0.47x | 3515.96 | 55729583 | 36.79x | 624.00 | 602.14 | 213.44 | 331.33 | 484.1 | 18.909 | 通过 | 通过 |
 | full | 随包形态（去派生结构、去审计表） | NOT MEASURED | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | 10k | 含 ngram + 审计表 | 实测 | 10000 | 2.16 | 10.41 | 6.89 | 0.66x | 68.42 | 1184326 | 34.79x | 297.07 | 281.03 | 91.23 | — | — | 0.889 | 通过 | 通过 |
 | tang-song | 含 ngram + 审计表 | 实测 | 474162 | 101.78 | 494.72 | 228.65 | 0.46x | 3316.18 | 55730018 | 34.83x | 4764.38 | 4464.63 | 1768.51 | — | — | 16.383 | **超出** | 通过 |
@@ -91,22 +91,22 @@
 | `poem_author_idx` | 0.15 | 1.1% |
 | `poem_form_idx` | 0.14 | 1.0% |
 
-### 规模 tang-song（474162 首）
+### 规模 tang-song（474043 首）
 
 | 表/索引 | MiB | 占文件 |
 | --- | --- | --- |
-| `poem` | 425.65 | 70.5% |
-| `poem_rhyme_group` | 40.73 | 6.7% |
-| `poem_rhyme_group_idx` | 31.81 | 5.3% |
-| `poem_first_line_idx` | 26.99 | 4.5% |
+| `poem` | 415.00 | 68.9% |
+| `poem_rhyme_group` | 40.71 | 6.8% |
+| `poem_rhyme_group_idx` | 31.80 | 5.3% |
 | `sqlite_autoindex_poem_2` | 23.75 | 3.9% |
-| `poem_title_idx` | 15.56 | 2.6% |
+| `poem_title_idx` | 15.54 | 2.6% |
+| `poem_first_line_idx` | 13.66 | 2.3% |
 | `sqlite_autoindex_poem_1` | 11.35 | 1.9% |
-| `poem_work_group_idx` | 9.52 | 1.6% |
+| `poem_work_group_idx` | 9.51 | 1.6% |
 | `poem_author_idx` | 7.48 | 1.2% |
-| `poem_dynasty_idx` | 5.43 | 0.9% |
-| `poem_ci_tune_idx` | 4.10 | 0.7% |
-| `rhyme` | 0.66 | 0.1% |
+| `poem_form_idx` | 6.64 | 1.1% |
+| `poem_tag` | 5.62 | 0.9% |
+| `poem_tag_idx` | 5.61 | 0.9% |
 
 ### 规模 10k（10000 首）
 
@@ -167,27 +167,27 @@
 
 | 查询 | 类型 | 命中 | p50 ms | p95 ms | EXPLAIN QUERY PLAN |
 | --- | --- | --- | --- | --- | --- |
-| two_char_ngram | 两字查询「明月」经 n-gram 覆盖索引 | 156 | 0.343 | 0.374 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
-| three_char_match | 三字 FTS5 MATCH（trigram）「明月光」 | 3 | 0.023 | 0.027 | `SCAN f VIRTUAL TABLE INDEX 0:M1 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
-| full_line_like | 整句 LIKE（trigram 约束），绑定库内最高频值「尧夫非是爱吟诗，」 | 7 | 0.074 | 0.093 | `SCAN f VIRTUAL TABLE INDEX 0:L0 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
-| author_lookup | 作者等值（B-tree），绑定库内最高频值「陸游」 | 202 | 0.135 | 0.157 | `SEARCH poem USING INDEX poem_author_idx (author=?)` |
-| first_line_prefix | 首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」 | 27 | 0.030 | 0.033 | `SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)` |
-| rhyme_group_join | 韵部连接，绑定库内最高频值「四支」 | 923 | 0.558 | 0.616 | `SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?) / SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
-| tag_filter | 标签过滤（规范化多对多表），绑定库内最高频值「送别」 | 942 | 0.251 | 0.264 | `SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)` |
-| cold_open_first_query | 冷启动后首查（每轮重开连接，不预热）「明月」 | 156 | 1.169 | 1.436 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| two_char_ngram | 两字查询「明月」经 n-gram 覆盖索引 | 156 | 0.121 | 0.167 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| three_char_match | 三字 FTS5 MATCH（trigram）「明月光」 | 3 | 0.009 | 0.009 | `SCAN f VIRTUAL TABLE INDEX 0:M1 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
+| full_line_like | 整句 LIKE（trigram 约束），绑定库内最高频值「尧夫非是爱吟诗，」 | 7 | 0.028 | 0.033 | `SCAN f VIRTUAL TABLE INDEX 0:L0 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
+| author_lookup | 作者等值（B-tree），绑定库内最高频值「陸游」 | 202 | 0.049 | 0.062 | `SEARCH poem USING INDEX poem_author_idx (author=?)` |
+| first_line_prefix | 首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」 | 27 | 0.012 | 0.012 | `SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)` |
+| rhyme_group_join | 韵部连接，绑定库内最高频值「四支」 | 923 | 0.242 | 0.289 | `SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?) / SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| tag_filter | 标签过滤（规范化多对多表），绑定库内最高频值「送别」 | 942 | 0.122 | 0.152 | `SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)` |
+| cold_open_first_query | 冷启动后首查（每轮重开连接，不预热）「明月」 | 156 | 0.700 | 1.065 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
 
-### 规模 tang-song（474162 首）
+### 规模 tang-song（474043 首）
 
 | 查询 | 类型 | 命中 | p50 ms | p95 ms | EXPLAIN QUERY PLAN |
 | --- | --- | --- | --- | --- | --- |
-| two_char_ngram | 两字查询「明月」经 n-gram 覆盖索引 | 7291 | 17.159 | 22.009 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
-| three_char_match | 三字 FTS5 MATCH（trigram）「明月光」 | 80 | 0.042 | 0.053 | `SCAN f VIRTUAL TABLE INDEX 0:M1 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
-| full_line_like | 整句 LIKE（trigram 约束），绑定库内最高频值「□□□□□□□，□□□□□□□。」 | 54 | 0.552 | 0.753 | `SCAN f VIRTUAL TABLE INDEX 0:L0 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
-| author_lookup | 作者等值（B-tree），绑定库内最高频值「陸游」 | 9272 | 10.667 | 12.872 | `SEARCH poem USING INDEX poem_author_idx (author=?)` |
-| first_line_prefix | 首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」 | 1452 | 2.028 | 2.360 | `SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)` |
-| rhyme_group_join | 韵部连接，绑定库内最高频值「四支」 | 43237 | 17.653 | 19.146 | `SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?) / SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
-| tag_filter | 标签过滤（规范化多对多表），poem_tag 表为空，本条为零命中基线 | 0 | 0.006 | 0.006 | `SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)` |
-| cold_open_first_query | 冷启动后首查（每轮重开连接，不预热）「明月」 | 7291 | 16.871 | 17.828 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| two_char_ngram | 两字查询「明月」经 n-gram 覆盖索引 | 7291 | 15.734 | 17.096 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| three_char_match | 三字 FTS5 MATCH（trigram）「明月光」 | 80 | 0.038 | 0.051 | `SCAN f VIRTUAL TABLE INDEX 0:M1 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
+| full_line_like | 整句 LIKE（trigram 约束），绑定库内最高频值「尧夫非是爱吟诗，」 | 187 | 0.212 | 0.229 | `SCAN f VIRTUAL TABLE INDEX 0:L0 / SEARCH p USING INTEGER PRIMARY KEY (rowid=?)` |
+| author_lookup | 作者等值（B-tree），绑定库内最高频值「陸游」 | 9272 | 10.885 | 12.816 | `SEARCH poem USING INDEX poem_author_idx (author=?)` |
+| first_line_prefix | 首句前缀（有序区间，非 LIKE），绑定库内最高频值「平生」 | 1452 | 2.104 | 2.595 | `SEARCH poem USING INDEX poem_first_line_idx (first_line>? AND first_line<?)` |
+| rhyme_group_join | 韵部连接，绑定库内最高频值「四支」 | 43235 | 17.221 | 18.909 | `SEARCH g USING COVERING INDEX poem_rhyme_group_idx (rhyme_book=? AND rhyme_group=?) / SEARCH p USING COVERING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
+| tag_filter | 标签过滤（规范化多对多表），绑定库内最高频值「送别」 | 45873 | 3.938 | 4.815 | `SEARCH poem_tag USING COVERING INDEX poem_tag_idx (tag=?)` |
+| cold_open_first_query | 冷启动后首查（每轮重开连接，不预热）「明月」 | 7291 | 16.526 | 17.937 | `SEARCH n USING COVERING INDEX ngram_gram_idx (gram=?) / SEARCH p USING INDEX sqlite_autoindex_poem_1 (stable_id=?)` |
 
 ### 规模 10k（10000 首）
 

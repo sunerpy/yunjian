@@ -771,5 +771,18 @@ jobs:
         run: |
           set -euo pipefail
           gh release edit "${TAG_NAME}" --repo "${REPO}" --draft=false --latest
-          gh release view "${TAG_NAME}" --repo "${REPO}" --json isDraft,isLatest,assets \
-            --jq '{isDraft, isLatest, assets: [.assets[].name]}'
+          # 翻牌之后必须**断言**翻成功了，而不是把状态打印出来给人看。原来这里是
+          # 一条只打印的 `gh ... --jq`：它对 `false` 与 `null` 都返回 0，所以翻牌
+          # 失败也照样绿。而且它请求了 `isLatest`——`gh release view --json` 并不
+          # 支持这个字段（实测报 `Unknown JSON field`），于是这条命令在真正发第一版
+          # 时只会以一个与发布无关的错误炸掉。
+          #
+          # `latest` 只有 REST 端点答得上来，所以分两处查：draft 状态与资产清单走
+          # `gh release view`，`latest` 走 `releases/latest` 再比 tag。
+          gh release view "${TAG_NAME}" --repo "${REPO}" --json isDraft,tagName,assets \
+            > "${RUNNER_TEMP}/published.json"
+          jq '{isDraft, tagName, assets: [.assets[].name]}' "${RUNNER_TEMP}/published.json"
+          jq -e --arg tag "${TAG_NAME}" \
+            '.isDraft == false and .tagName == $tag and (.assets | length > 0)' \
+            "${RUNNER_TEMP}/published.json" > /dev/null
+          test "$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')" = "${TAG_NAME}"
