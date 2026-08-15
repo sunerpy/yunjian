@@ -1,0 +1,23 @@
+schema_version = 1
+binding_verdict = "undetermined"
+shared_ui = "app"
+universal_apk_default = false
+apk_ceiling_bytes = 83886080
+corpus_packaged = false
+voice_models_packaged = false
+first_play_upload = "manual"
+
+[android]
+project = "mobile/android"
+generated_project = "crates/yunjian-app/gen/android"
+min_sdk = 26
+abis = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"]
+formats = ["apk", "aab"]
+build_command = "cargo tauri android build --ci --split-per-abi --apk --aab --target aarch64 armv7 i686 x86_64"
+native_build_note = "ANDROID_NDK_HOME must point to a complete NDK; cc-rs needs target C/C++ compilers, not only a Cargo linker"
+
+[ios]
+project = "mobile/ios"
+generated_project = "crates/yunjian-app/gen/apple"
+build_command = "cargo tauri ios build --ci --export-method app-store-connect"
+archive_kind = "xcarchive_or_ipa"

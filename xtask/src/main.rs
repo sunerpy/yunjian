@@ -24,6 +24,7 @@ mod corpus_measure;
 mod corpus_package;
 mod corpus_quality;
 mod index_spike;
+mod mobile_distribution;
 mod pregenerate;
 mod prerequisite;
 mod provider_calls;
@@ -331,6 +332,17 @@ enum Commands {
         render_only: bool,
     },
 
+    /// 扫描真实移动产物、执行 APK 上限与禁带资产守卫，并写出
+    /// `docs/reports/mobile-size.{md,json}`。缺产物或设备时如实标 `NOT EXECUTED`。
+    MobileDistribution {
+        /// 包含 split APK、AAB、`.xcarchive` 或 IPA 的目录；递归发现产物。
+        #[arg(long)]
+        artifacts_dir: Option<std::path::PathBuf>,
+        /// 物理设备 instrumented smoke 的 JSON 观测；不给就绝不把 smoke 写成 PASS。
+        #[arg(long)]
+        smoke_json: Option<std::path::PathBuf>,
+    },
+
     /// 桌面真机验收或移动端可行性门禁。移动门禁缺少物理设备、签名或商店凭据时
     /// 如实写 `NOT EXECUTED`，不会编造测量值或框架选型。
     ///
@@ -465,6 +477,10 @@ fn main() -> anyhow::Result<()> {
             dump_transcripts,
             render_only,
         ),
+        Some(Commands::MobileDistribution {
+            artifacts_dir,
+            smoke_json,
+        }) => mobile_distribution::run(artifacts_dir, smoke_json),
         Some(Commands::Acceptance { platform, set }) => acceptance::run(&platform, &set),
         None => Ok(()),
     }

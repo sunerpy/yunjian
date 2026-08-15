@@ -8027,6 +8027,7 @@ dependencies = [
  "yunjian-core",
  "yunjian-corpus",
  "yunjian-voice",
+ "zip",
 ]
 
 [[package]]
