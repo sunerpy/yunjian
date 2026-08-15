@@ -33,6 +33,19 @@ path = "src/main.rs"
 
 [features]
 default = []
+# 前端资产从**产物内嵌**读，而不是从 `devUrl` 的开发服务器读。
+#
+# `tauri-build` 把 `dev` cfg 定义成 `!custom_protocol`，因此一次裸
+# `cargo build -p yunjian-app` 得到的产物会去连 `tauri.conf.json` 里的
+# `devUrl`（`http://localhost:5173`）。没有 Vite 在跑时，WebView 里画的是
+# 「Could not connect to localhost: Connection refused」——**窗口、标题、图标全
+# 正常，只有内容是一张错误页**。这个形态在真机验收里表现为「主色占 99.6% 的近
+# 单色窗口」，极易被读成「WebKitGTK 把内容合成到了一块 X 读不回的 GL 表面」，
+# 而后者是个不存在的环境阻塞（见 `problems.md` 2026-08-15 的更正）。
+#
+# `cargo tauri build`（即 `make bundle`）会自动加上这个特性，所以发布路径一直是
+# 对的；需要显式声明的是**桌面真机验收要用的那个 debug 产物**，它不经过 tauri CLI。
+custom-protocol = ["tauri/custom-protocol"]
 # 原生语音。**这个开关同时是许可边界**：默认构建是纯 MIT 且不链接 onnxruntime，开启后
 # 预编译的 sherpa-onnx 产物静态包含 GPL-3.0 的 espeak-ng，分发物整体须按 GPL-3.0 提供
 # （见 `docs/VOICE-BUILD.zh.md` 与 `problems.md` 的 2026-08-10 一条）。
