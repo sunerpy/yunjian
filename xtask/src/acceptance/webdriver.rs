@@ -204,6 +204,27 @@ impl Session {
             .to_owned())
     }
 
+    /// 等一个元素出现，返回它是否在 `timeout` 内出现过。
+    ///
+    /// 建会话成功只说明 WebView 起来了，不说明 React 已经挂载。实测：会话返回后
+    /// 立刻查 `[data-testid='search-input']` 得到 `no such element`，约两秒后才有。
+    /// 没有这一步时那个时序会表现成一条 FAIL，读起来像「检索框不存在」——
+    /// 而那是一个假故障，且会让人去改一个没坏的前端。
+    ///
+    /// 这里**只等元素出现，不放宽任何断言**：等到超时仍没有，调用方照样失败。
+    pub(crate) fn wait_for(&self, css: &str, timeout: Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if self.find(css).is_ok() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+
     /// 往元素里输入文本。
     ///
     /// # Errors
