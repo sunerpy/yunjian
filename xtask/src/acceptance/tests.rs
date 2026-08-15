@@ -64,6 +64,21 @@ fn voice_success_and_degradation_are_separate_assertions() {
 }
 
 #[test]
+fn close_and_exit_assertions_preserve_the_tray_contract() {
+    let close = DECLARED
+        .iter()
+        .find(|declared| declared.id == "control_close_works")
+        .expect("必须声明关闭按钮断言");
+    let exit = DECLARED
+        .iter()
+        .find(|declared| declared.id == "app_exits_cleanly")
+        .expect("必须声明正常退出断言");
+
+    assert!(close.what.contains("隐藏到托盘") && close.what.contains("进程继续运行"));
+    assert!(exit.what.contains("托盘菜单") && exit.what.contains("退出码 0"));
+}
+
+#[test]
 fn recording_an_undeclared_assertion_is_rejected() {
     let mut collector = Collector::new();
     let error = collector

@@ -28,19 +28,64 @@ pub(crate) struct Paint {
     pub(crate) dominant: [u8; 3],
     /// 它占了多少比例。
     pub(crate) dominant_share: f64,
+    /// 至少占窗口 1% 的颜色区域数量。
+    pub(crate) significant_colors: usize,
 }
 
 impl Paint {
+    fn measure(rgba: &[u8]) -> Self {
+        // 直方图开在 5 位色深上（32³ = 32768 桶）：要回答的是「这一大片是不是同一个颜色」，
+        // 而抗锯齿会让同一片底色散成若干个相差 1 的值，按全 24 位统计反而把它拆开。
+        let mut histogram = vec![0u32; 32 * 32 * 32];
+        let mut total = 0u32;
+        for chunk in rgba.chunks_exact(4) {
+            let index = (usize::from(chunk[0] >> 3) << 10)
+                | (usize::from(chunk[1] >> 3) << 5)
+                | usize::from(chunk[2] >> 3);
+            histogram[index] += 1;
+            total += 1;
+        }
+        let (index, count) = histogram
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, count)| **count)
+            .map(|(index, count)| (index, *count))
+            .unwrap_or((0, 0));
+        let dominant = [
+            ((index >> 10) as u8) << 3,
+            (((index >> 5) & 0x1F) as u8) << 3,
+            ((index & 0x1F) as u8) << 3,
+        ];
+        let significant_colors = if total == 0 {
+            0
+        } else {
+            histogram
+                .iter()
+                .filter(|count| u64::from(**count) * 100 >= u64::from(total))
+                .count()
+        };
+        Self {
+            dominant,
+            dominant_share: if total == 0 {
+                1.0
+            } else {
+                f64::from(count) / f64::from(total)
+            },
+            significant_colors,
+        }
+    }
+
     /// 窗口内容是否读得到。
     ///
     /// 判据是**主色占比**而不是颜色种数。种数会被噪声骗过：本机实测一块 99.996% 纯黑的
     /// 窗口里也有 21 种颜色（21 个像素的杂色），按「种数 > 2」判会被当成画好了。
     /// 主色占比不会——纯黑那一次是 0.99996。
     ///
-    /// 阈值取 0.95：真实界面里最大的一块是内容区底色，而标题栏（40 px）与导航条
-    /// （41 px）各有自己的底色，合起来已占 800 px 高度的一成，所以主色到不了 95%。
+    /// 阈值取 0.95：真实界面里最大的一块是内容区底色，而标题栏与侧栏各有自己的底色。
+    /// 同时要求至少三个占比达到 1% 的颜色区域，避免把「白色 GTK 宿主 + 纯黑 WebView」
+    /// 这类两块空 surface 误认成已经画出了标题栏、按钮和输入框。
     pub(crate) fn painted(self) -> bool {
-        self.dominant_share < 0.95
+        self.dominant_share < 0.95 && self.significant_colors >= 3
     }
 }
 
@@ -70,36 +115,7 @@ pub(crate) fn capture_and_measure(
     let (width, height, rgba) = read_size_and_rgba(conn, window)?;
     write_png(path, width, height, &rgba)?;
 
-    // 直方图开在 5 位色深上（32³ = 32768 桶）：要回答的是「这一大片是不是同一个颜色」，
-    // 而抗锯齿会让同一片底色散成若干个相差 1 的值，按全 24 位统计反而把它拆开。
-    let mut histogram = vec![0u32; 32 * 32 * 32];
-    let mut total = 0u32;
-    for chunk in rgba.chunks_exact(4) {
-        let index = (usize::from(chunk[0] >> 3) << 10)
-            | (usize::from(chunk[1] >> 3) << 5)
-            | usize::from(chunk[2] >> 3);
-        histogram[index] += 1;
-        total += 1;
-    }
-    let (index, count) = histogram
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, count)| **count)
-        .map(|(index, count)| (index, *count))
-        .unwrap_or((0, 0));
-    let dominant = [
-        ((index >> 10) as u8) << 3,
-        (((index >> 5) & 0x1F) as u8) << 3,
-        ((index & 0x1F) as u8) << 3,
-    ];
-    Ok(Paint {
-        dominant,
-        dominant_share: if total == 0 {
-            1.0
-        } else {
-            f64::from(count) / f64::from(total)
-        },
-    })
+    Ok(Paint::measure(&rgba))
 }
 
 /// 把 `window` 的当前像素写成 PNG。`window` 传 root 即整屏。
@@ -183,4 +199,45 @@ fn read_size_and_rgba(conn: &impl Connection, window: Window) -> Result<(u32, u3
         rgba.extend_from_slice(&[chunk[2], chunk[1], chunk[0], 0xFF]);
     }
     Ok((width, height, rgba))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pixels(colors: &[([u8; 3], usize)]) -> Vec<u8> {
+        let mut rgba = Vec::new();
+        for (color, count) in colors {
+            for _ in 0..*count {
+                rgba.extend_from_slice(&[color[0], color[1], color[2], 0xff]);
+            }
+        }
+        rgba
+    }
+
+    #[test]
+    fn two_color_empty_surface_is_not_mistaken_for_rendered_ui() {
+        let rgba = pixels(&[([0xff, 0xff, 0xff], 800), ([0x00, 0x00, 0x00], 200)]);
+        let paint = Paint::measure(&rgba);
+
+        assert!(
+            !paint.painted(),
+            "白色宿主窗口里嵌一块纯黑 WebView 只有两块空 surface，不是已渲染 UI"
+        );
+    }
+
+    #[test]
+    fn multiple_meaningful_regions_are_treated_as_rendered_ui() {
+        let rgba = pixels(&[
+            ([0xff, 0xff, 0xff], 800),
+            ([0xef, 0xec, 0xe6], 100),
+            ([0x1f, 0x29, 0x33], 100),
+        ]);
+        let paint = Paint::measure(&rgba);
+
+        assert!(
+            paint.painted(),
+            "内容、标题栏与文字形成的真实界面应通过绘制门"
+        );
+    }
 }
