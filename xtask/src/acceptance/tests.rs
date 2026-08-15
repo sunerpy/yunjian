@@ -335,11 +335,125 @@ fn every_ui_assertion_requires_a_screenshot() {
 }
 
 #[test]
-fn platform_parsing_accepts_the_three_documented_values() {
+fn platform_parsing_accepts_the_five_documented_values() {
     assert_eq!(Platform::parse("win").expect("win"), Platform::Windows);
     assert_eq!(Platform::parse("mac").expect("mac"), Platform::MacOs);
     assert_eq!(Platform::parse("linux").expect("linux"), Platform::Linux);
-    Platform::parse("android").expect_err("未知平台必须被拒绝");
+    assert_eq!(
+        Platform::parse("android").expect("android"),
+        Platform::Android
+    );
+    assert_eq!(Platform::parse("ios").expect("ios"), Platform::Ios);
+    Platform::parse("plan9").expect_err("真正未知的平台必须被拒绝");
+}
+
+#[test]
+fn mobile_spike_predeclares_four_measurable_criteria() {
+    let declared = mobile::DECLARED;
+    assert_eq!(declared.len(), 4, "移动端选型必须恰好由四项预声明判据决定");
+    assert_eq!(
+        declared
+            .iter()
+            .map(|criterion| criterion.id)
+            .collect::<Vec<_>>(),
+        [
+            "microphone_capture",
+            "corpus_materialization",
+            "chinese_ime",
+            "ios_testflight_submission",
+        ]
+    );
+    for criterion in declared {
+        assert!(!criterion.threshold.trim().is_empty(), "每项必须声明阈值");
+        assert!(
+            criterion.required_measurements.contains(&"device_model")
+                && criterion.required_measurements.contains(&"os_build"),
+            "判据 `{}` 必须记录物理设备型号与 OS build",
+            criterion.id
+        );
+        assert!(
+            !criterion.required_measurements.is_empty(),
+            "判据 `{}` 必须声明机器可读测量字段",
+            criterion.id
+        );
+    }
+    let microphone = &declared[0].required_measurements;
+    for key in ["sample_rate_hz", "channel_count", "rms"] {
+        assert!(microphone.contains(&key), "麦克风判据缺少 `{key}`");
+    }
+}
+
+#[test]
+fn unavailable_mobile_hardware_is_not_executed_and_keeps_selection_undetermined() {
+    let report = mobile::build_unexecuted_report(Platform::Android);
+    assert_eq!(report.verdict, mobile::SelectionVerdict::Undetermined);
+    assert_eq!(report.criteria.len(), 4);
+    for (criterion, declared) in report.criteria.iter().zip(mobile::DECLARED) {
+        assert_eq!(criterion.verdict, Verdict::NotExecuted);
+        assert_eq!(criterion.threshold, declared.threshold);
+        assert!(
+            !criterion.executable_when.trim().is_empty(),
+            "NOT EXECUTED 必须给出可执行条件"
+        );
+        for key in declared.required_measurements {
+            assert!(
+                criterion.measurement.contains_key(*key),
+                "判据 `{}` 缺少机器可读测量字段 `{key}`",
+                criterion.id
+            );
+            assert!(
+                criterion.measurement[*key].is_null(),
+                "未实测时 `{key}` 必须是 null，不能编造值"
+            );
+        }
+    }
+}
+
+#[test]
+fn mobile_selection_is_tauri_only_for_four_passes_and_native_for_any_failure() {
+    use mobile::SelectionVerdict::{TauriMobile, Undetermined, UniffiNative};
+
+    assert_eq!(
+        mobile::selection_verdict(&[Verdict::Pass; 4]),
+        TauriMobile,
+        "只有四项全 PASS 才能选择 Tauri mobile"
+    );
+    assert_eq!(
+        mobile::selection_verdict(&[
+            Verdict::Pass,
+            Verdict::NotExecuted,
+            Verdict::Pass,
+            Verdict::Pass,
+        ]),
+        Undetermined,
+        "未执行不是产品失败，也不能冒充已完成选型"
+    );
+    assert_eq!(
+        mobile::selection_verdict(&[
+            Verdict::NotExecuted,
+            Verdict::Fail,
+            Verdict::NotExecuted,
+            Verdict::NotExecuted,
+        ]),
+        UniffiNative,
+        "任一 FAIL 必须强制选择 UniFFI native"
+    );
+}
+
+#[test]
+fn mobile_report_serializes_the_three_stable_selection_literals() {
+    assert_eq!(
+        serde_json::to_value(mobile::SelectionVerdict::TauriMobile).expect("serialize"),
+        "tauri_mobile"
+    );
+    assert_eq!(
+        serde_json::to_value(mobile::SelectionVerdict::UniffiNative).expect("serialize"),
+        "uniffi_native"
+    );
+    assert_eq!(
+        serde_json::to_value(mobile::SelectionVerdict::Undetermined).expect("serialize"),
+        "undetermined"
+    );
 }
 
 #[test]

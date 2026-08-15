@@ -1,4 +1,4 @@
-//! `xtask acceptance --platform <win|mac|linux> --set desktop`：桌面端真机验收。
+//! `xtask acceptance`：桌面端真机验收与移动端可行性门禁。
 //!
 //! # 为什么这个子命令必须存在
 //!
@@ -464,6 +464,8 @@ pub(crate) enum Platform {
     Windows,
     MacOs,
     Linux,
+    Android,
+    Ios,
 }
 
 impl Platform {
@@ -471,13 +473,15 @@ impl Platform {
     ///
     /// # Errors
     ///
-    /// 取值不在 `win` | `mac` | `linux` 之内。
+    /// 取值不在 `win` | `mac` | `linux` | `android` | `ios` 之内。
     pub(crate) fn parse(raw: &str) -> Result<Self> {
         match raw {
             "win" | "windows" => Ok(Self::Windows),
             "mac" | "macos" => Ok(Self::MacOs),
             "linux" => Ok(Self::Linux),
-            other => bail!("未知平台 `{other}`；只接受 win | mac | linux"),
+            "android" => Ok(Self::Android),
+            "ios" => Ok(Self::Ios),
+            other => bail!("未知平台 `{other}`；只接受 win | mac | linux | android | ios"),
         }
     }
 
@@ -486,6 +490,8 @@ impl Platform {
             Self::Windows => "windows",
             Self::MacOs => "macos",
             Self::Linux => "linux",
+            Self::Android => "android",
+            Self::Ios => "ios",
         }
     }
 }
@@ -498,8 +504,17 @@ impl Platform {
 /// 见模块文档「退出码与 `all_pass` 刻意不同义」。
 pub(crate) fn run(platform: &str, set: &str) -> Result<()> {
     let platform = Platform::parse(platform)?;
+    if set == "spike" {
+        if !matches!(platform, Platform::Android | Platform::Ios) {
+            bail!("移动可行性断言集 spike 只接受 android | ios");
+        }
+        return mobile::run(&repo_root(), platform);
+    }
     if set != "desktop" {
-        bail!("未知断言集 `{set}`；本子命令目前只有 desktop");
+        bail!("未知断言集 `{set}`；只接受 desktop | spike");
+    }
+    if matches!(platform, Platform::Android | Platform::Ios) {
+        bail!("桌面断言集 desktop 只接受 win | mac | linux");
     }
     let root = repo_root();
 
@@ -528,6 +543,7 @@ pub(crate) fn run(platform: &str, set: &str) -> Result<()> {
                 audio_input_devices: 0,
             }
         }
+        Platform::Android | Platform::Ios => unreachable!("移动平台已在进入桌面执行器前拒绝"),
     };
 
     let report = build_report(&root, platform, set, session, collector)?;
@@ -569,6 +585,14 @@ const fn foreign_platform_gap(platform: Platform) -> (&'static str, &'static str
              以及 @wdio/tauri-service 的 embedded WebDriver（macOS 唯一可行的驱动方式）",
         ),
         Platform::Linux => ("", ""),
+        Platform::Android => (
+            "本次桌面验收不执行 Android",
+            "改用 --platform android --set spike 在已授权的物理设备上运行移动可行性门禁",
+        ),
+        Platform::Ios => (
+            "本次桌面验收不执行 iOS",
+            "改用 --platform ios --set spike 在已注册到签名身份的物理设备上运行移动可行性门禁",
+        ),
     }
 }
 
@@ -894,6 +918,7 @@ fn today() -> String {
 }
 
 pub(crate) mod linux;
+pub(crate) mod mobile;
 pub(crate) mod screenshot;
 pub(crate) mod webdriver;
 
