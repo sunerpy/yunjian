@@ -50,7 +50,7 @@ fn repo_root() -> Result<PathBuf> {
 }
 
 fn fixture_buckets() -> Result<Vec<Bucket>> {
-    Ok(buckets_by_file(FIXTURE_BUCKETS).context("按 fixture 名单取分桶")?)
+    buckets_by_file(FIXTURE_BUCKETS).context("按 fixture 名单取分桶")
 }
 
 fn run_scope(

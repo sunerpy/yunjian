@@ -30,6 +30,29 @@ make help    # 列出所有 target
 语料构建实测约 9 分钟（release 构建，32 核），两次独立构建的 `corpus.db` SHA-256 完全相同——
 构建是确定性的。缺模型时受影响的语音测试会显示为 `ignored` 并带明确原因，不会伪装通过。
 
+## 写验收命令：退出码 0 不等于验收通过
+
+凡验收命令产出机器可读结果（JSON / manifest / 报告），**必须断言那个结果里的语义字段**，
+只看退出码会得到一条永远通过的命令。本仓库两次栽在这上面：
+
+- `xtask corpus-measure --scale 10k` 退出 0，而报告把 10k 标成 `state=not_measured`——
+  失败还顺手把原本真实的实测行降级掉了。现在被请求的规模没测出来即**非零退出且不写报告**。
+- 一条形如 `gh release view … --jq '.x'` 的验收 shell 判「语料是否已发布」为通过，
+  而仓库里一个 Release、一个 tag 都没有。
+
+四种最常见的假绿形态，以及正确写法：
+
+| 形态                              | 为什么绿                           | 正确写法                                                   |
+| --------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
+| `gh … --jq '.ok'`                 | `--jq` 对 `false` 与 `null` 都退 0 | `test "$(gh … --jq '.ok')" = true`，或落盘后 `jq -e`       |
+| `jq '.ok' f.json`                 | 打印 `false` 也退 0                | `jq -e '.ok' f.json > /dev/null`                           |
+| `cmd 2>&1 \| tee log`             | 管道退出码是 `tee` 的              | `set -o pipefail`（GitHub 的 `shell: bash` 已自带）        |
+| `gh release view --json isLatest` | 字段不存在，报的是无关错误         | 用受支持字段；`latest` 走 `gh api repos/…/releases/latest` |
+
+这四条由 `xtask/tests/acceptance_semantics.rs` 扫真实 workflow 与 `Makefile` 机械守住：
+`gh --jq` 的结果必须被比较消费、`--json` 字段必须在实测支持列表内、每处 `| tee` 必须有
+pipefail、`corpus-release.yml` 必须在发布后**把资产下载回来重算 SHA-256**。
+
 ## 本机打包桌面安装包
 
 ```bash

@@ -207,3 +207,39 @@ jobs:
                 "两件工件版本独立，但 \`corpus_version\` 必须一致——不一致时导入会被兼容矩阵拒绝，" \
                 "因此发布前已在 \`xtask assets-manifest\` 里比过一次。")"
           fi
+
+      # 发布之后**独立复核发布这件事本身**，而不是相信上一步的退出码。
+      #
+      # 这一步补的是一个真实发生过的漏洞：todo 75 曾被判为完成，而仓库里一个
+      # Release、一个 tag 都没有。原因是那条验收 shell 用 `gh ... --jq` 取一个布尔值
+      # 却只看退出码——`gh --jq` 对 `false` 与 `null` 都返回 0，于是「发布了吗」这个
+      # 问题永远答「是」。**退出码 0 不等于验收通过**：凡是产出机器可读结果的命令，
+      # 都必须再断言那个结果的语义字段。
+      #
+      # 所以下面每一条都是可证伪的比较：Release 必须不是 draft、六个资产逐个点名、
+      # 并且真的把工件与 `.sha256` 下回来重算一遍摘要——上传成功不等于内容正确。
+      - name: 复核 Release 真实存在且资产可校验
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json isDraft,tagName,assets > release.json
+          jq -e --arg tag "$TAG" '.tagName == $tag and .isDraft == false' release.json > /dev/null
+          jq -r '.assets[].name' release.json | LC_ALL=C sort > remote-assets.txt
+          cat remote-assets.txt
+          for want in \
+            "$(basename corpus/build/package/*.db.gz)" \
+            "$(basename corpus/build/package/*.db.gz.sha256)" \
+            manifest.json \
+            appreciations.json \
+            appreciations.json.sha256 \
+            assets_manifest.json; do
+            grep -qxF "$want" remote-assets.txt
+          done
+          mkdir -p verify && cd verify
+          gh release download "$TAG" --pattern '*.db.gz' --pattern '*.db.gz.sha256' \
+            --pattern 'manifest.json' --clobber
+          sha256sum -c ./*.db.gz.sha256
+          test "$(stat -c%s ./*.db.gz)" = "$(jq -r '.size_bytes' manifest.json)"
+          test "$(cut -d' ' -f1 <./*.db.gz.sha256)" = "$(jq -r '.sha256' manifest.json)"

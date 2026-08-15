@@ -263,7 +263,7 @@ fn resolve_buckets(scale: Scale, source: InputSource) -> Result<Vec<Bucket>> {
             source.label()
         );
     }
-    Ok(buckets_by_file(&wanted)?)
+    buckets_by_file(&wanted).map_err(Into::into)
 }
 
 fn derive_rhyme_groups(
