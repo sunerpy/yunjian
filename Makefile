@@ -48,7 +48,7 @@ FRONTEND_DIST := app/dist/index.html
 NPM := npm
 
 .PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test mcp-conformance build check ci corpus-gate \
-	corpus-artifact clean-install hooks frontend frontend-test
+	corpus-artifact bundle clean-install hooks frontend frontend-test
 
 help: ## 列出全部可用目标
 	@echo "云笺 · make 目标"
@@ -137,6 +137,69 @@ mcp-conformance: ## 用真实 rmcp 客户端执行 MCP 端到端一致性测试
 build: ## 发布构建。刻意不属于 ci：耗时长，且不是正确性门禁
 	@echo "==> cargo build --release"
 	@$(CARGO) build --release
+
+# 桌面安装包的本机入口。**刻意不属于 `ci`**：一次 debug 打包约 12 分钟、铺开约 1.2 GiB
+# 中间件，而 `ci` 是 pre-push 钩子跑的那一条。三件事在这里做，而不是留给裸
+# `cargo tauri build`：
+#
+# 1. `--no-sign`。`tauri.conf.json` 声明了 `plugins.updater.pubkey`，于是打包最后一步
+#    必然要签名，没有 `TAURI_SIGNING_PRIVATE_KEY` 就报「A public key has been found,
+#    but no private key」并整体退出 1 —— 而**三个安装包此时其实已经全部产出**。这个失败
+#    形态极易被读成「打包失败」，实际是「本机没有发布私钥」。本机与容器不该持有发布私钥，
+#    所以本目标显式不签名；发布签名只在 `.github/workflows/release-please.yml` 里做，
+#    且那边缺 key 是硬失败（`updater 签名不可关闭`），不会被本目标削弱。
+# 2. `-v`。tauri-bundler 的 `log_level` 默认是 `Error`，那条分支用 `cmd.output()` 吞掉
+#    linuxdeploy 的 stderr，只抛一句 `failed to run linuxdeploy`。加 `-v` 走
+#    `output_ok()`，真实原因（缺库、磁盘满、插件失败）才进得了日志。
+# 3. 打完逐类核对产物。`cargo tauri build` 少打一个安装包时确实会非零退出，但在有人手动
+#    跑一次之前没有任何东西会发现；而 **Linux updater 只消费 AppImage（`.deb` 不能自动
+#    更新）**，少这一个不是「少一个可选产物」，是断掉 Linux 的自动更新链。
+BUNDLE_KINDS := deb rpm appimage
+BUNDLE_DIR := target/debug/bundle
+BUNDLE_BINARY := target/debug/yunjian-desktop
+# AppImage 阶段要把整个 GTK/WebKit 栈复制进一个未压缩 AppDir 再压一遍 squashfs，debug
+# 产物尤其大（实测 AppDir 588 MiB + appimage_deb 389 MiB + 输出 163 MiB）。磁盘不够时
+# linuxdeploy 的失败同样只显示成那句 `failed to run linuxdeploy`，一个字都不提 ENOSPC，
+# 所以先判空间，把一个已知会误导人的失败提前变成一句人话。
+BUNDLE_MIN_FREE_MB := 4096
+
+bundle: | $(FRONTEND_DIST) ## 打桌面安装包并逐类核对产物（deb / rpm / AppImage）
+	@free=$$(df -Pm . | awk 'NR==2 {print $$4}'); \
+	if [ "$$free" -lt $(BUNDLE_MIN_FREE_MB) ]; then \
+		echo "可用磁盘 $${free} MiB，低于 $(BUNDLE_MIN_FREE_MB) MiB。" >&2; \
+		echo "AppImage 阶段会先铺开一个未压缩 AppDir，空间不足时 linuxdeploy 的失败" >&2; \
+		echo "只显示成 'failed to run linuxdeploy'，不会说是 ENOSPC。" >&2; \
+		exit 1; \
+	fi
+	@echo "==> cargo tauri build --debug --no-sign -v"
+	@cd crates/yunjian-app && $(CARGO) tauri build --debug --no-sign -v
+	@test -x "$(BUNDLE_BINARY)" || { echo "缺少可执行产物 $(BUNDLE_BINARY)" >&2; exit 1; }
+	@echo "==> 逐类核对产物：$(BUNDLE_KINDS)"
+	@status=0; \
+	printf '    %-9s %8s  %s\n' binary "$$(du -h "$(BUNDLE_BINARY)" | cut -f1)" "$(BUNDLE_BINARY)"; \
+	for kind in $(BUNDLE_KINDS); do \
+		case "$$kind" in \
+			deb) pattern='*.deb' ;; \
+			rpm) pattern='*.rpm' ;; \
+			appimage) pattern='*.AppImage' ;; \
+			*) echo "未知产物类别 $$kind：加类别时要同时给出它的文件名模式" >&2; exit 1 ;; \
+		esac; \
+		found=$$(find "$(BUNDLE_DIR)/$$kind" -maxdepth 1 -type f -name "$$pattern" 2>/dev/null | sort); \
+		if [ -z "$$found" ]; then \
+			echo "缺少 $$kind 产物（$(BUNDLE_DIR)/$$kind/$$pattern）" >&2; \
+			status=1; \
+			continue; \
+		fi; \
+		echo "$$found" | while read -r file; do \
+			printf '    %-9s %8s  %s\n' "$$kind" "$$(du -h "$$file" | cut -f1)" "$$file"; \
+		done; \
+	done; \
+	if [ "$$status" -ne 0 ]; then \
+		echo "安装包不齐。Linux updater 只消费 AppImage（.deb 不能自动更新），" >&2; \
+		echo "少 appimage 不是少一个可选产物，是断掉 Linux 的自动更新链。" >&2; \
+		exit 1; \
+	fi; \
+	echo "安装包齐备：$(BUNDLE_KINDS)"
 
 check: $(GATE) ## 本地全量校验，与 ci 完全等价
 	@echo "全部通过：$(GATE)"

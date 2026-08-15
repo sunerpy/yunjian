@@ -30,11 +30,31 @@ make help    # 列出所有 target
 语料构建实测约 9 分钟（release 构建，32 核），两次独立构建的 `corpus.db` SHA-256 完全相同——
 构建是确定性的。缺模型时受影响的语音测试会显示为 `ignored` 并带明确原因，不会伪装通过。
 
+## 本机打包桌面安装包
+
+```bash
+make bundle   # deb / rpm / AppImage，打完逐类核对产物；约 12 分钟，需 4 GiB 可用磁盘
+```
+
+它**刻意不签名**（`--no-sign`）。`tauri.conf.json` 声明了 `plugins.updater.pubkey`，于是裸
+`cargo tauri build` 的最后一步必然要签名，缺 `TAURI_SIGNING_PRIVATE_KEY` 就报
+`A public key has been found, but no private key` 并整体退出 1——而**三个安装包此时已经全部
+产出**。这个失败形态极易被读成「打包坏了」（F1 审计就据此把 AppImage 阶段判成失败），所以本机
+入口不走签名这一步，签名只在发布流程里做。
+
+它同时带 `-v`：tauri-bundler 默认 `log_level=Error`，那条分支会吞掉 linuxdeploy 的 stderr，
+只抛一句 `failed to run linuxdeploy`，缺库、磁盘满、插件失败三种原因都长一个样。
+
+产物核对不是装饰：**Linux updater 只消费 AppImage，`.deb` 不能自动更新**，所以少一个 AppImage
+是断掉 Linux 自动更新链，不是少一个可选格式。取值域由
+`crates/yunjian-app/tests/bundle_targets.rs` 自锁并扫真实 `Makefile`。
+
 ## 发布
 
 正式发布还需要仓库 Actions secrets `TAURI_SIGNING_PRIVATE_KEY` 和
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。任一 updater 签名缺失或与应用内公钥不匹配时，流程都会
-失败并让 GitHub Release 保持 draft；**不要通过关闭签名绕过门禁。**
+失败并让 GitHub Release 保持 draft；**不要通过关闭签名绕过门禁。** 上面 `make bundle` 的
+`--no-sign` 只属于本机验证入口，发布路径里出现它就是漏洞，由同一份守卫测试扫 workflow 拦住。
 
 ## CI runner 现状
 
