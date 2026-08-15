@@ -4,7 +4,7 @@
   "set": "desktop",
   "date": "2026-08-15",
   "app_version": "0.1.0",
-  "commit_sha": "eb4d0b1e192bc706f96edee583613318175bb9f3",
+  "commit_sha": "449beac18649c4662be080a19bb5d0b4bcd23070",
   "os_build": "Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws",
   "session": {
     "display_kind": "virtual",
@@ -40,7 +40,7 @@
       "channel": "process",
       "screenshot_required": false,
       "verdict": "PASS",
-      "detail": "/config/workspace/ProdDir/AI/yj-fix-input/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库",
+      "detail": "/config/workspace/ProdDir/AI/yunjian/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库",
       "executable_when": null,
       "screenshot": null
     },
@@ -50,8 +50,8 @@
       "channel": "process",
       "screenshot_required": false,
       "verdict": "NOT EXECUTED",
-      "detail": "/config/workspace/ProdDir/AI/yj-fix-input/target/debug/bundle 下没有安装包产物；本次验收跑的是未打包的构建产物，因此「安装后从安装路径启动」这条链没有被执行",
-      "executable_when": "先 `cargo tauri build`（Linux 上还需 `dpkg-deb` 与 `librsvg2-dev`），再由 harness 安装到一个临时 root 并从该路径启动。NSIS 静默安装时**只等安装器进程本身**，不要等整棵进程树——完成页会把应用作为子进程拉起来，等进程树会永远等不完。",
+      "detail": "发现产物 appimage、rpm、deb，但本 harness 尚未实现安装后启动",
+      "executable_when": "实现安装到临时 root 并从该路径启动的步骤",
       "screenshot": null
     },
     {

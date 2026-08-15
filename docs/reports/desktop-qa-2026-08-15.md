@@ -15,7 +15,7 @@
 | 平台 | `linux` |
 | 断言集 | `desktop` |
 | 应用版本 | `0.1.0` |
-| 提交 | `eb4d0b1e192bc706f96edee583613318175bb9f3` |
+| 提交 | `449beac18649c4662be080a19bb5d0b4bcd23070` |
 | 操作系统构建 | `Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws` |
 | 会话 | `virtual`（`DISPLAY=:99`） |
 | 窗口管理器 | `Openbox` |
@@ -41,8 +41,8 @@
 
 | 断言 | 通道 | 裁决 | 依据 | 截图 |
 | --- | --- | --- | --- | --- |
-| `artifact_present`<br>构建产物存在且可执行，动态库依赖全部可解析 | 进程 | **PASS** | /config/workspace/ProdDir/AI/yj-fix-input/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库 | — |
-| `installer_runs`<br>安装包（.deb / NSIS / .dmg）能安装并从安装后的路径启动 | 进程 | **NOT EXECUTED** | /config/workspace/ProdDir/AI/yj-fix-input/target/debug/bundle 下没有安装包产物；本次验收跑的是未打包的构建产物，因此「安装后从安装路径启动」这条链没有被执行<br>**可执行条件**：先 `cargo tauri build`（Linux 上还需 `dpkg-deb` 与 `librsvg2-dev`），再由 harness 安装到一个临时 root 并从该路径启动。NSIS 静默安装时**只等安装器进程本身**，不要等整棵进程树——完成页会把应用作为子进程拉起来，等进程树会永远等不完。 | — |
+| `artifact_present`<br>构建产物存在且可执行，动态库依赖全部可解析 | 进程 | **PASS** | /config/workspace/ProdDir/AI/yunjian/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库 | — |
+| `installer_runs`<br>安装包（.deb / NSIS / .dmg）能安装并从安装后的路径启动 | 进程 | **NOT EXECUTED** | 发现产物 appimage、rpm、deb，但本 harness 尚未实现安装后启动<br>**可执行条件**：实现安装到临时 root 并从该路径启动的步骤 | — |
 | `app_launches`<br>应用在交互式桌面会话里启动并映射出一个顶层窗口 | OS 输入 | **PASS** | 窗口 0x600003 已映射，`_NET_WM_NAME` = 「云笺」 | [`desktop-qa/app-launched.png`](desktop-qa/app-launched.png) |
 | `custom_titlebar_rendered`<br>窗口没有窗口管理器绘制的边框（decorations: false 生效），标题栏由应用自绘 | OS 输入 | **PASS** | `_NET_FRAME_EXTENTS` = [0, 0, 0, 0]，窗口管理器没有绘制边框；标题栏由应用自绘 | [`desktop-qa/custom-titlebar.png`](desktop-qa/custom-titlebar.png) |
 | `control_minimize_works`<br>点自绘标题栏的最小化按钮，窗口真的最小化 | OS 输入 | **PASS** | 点最小化按钮后 `_NET_WM_STATE` 带上了 `_NET_WM_STATE_HIDDEN` | [`desktop-qa/control-minimize.png`](desktop-qa/control-minimize.png) |
