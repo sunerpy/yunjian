@@ -16,11 +16,11 @@ name: release
 # 2. **Release 在全部构建成功前保持 draft。** 任一步失败就停在 draft：现象是「多了一个
 #    草稿」而不是「发出去一个没有产物的版本」，可观测且可修复。
 #
-# 发布矩阵覆盖 Linux x64/arm64、macOS x64/arm64、Windows x64。五个目标都发布
+# 发布矩阵覆盖 Linux x64/arm64、macOS x64/arm64、Windows x64/arm64。六个目标都发布
 # `voice,mcp` CLI；Tauri 当前封闭的 updater 目标只有 Linux x64、macOS arm64、
 # Windows x64，因此只在这三个目标发布安装包，绝不拿无法编译的壳冒充五平台安装包。
-# Linux 的 sherpa-onnx 预编译动态库只提供 GNU 目标，不能与 musl 链接；Linux CLI
-# 因此用 cargo-zigbuild 把 GNU 基线钉在 glibc 2.31，而不是构建必失败的 musl+voice。
+# 两个 Linux CLI 按安装脚本的兼容性契约发布 musl，并用 cargo-zigbuild 构建；Linux
+# 桌面安装包仍以原生 GNU target 构建，因为 WebKitGTK/GTK 是宿主系统动态依赖。
 #
 # CodeBuild 预备（尚未启用）：`yunjian-github` 连接为 PENDING，授权并重建 webhook 前
 # 全部 job 保持 GitHub-hosted。届时纯 Linux x86_64 控制作业分别用唯一标签
@@ -215,18 +215,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-24.04
             use_zigbuild: true
             archive: tar.gz
             desktop: linux
+            desktop_target: x86_64-unknown-linux-gnu
             desktop_arch: x86_64
             expected_arch: x86-64
-          - target: aarch64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
             use_zigbuild: true
             archive: tar.gz
             desktop: none
+            desktop_target: x86_64-unknown-linux-gnu
             desktop_arch: aarch64
             expected_arch: aarch64
           - target: x86_64-apple-darwin
@@ -234,6 +236,7 @@ jobs:
             use_zigbuild: false
             archive: tar.gz
             desktop: none
+            desktop_target: x86_64-apple-darwin
             desktop_arch: x86_64
             expected_arch: x86_64
           - target: aarch64-apple-darwin
@@ -241,6 +244,7 @@ jobs:
             use_zigbuild: false
             archive: tar.gz
             desktop: macos
+            desktop_target: aarch64-apple-darwin
             desktop_arch: aarch64
             expected_arch: arm64
           - target: x86_64-pc-windows-msvc
@@ -248,8 +252,19 @@ jobs:
             use_zigbuild: false
             archive: zip
             desktop: windows
+            desktop_target: x86_64-pc-windows-msvc
             desktop_arch: x86_64
             expected_arch: x86-64
+            expected_pe_machine: 34404
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
+            use_zigbuild: false
+            archive: zip
+            desktop: none
+            desktop_target: aarch64-pc-windows-msvc
+            desktop_arch: aarch64
+            expected_arch: ARM64
+            expected_pe_machine: 43620
     steps:
       - uses: actions/checkout@v4
         with:
@@ -282,7 +297,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libclang-dev libasound2-dev
+            libclang-dev libasound2-dev musl-tools
           if [ "${{ matrix.desktop }}" = "linux" ]; then
             sudo apt-get install -y --no-install-recommends \
               libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
@@ -322,7 +337,7 @@ jobs:
         shell: bash
         run: cargo install tauri-cli --version "=${TAURI_CLI_VERSION}" --locked
 
-      - name: 编译 CLI（Linux GNU，glibc 2.31）
+      - name: 编译 CLI（Linux musl）
         if: matrix.use_zigbuild
         shell: bash
         env:
@@ -330,7 +345,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo zigbuild --release --locked -p "${CLI_CRATE}" \
-            --target "${TARGET}.2.31" --features voice,mcp
+            --target "${TARGET}" --features voice,mcp
 
       - name: 编译 CLI（原生）
         if: ${{ !matrix.use_zigbuild }}
@@ -361,7 +376,7 @@ jobs:
             exit 1
           fi
 
-      - name: 暂存 CLI 与语音动态库
+      - name: 暂存 CLI 与语音运行库
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
@@ -375,31 +390,30 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then exe="${exe}.exe"; fi
           cp "$release/$exe" "$stage/$exe"
 
-          case "${{ runner.os }}" in
-            Linux) patterns=('libonnxruntime.so*' 'libsherpa-onnx-c-api.so*' 'libsherpa-onnx-cxx-api.so*') ;;
-            macOS) patterns=('libonnxruntime*.dylib' 'libsherpa-onnx-c-api*.dylib' 'libsherpa-onnx-cxx-api*.dylib') ;;
-            Windows) patterns=('onnxruntime*.dll' 'sherpa-onnx-c-api*.dll' 'sherpa-onnx-cxx-api*.dll') ;;
-          esac
-          shopt -s nullglob
-          for pattern in "${patterns[@]}"; do
-            found=()
-            while IFS= read -r native_file; do
-              found+=("$native_file")
-            done < <(find "$release" -maxdepth 1 -type f -name "$pattern" -print)
-            if [ "${#found[@]}" -eq 0 ]; then
-              echo "::error::缺少 voice 运行库：$pattern"
-              find "$release" -maxdepth 1 -type f -print
+          if [ "${{ matrix.use_zigbuild }}" = "true" ]; then
+            if readelf -d "$stage/$exe" 2>/dev/null | grep -Fq '(NEEDED)'; then
+              readelf -d "$stage/$exe"
+              echo "::error::musl CLI 仍有动态依赖；拒绝发布伪静态产物"
               exit 1
             fi
-            cp "${found[@]}" "$stage/"
-          done
-
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            readelf --version-info "$stage/$exe" "$stage"/*.so* > "${RUNNER_TEMP}/glibc-versions.txt"
-            if grep -E 'GLIBC_2\.(3[2-9]|[4-9][0-9])|GLIBC_[3-9]' "${RUNNER_TEMP}/glibc-versions.txt"; then
-              echo "::error::Linux 发布包含高于 glibc 2.31 的原生库"
-              exit 1
-            fi
+          else
+            case "${{ runner.os }}" in
+              macOS) patterns=('libonnxruntime*.dylib' 'libsherpa-onnx-c-api*.dylib' 'libsherpa-onnx-cxx-api*.dylib') ;;
+              Windows) patterns=('onnxruntime*.dll' 'sherpa-onnx-c-api*.dll' 'sherpa-onnx-cxx-api*.dll') ;;
+            esac
+            shopt -s nullglob
+            for pattern in "${patterns[@]}"; do
+              found=()
+              while IFS= read -r native_file; do
+                found+=("$native_file")
+              done < <(find "$release" -maxdepth 1 -type f -name "$pattern" -print)
+              if [ "${#found[@]}" -eq 0 ]; then
+                echo "::error::缺少 voice 运行库：$pattern"
+                find "$release" -maxdepth 1 -type f -print
+                exit 1
+              fi
+              cp "${found[@]}" "$stage/"
+            done
           fi
           ls -la "$stage"
 
@@ -416,7 +430,9 @@ jobs:
           tar -czf "dist/${archive}" -C "${RUNNER_TEMP}/yunjian-cli-stage" .
           tar -tzf "dist/${archive}" | tee "${RUNNER_TEMP}/cli-contents.txt"
           grep -Eq '(^|/)yunjian$' "${RUNNER_TEMP}/cli-contents.txt"
-          grep -Eiq 'onnxruntime|sherpa-onnx-c-api' "${RUNNER_TEMP}/cli-contents.txt"
+          if [ "${{ matrix.use_zigbuild }}" != "true" ]; then
+            grep -Eiq 'onnxruntime|sherpa-onnx-c-api' "${RUNNER_TEMP}/cli-contents.txt"
+          fi
           extracted="${RUNNER_TEMP}/cli-verify"
           mkdir -p "$extracted"
           tar -xzf "dist/${archive}" -C "$extracted"
@@ -429,15 +445,23 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           VERSION: ${{ needs.release-please.outputs.version }}
+          EXPECTED_PE_MACHINE: ${{ matrix.expected_pe_machine }}
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $archive = "${env:BINARY_NAME}-${env:VERSION}-${env:TARGET}.zip"
           Compress-Archive -Path "${env:RUNNER_TEMP}\yunjian-cli-stage\*" -DestinationPath "dist\$archive"
           $verify = Join-Path $env:RUNNER_TEMP 'cli-verify'
           Expand-Archive -Path "dist\$archive" -DestinationPath $verify
-          if (-not (Test-Path (Join-Path $verify 'yunjian.exe'))) { throw 'CLI zip 缺少 yunjian.exe' }
+          $cli = Join-Path $verify 'yunjian.exe'
+          if (-not (Test-Path $cli)) { throw 'CLI zip 缺少 yunjian.exe' }
           if (-not (Get-ChildItem $verify -Filter '*onnxruntime*.dll')) { throw 'CLI zip 缺少 onnxruntime DLL' }
           if (-not (Get-ChildItem $verify -Filter '*sherpa-onnx-c-api*.dll')) { throw 'CLI zip 缺少 sherpa C API DLL' }
+          $bytes = [IO.File]::ReadAllBytes($cli)
+          $offset = [BitConverter]::ToInt32($bytes, 0x3c)
+          $machine = [BitConverter]::ToUInt16($bytes, $offset + 4)
+          if ($machine -ne [int]$env:EXPECTED_PE_MACHINE) {
+            throw "CLI PE 架构错误：machine=$machine expected=$env:EXPECTED_PE_MACHINE"
+          }
 
       - name: 构建桌面前端
         if: matrix.desktop != 'none'
@@ -449,7 +473,7 @@ jobs:
         shell: bash
         working-directory: crates/yunjian-app
         env:
-          TARGET: ${{ matrix.target }}
+          TARGET: ${{ matrix.desktop_target }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
@@ -469,7 +493,7 @@ jobs:
         if: matrix.desktop == 'linux'
         shell: bash
         env:
-          TARGET: ${{ matrix.target }}
+          TARGET: ${{ matrix.desktop_target }}
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
           set -euo pipefail
@@ -505,7 +529,7 @@ jobs:
         if: matrix.desktop == 'macos'
         shell: bash
         env:
-          TARGET: ${{ matrix.target }}
+          TARGET: ${{ matrix.desktop_target }}
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
           set -euo pipefail
@@ -538,7 +562,7 @@ jobs:
         if: matrix.desktop == 'windows'
         shell: pwsh
         env:
-          TARGET: ${{ matrix.target }}
+          TARGET: ${{ matrix.desktop_target }}
           VERSION: ${{ needs.release-please.outputs.version }}
         run: |
           $root = "target\$env:TARGET\release\bundle"
@@ -606,11 +630,12 @@ jobs:
         run: |
           set -euo pipefail
           expected=(
-            "yunjian-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-            "yunjian-${VERSION}-aarch64-unknown-linux-gnu.tar.gz"
+            "yunjian-${VERSION}-x86_64-unknown-linux-musl.tar.gz"
+            "yunjian-${VERSION}-aarch64-unknown-linux-musl.tar.gz"
             "yunjian-${VERSION}-x86_64-apple-darwin.tar.gz"
             "yunjian-${VERSION}-aarch64-apple-darwin.tar.gz"
             "yunjian-${VERSION}-x86_64-pc-windows-msvc.zip"
+            "yunjian-${VERSION}-aarch64-pc-windows-msvc.zip"
             "yunjian-desktop-${VERSION}-linux-x86_64.deb"
             "yunjian-desktop-${VERSION}-linux-x86_64.deb.sig"
             "yunjian-desktop-${VERSION}-linux-x86_64.AppImage"
@@ -721,10 +746,10 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t assets < <(find . -maxdepth 1 -type f ! -name '*.sha256' -printf '%f\n' | LC_ALL=C sort)
-          if [ "${#assets[@]}" -ne 17 ]; then
+          if [ "${#assets[@]}" -ne 18 ]; then
             printf '实际非摘要资产（%s）：\n' "${#assets[@]}"
             printf '  %s\n' "${assets[@]}"
-            echo "::error::预期 16 个矩阵资产 + latest.json，共 17 个"
+            echo "::error::预期 17 个矩阵资产 + latest.json，共 18 个"
             exit 1
           fi
           for asset in "${assets[@]}"; do

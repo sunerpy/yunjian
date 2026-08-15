@@ -50,7 +50,7 @@
   iOS 设备、`adb` 与签名凭据才能推进。
 - **桌面端真机验收**——20 条预声明断言 Linux 侧 3 PASS / 17 NOT EXECUTED（无 GPU 容器加 Xvfb 下
   WebKitGTK 合成到 X 读不回的 GL 表面）；Windows / macOS 无交互式会话与签名身份。
-- **首个 tag**——发布管线已经覆盖五个 CLI 目标、三平台桌面安装包、updater 签名和逐资产
+- **首个 tag**——发布管线已经覆盖六个 CLI 目标、三平台桌面安装包、updater 签名和逐资产
   SHA-256，但还没有切出首个正式 tag；桌面端真机验收与签名凭据仍是发布前置条件。
 - **随包赏析数据集**——管线与门禁齐备，但本机没有开放权重推理条件，`dataset/` 目前只有 README，
   一条正文都没有编造。
@@ -77,7 +77,7 @@ irm https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.ps1 |
 ```
 
 两个脚本都检测系统与 CPU 架构、挑出对应的发布产物、**校验 SHA-256 之后才落盘**，校验不过就
-一个文件也不装。环境变量、私有仓库取法、五平台归档与桌面安装包清单见
+一个文件也不装。环境变量、私有仓库取法、六目标 CLI 归档与桌面安装包清单见
 [安装与发布产物](docs/INSTALL.zh.md)。
 
 > [!NOTE]
@@ -209,7 +209,7 @@ OpenCode（`opencode.json`）：`command` 是**含参数的数组**，另有 `ty
 - [命令行](docs/CLI.zh.md)——子命令、`--json` 信封 schema、四个退出码、stdout/stderr 分工
 - [AI 赏析](docs/AI.zh.md)——BYOK、两级缓存、预生成策略与标注义务
 - [语音](docs/VOICE.zh.md)——模型与许可、破读词表、v1 反馈契约（**不评判读音标准**）；构建与链接见 [语音构建](docs/VOICE-BUILD.zh.md)
-- [安装与发布产物](docs/INSTALL.zh.md)——安装脚本环境变量、私有仓库、五平台归档与安装包
+- [安装与发布产物](docs/INSTALL.zh.md)——安装脚本环境变量、私有仓库、六目标 CLI 归档与安装包
 - [内容来源与许可](docs/PROVENANCE.zh.md)——版权墙如何决定架构，以及逐类内容的许可判定
 - [开发流程](docs/DEVELOPMENT.zh.md)——门禁命令、需要前置工件的命令、发布凭据与提交约定
 - [平台要求](docs/PLATFORM-REQUIREMENTS.zh.md)——五平台系统最低版本、麦克风授权链、降级行为

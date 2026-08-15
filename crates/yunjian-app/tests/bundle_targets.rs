@@ -39,6 +39,19 @@ use std::path::{Path, PathBuf};
 /// 「先让命令绿起来」还是手滑），下面第一条断言立刻变红。
 const REQUIRED_BUNDLE_KINDS: [&str; 3] = ["deb", "rpm", "appimage"];
 
+/// CLI 发布矩阵的冻结契约：目标、原生 runner 与是否使用 cargo-zigbuild。
+///
+/// Linux 必须是 musl 静态目标且只在这两条腿使用 zigbuild；ARM Windows 必须在
+/// `windows-11-arm` 上原生构建，不能悄悄退回交叉编译。
+const REQUIRED_RELEASE_TARGETS: [(&str, &str, bool); 6] = [
+    ("x86_64-unknown-linux-musl", "ubuntu-24.04", true),
+    ("aarch64-unknown-linux-musl", "ubuntu-24.04-arm", true),
+    ("x86_64-apple-darwin", "macos-15-intel", false),
+    ("aarch64-apple-darwin", "macos-14", false),
+    ("x86_64-pc-windows-msvc", "windows-latest", false),
+    ("aarch64-pc-windows-msvc", "windows-11-arm", false),
+];
+
 /// Linux 自动更新消费的那一个产物。少了它 updater 拿不到可安装的包。
 const LINUX_UPDATER_ARTIFACT: &str = "appimage";
 
@@ -127,6 +140,82 @@ fn workflow_sources() -> Vec<(PathBuf, String)> {
         "`.github/workflows` 下没有任何工作流文件"
     );
     found
+}
+
+/// 只解析 `build-binaries.matrix.include`，不让文件头解释性注释里的 target 名称冒充矩阵条目。
+fn release_matrix_targets() -> Vec<(String, String, bool)> {
+    let workflow = read(&repo_root().join(".github/workflows/release-please.yml"));
+    let matrix = workflow
+        .split_once("  build-binaries:")
+        .expect("release workflow 必须有 build-binaries job")
+        .1
+        .split_once("    steps:")
+        .expect("build-binaries 必须有 steps")
+        .0;
+
+    let mut targets = Vec::new();
+    let mut current: Option<(String, Option<String>, Option<bool>)> = None;
+    for line in matrix.lines() {
+        let trimmed = line.trim();
+        if let Some(target) = trimmed.strip_prefix("- target: ") {
+            if let Some((target, os, use_zigbuild)) = current.take() {
+                targets.push((
+                    target,
+                    os.expect("每个发布目标必须声明 os"),
+                    use_zigbuild.expect("每个发布目标必须声明 use_zigbuild"),
+                ));
+            }
+            current = Some((target.to_string(), None, None));
+        } else if let Some((_, os, _)) = current.as_mut()
+            && let Some(value) = trimmed.strip_prefix("os: ")
+        {
+            *os = Some(value.to_string());
+        }
+        if let Some((_, _, use_zigbuild)) = current.as_mut()
+            && let Some(value) = trimmed.strip_prefix("use_zigbuild: ")
+        {
+            *use_zigbuild = Some(match value {
+                "true" => true,
+                "false" => false,
+                other => panic!("use_zigbuild 只能是 true/false，实际是 {other}"),
+            });
+        }
+    }
+    if let Some((target, os, use_zigbuild)) = current {
+        targets.push((
+            target,
+            os.expect("每个发布目标必须声明 os"),
+            use_zigbuild.expect("每个发布目标必须声明 use_zigbuild"),
+        ));
+    }
+    targets
+}
+
+#[test]
+fn release_matrix_is_locked_to_six_native_platform_targets() {
+    assert_eq!(
+        REQUIRED_RELEASE_TARGETS,
+        [
+            ("x86_64-unknown-linux-musl", "ubuntu-24.04", true),
+            ("aarch64-unknown-linux-musl", "ubuntu-24.04-arm", true),
+            ("x86_64-apple-darwin", "macos-15-intel", false),
+            ("aarch64-apple-darwin", "macos-14", false),
+            ("x86_64-pc-windows-msvc", "windows-latest", false),
+            ("aarch64-pc-windows-msvc", "windows-11-arm", false),
+        ],
+        "发布矩阵由方案冻结为六目标；要调整先改方案，不要改这条断言"
+    );
+
+    let actual = release_matrix_targets();
+    let expected: Vec<_> = REQUIRED_RELEASE_TARGETS
+        .iter()
+        .map(|(target, os, zig)| (target.to_string(), os.to_string(), *zig))
+        .collect();
+    assert_eq!(
+        actual, expected,
+        "release workflow 必须精确发布两个 Linux musl、两个 macOS 和两个 Windows 目标；\
+         Linux 两腿用 cargo-zigbuild，ARM Windows 在 windows-11-arm 原生构建"
+    );
 }
 
 #[test]

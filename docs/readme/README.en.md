@@ -50,7 +50,7 @@ Implemented on `main` **and covered by tests**:
 
 - **The mobile shell and distribution** — the device verdict remains `undetermined`; the binding, UI and distribution pipeline still need physical Android / iOS devices, `adb` and signing identities.
 - **Real-machine desktop acceptance** — of 20 pre-declared assertions, 3 PASS and 17 NOT EXECUTED on Linux (under a GPU-less container plus Xvfb, WebKitGTK composites into a GL surface X cannot read back); Windows / macOS have no interactive session and no signing identity.
-- **The first tag** — the release pipeline now covers five CLI targets, desktop installers on three platforms, updater signatures, and per-asset SHA-256 files, but no first release tag has been cut; real-machine desktop acceptance and signing credentials remain release prerequisites.
+- **The first tag** — the release pipeline now covers six CLI targets, desktop installers on three platforms, updater signatures, and per-asset SHA-256 files, but no first release tag has been cut; real-machine desktop acceptance and signing credentials remain release prerequisites.
 - **The bundled appreciation dataset** — the pipeline and its gates exist, but no open-weight inference is available here, so `dataset/` holds only a README; not one line was fabricated.
 - **The 词谱 line-pattern table** — only 念奴娇 and 水调歌头 are covered, and from the measured mode of 全宋词 rather than a public-domain 词谱; every other tune degrades honestly to punctuation.
 
@@ -73,7 +73,7 @@ On Windows, use PowerShell:
 irm https://raw.githubusercontent.com/sunerpy/yunjian/main/scripts/install.ps1 | iex
 ```
 
-Both scripts detect the OS and CPU architecture, resolve the matching release asset, and **verify its SHA-256 before anything lands on disk** — a checksum failure installs nothing. Environment variables, private-repository access, the five CLI archives and the desktop installers are in [Installation and release artifacts](INSTALL.md).
+Both scripts detect the OS and CPU architecture, resolve the matching release asset, and **verify its SHA-256 before anything lands on disk** — a checksum failure installs nothing. Environment variables, private-repository access, the six CLI target archives and the desktop installers are in [Installation and release artifacts](INSTALL.md).
 
 > [!NOTE]
 > The first tagged release (`v0.1.0`) has not been cut yet, so the commands above are waiting on it.
