@@ -4,7 +4,7 @@
   "set": "desktop",
   "date": "2026-08-15",
   "app_version": "0.1.0",
-  "commit_sha": "dd5e93ede048b44087eddd0d84e9c4ce520deadd",
+  "commit_sha": "449beac18649c4662be080a19bb5d0b4bcd23070",
   "os_build": "Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws",
   "session": {
     "display_kind": "virtual",
@@ -18,8 +18,8 @@
     "audio_input_devices": 0
   },
   "all_pass": false,
-  "executed_pass": 9,
-  "failed": 3,
+  "executed_pass": 12,
+  "failed": 0,
   "not_executed": 8,
   "platforms_not_executed": [
     {
@@ -89,8 +89,8 @@
       "what": "点自绘标题栏的最大化按钮，窗口真的最大化",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "FAIL",
-      "detail": "点最大化按钮后窗口状态未变；capabilities 里少了 `core:window:allow-toggle-maximize` 会让它静默无效（注意 `allow-internal-toggle-maximize` 是**另一条**命令）",
+      "verdict": "PASS",
+      "detail": "起始态已归一为非最大化，点最大化按钮后 `_NET_WM_STATE` 带上了 `_NET_WM_STATE_MAXIMIZED_VERT/HORZ`",
       "executable_when": null,
       "screenshot": "desktop-qa/control-maximize.png"
     },
@@ -99,8 +99,8 @@
       "what": "最大化后再点同一个按钮，窗口真的还原",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "FAIL",
-      "detail": "再点同一个按钮后窗口仍处于最大化",
+      "verdict": "PASS",
+      "detail": "再点同一个按钮后最大化状态被清除，窗口还原",
       "executable_when": null,
       "screenshot": "desktop-qa/control-restore.png"
     },
@@ -129,8 +129,8 @@
       "what": "按住标题文字本身拖动，窗口位置真的改变（data-tauri-drag-region=\"deep\"）",
       "channel": "os_harness",
       "screenshot_required": true,
-      "verdict": "FAIL",
-      "detail": "按住标题文字（窗口内 18,20）拖动后窗口位置未变（仍在 (200, 150)）；窗口当时不是最大化态，落点在自绘标题栏的文字上，因此这是标题栏拖动本身没有生效",
+      "verdict": "PASS",
+      "detail": "按住标题文字（窗口内 18,20）拖动后，窗口从 (200, 150) 移到 (300, 225)",
       "executable_when": null,
       "screenshot": "desktop-qa/drag-from-title-text.png"
     },

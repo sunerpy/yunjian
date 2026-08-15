@@ -15,7 +15,7 @@
 | 平台 | `linux` |
 | 断言集 | `desktop` |
 | 应用版本 | `0.1.0` |
-| 提交 | `dd5e93ede048b44087eddd0d84e9c4ce520deadd` |
+| 提交 | `449beac18649c4662be080a19bb5d0b4bcd23070` |
 | 操作系统构建 | `Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws` |
 | 会话 | `virtual`（`DISPLAY=:99`） |
 | 窗口管理器 | `Openbox` |
@@ -29,7 +29,7 @@
 
 ## 汇总
 
-声明 20 条 · PASS 9 · FAIL 3 · NOT EXECUTED 8
+声明 20 条 · PASS 12 · FAIL 0 · NOT EXECUTED 8
 
 ## WebDriver 握手探测
 
@@ -46,11 +46,11 @@
 | `app_launches`<br>应用在交互式桌面会话里启动并映射出一个顶层窗口 | OS 输入 | **PASS** | 窗口 0x600003 已映射，`_NET_WM_NAME` = 「云笺」 | [`desktop-qa/app-launched.png`](desktop-qa/app-launched.png) |
 | `custom_titlebar_rendered`<br>窗口没有窗口管理器绘制的边框（decorations: false 生效），标题栏由应用自绘 | OS 输入 | **PASS** | `_NET_FRAME_EXTENTS` = [0, 0, 0, 0]，窗口管理器没有绘制边框；标题栏由应用自绘 | [`desktop-qa/custom-titlebar.png`](desktop-qa/custom-titlebar.png) |
 | `control_minimize_works`<br>点自绘标题栏的最小化按钮，窗口真的最小化 | OS 输入 | **PASS** | 点最小化按钮后 `_NET_WM_STATE` 带上了 `_NET_WM_STATE_HIDDEN` | [`desktop-qa/control-minimize.png`](desktop-qa/control-minimize.png) |
-| `control_maximize_works`<br>点自绘标题栏的最大化按钮，窗口真的最大化 | OS 输入 | **FAIL** | 点最大化按钮后窗口状态未变；capabilities 里少了 `core:window:allow-toggle-maximize` 会让它静默无效（注意 `allow-internal-toggle-maximize` 是**另一条**命令） | [`desktop-qa/control-maximize.png`](desktop-qa/control-maximize.png) |
-| `control_restore_works`<br>最大化后再点同一个按钮，窗口真的还原 | OS 输入 | **FAIL** | 再点同一个按钮后窗口仍处于最大化 | [`desktop-qa/control-restore.png`](desktop-qa/control-restore.png) |
+| `control_maximize_works`<br>点自绘标题栏的最大化按钮，窗口真的最大化 | OS 输入 | **PASS** | 起始态已归一为非最大化，点最大化按钮后 `_NET_WM_STATE` 带上了 `_NET_WM_STATE_MAXIMIZED_VERT/HORZ` | [`desktop-qa/control-maximize.png`](desktop-qa/control-maximize.png) |
+| `control_restore_works`<br>最大化后再点同一个按钮，窗口真的还原 | OS 输入 | **PASS** | 再点同一个按钮后最大化状态被清除，窗口还原 | [`desktop-qa/control-restore.png`](desktop-qa/control-restore.png) |
 | `control_close_works`<br>点自绘标题栏的关闭按钮，主窗口隐藏到托盘且进程继续运行 | OS 输入 | **PASS** | 点关闭按钮后主窗口从 `_NET_CLIENT_LIST` 消失，应用进程仍在运行，符合驻留托盘契约 | [`desktop-qa/control-close.png`](desktop-qa/control-close.png) |
 | `double_click_maximizes_exactly_once`<br>双击标题栏恰好最大化一次（自己再挂一个双击处理器会双切换回原样） | OS 输入 | **PASS** | 双击前 maximized=false，一次双击后 maximized=true（恰好切换一次） | [`desktop-qa/double-click-maximize.png`](desktop-qa/double-click-maximize.png) |
-| `drag_from_title_text`<br>按住标题文字本身拖动，窗口位置真的改变（data-tauri-drag-region="deep"） | OS 输入 | **FAIL** | 按住标题文字（窗口内 18,20）拖动后窗口位置未变（仍在 (200, 150)）；窗口当时不是最大化态，落点在自绘标题栏的文字上，因此这是标题栏拖动本身没有生效 | [`desktop-qa/drag-from-title-text.png`](desktop-qa/drag-from-title-text.png) |
+| `drag_from_title_text`<br>按住标题文字本身拖动，窗口位置真的改变（data-tauri-drag-region="deep"） | OS 输入 | **PASS** | 按住标题文字（窗口内 18,20）拖动后，窗口从 (200, 150) 移到 (300, 225) | [`desktop-qa/drag-from-title-text.png`](desktop-qa/drag-from-title-text.png) |
 | `taskbar_icon_correct`<br>窗口带 _NET_WM_ICON，任务栏能取到图标 | OS 输入 | **PASS** | `_NET_WM_ICON` 有 2306 个 32 位字（宽高 2 字 + 逐像素 ARGB），任务栏与 alt-tab 能取到图标 | [`desktop-qa/taskbar-icon.png`](desktop-qa/taskbar-icon.png) |
 | `tray_icon_correct`<br>托盘图标存在且背景透明 | OS 输入 | **NOT EXECUTED** | 应用已通过 `TrayIconBuilder` 创建托盘图标，但本次 Xvfb + Openbox 会话没有StatusNotifier/AppIndicator 托盘宿主，harness 因而没有可观测的托盘项；图标资产透明度仍由 `xtask verify-icons` 逐字节守卫<br>**可执行条件**：带 StatusNotifier/AppIndicator 托盘宿主的交互式 Linux 桌面，并由 harness 从托盘协议侧观测图标 | — |
 | `ime_prefilled_search_box`<br>中文输入法往一个**已有内容**的检索框里输入：不冻结且字符落入框内（tauri#15436） | WebDriver | **NOT EXECUTED** | 会话已建立，但本条的驱动步骤尚未实现<br>**可执行条件**：实现该条的 WebDriver 驱动步骤 | — |
