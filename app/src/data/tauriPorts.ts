@@ -15,7 +15,7 @@
  * 不说的话，一个开发者截的图会被当成产品行为，而里面每一首诗的归属都是我编的。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type { AppreciationState } from "../contracts/ai";
 import type {
   DictionaryLookup,
@@ -86,8 +86,13 @@ export function createTauriPorts(): {
   };
 
   const appreciation: AppreciationPort = {
-    appreciate: (request: PoemDetailRequest) =>
-      invoke<AppreciationState>(IPC_COMMANDS.appreciate, { request }),
+    appreciate: (request: PoemDetailRequest) => {
+      // Rust 侧即使最终只返回一个 AppreciationState，也要求调用方提供流式事件 Channel。
+      // 当前面板不消费中间增量，但 Channel 仍是命令的必需参数；漏掉会在进入命令前因
+      // `onEvent` 缺失而被 Tauri 拒绝。
+      const onEvent = new Channel<unknown>();
+      return invoke<AppreciationState>(IPC_COMMANDS.appreciate, { request, onEvent });
+    },
   };
 
   const dictionary: DictionaryPort = {

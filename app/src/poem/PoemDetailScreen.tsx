@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import type { AppreciationState } from "../contracts/ai";
 import type { PoemAnnotation, PoemDetail } from "../contracts/core";
 import type { AppreciationPort, PoemPort } from "../data/ports";
+import { errorReason } from "../data/errorReason";
 import {
   type AnnotationLayer,
   readAnnotationPreference,
@@ -82,7 +83,7 @@ export default function PoemDetailScreen({
       })
       .catch((cause: unknown) => {
         if (!disposed) {
-          setError(cause instanceof Error ? cause.message : "读取作品详情失败");
+          setError(errorReason(cause, "读取作品详情失败"));
         }
       });
     return () => {
@@ -131,7 +132,7 @@ export default function PoemDetailScreen({
         if (!disposed) {
           setAppreciation({
             kind: "failed",
-            message: cause instanceof Error ? cause.message : "AI 赏析获取失败",
+            message: errorReason(cause, "AI 赏析获取失败"),
           });
         }
       });
