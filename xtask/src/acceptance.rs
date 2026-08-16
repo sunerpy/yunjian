@@ -45,7 +45,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -951,6 +951,59 @@ impl Background {
         Ok(Self { name, child })
     }
 
+    /// 起一个后台进程，但把它的 stderr 留到 `log` 这个文件里。
+    ///
+    /// [`Background::spawn`] 把 stderr 接到 null，代价是 driver 起不来时判词只剩一个
+    /// 纯时序结论（「N 秒内没有监听端口」），而真因写在它自己的 stderr 里。
+    /// 刻意用文件而不是 `Stdio::piped()`：管道缓冲写满时子进程会阻塞在写上，
+    /// 那会把「driver 说了很多话」变成「driver 卡住了」——又一个指错方向的形态。
+    ///
+    /// # Errors
+    ///
+    /// 建日志文件或启动进程失败。
+    fn spawn_logging_stderr(
+        name: &'static str,
+        command: &mut Command,
+        log: &std::path::Path,
+    ) -> Result<Self> {
+        if let Some(parent) = log.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("创建 {} 失败", parent.display()))?;
+        }
+        let file = fs::File::create(log).with_context(|| format!("创建 {} 失败", log.display()))?;
+        let child = command
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(file))
+            .spawn()
+            .with_context(|| format!("启动 {name} 失败"))?;
+        Ok(Self { name, child })
+    }
+
+    /// `None` 是「还在跑」，不是「读不到状态」：读失败也归到还在跑，
+    /// 因为把一次读取失败说成「进程已退出」会凭空造出一个不存在的死亡原因。
+    fn exited(&mut self) -> Option<std::process::ExitStatus> {
+        self.child.try_wait().ok().flatten()
+    }
+
+    /// 发一个 SIGTERM。标准库没有这个能力（`Child::kill` 只发 SIGKILL），所以只能走 FFI。
+    #[allow(
+        unsafe_code,
+        reason = "标准库不提供发 SIGTERM 的接口，而直接 SIGKILL 会让被托管进程来不及\
+                  回收自己的子进程（本机实测：`tauri-driver` 收 SIGKILL 时会把 \
+                  `WebKitWebDriver` 留成孤儿）。这次调用是安全的：本进程仍持有这个 \
+                  `Child`、且尚未 `wait()` 过它，因此即使子进程已经退出它也还是僵尸态，\
+                  pid 被内核保留、不可能已被别的进程复用——**`wait()` 之后再发就不安全了**，\
+                  那时 pid 可以是任何人的"
+    )]
+    fn terminate(&mut self) {
+        let Ok(pid) = i32::try_from(self.child.id()) else {
+            return;
+        };
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+    }
+
     /// [`Background::spawn`] 把两个输出都接到 null，而托盘用的 `dbus-daemon` 必须把总线
     /// 地址打到 stdout 上，所以它由调用方自己 spawn、再交给这里托管拆除。
     fn adopt(name: &'static str, child: Child) -> Self {
@@ -1001,8 +1054,88 @@ impl Drop for Background {
     fn drop(&mut self) {
         // 拆除必须尽力而为且不 panic：Drop 里 panic 会把真正的失败原因盖掉。
         //
-        let _ = self.child.kill();
+        // **先 SIGTERM 再退回 SIGKILL**，不是直接 kill。`Child::kill` 发的是 SIGKILL，
+        // 而 SIGKILL 捕不到，于是被托管进程没有任何机会回收自己的子进程。本机实测过
+        // 这条泄漏：
+        //
+        // | 对 `tauri-driver` 发的信号 | 它的 `WebKitWebDriver` 子进程 |
+        // | --- | --- |
+        // | SIGTERM | 一并退出 |
+        // | SIGKILL | **留成孤儿，继续监听 native 端口** |
+        //
+        // 而 `WebKitWebDriver` 正是启动被测应用的那一方，所以这条泄漏会同时留下一个
+        // 活着的应用实例——下一轮的判词于是写成「麦克风被别的程序独占」或
+        // 「driver 起来后没有监听端口」，两句都指着没坏的东西。
+        self.terminate();
+        let reaped = Self::wait_until(TERM_GRACE, || matches!(self.child.try_wait(), Ok(Some(_))));
+        if !reaped {
+            let _ = self.child.kill();
+        }
         let _ = self.child.wait();
         let _ = self.name;
     }
+}
+
+/// 留给被托管进程回收自己子进程的时间。本机实测 `tauri-driver` 在 SIGTERM 后
+/// 一秒内就带着 `WebKitWebDriver` 一起退了，取余量。
+const TERM_GRACE: Duration = Duration::from_secs(5);
+
+/// 本机上还活着的 WebDriver 相关进程。
+///
+/// 每项是「pid、进程名、启动的墙上时间」。启动时间是判断归属的关键：一个**早于本次
+/// 运行**启动的 driver 只能是上一轮泄漏下来的，而一个刚起来的是本次自己的。
+/// 没有这个字段时两者形态相同，于是「端口被占」这条判词无法说出占用者是谁。
+pub(crate) fn residual_driver_processes() -> Vec<(u32, String, SystemTime)> {
+    const NAMES: [&str; 2] = ["tauri-driver", "WebKitWebDriver"];
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let mut found: Vec<(u32, String, SystemTime)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
+            let comm = fs::read_to_string(entry.path().join("comm")).ok()?;
+            let comm = comm.trim().to_owned();
+            NAMES
+                .contains(&comm.as_str())
+                .then(|| process_start_time(pid).map(|started| (pid, comm, started)))?
+        })
+        .collect();
+    found.sort_by_key(|(pid, _, _)| *pid);
+    found
+}
+
+/// 一个进程启动的墙上时间。
+///
+/// `/proc/stat` 的 `btime` 是开机时刻的 Unix 秒，`/proc/<pid>/stat` 第 22 个字段是该进程
+/// 启动时距开机的 tick 数，两者相加即启动时刻。**除数固定为 100** 而不是去查
+/// `sysconf(_SC_CLK_TCK)`：procfs 暴露的这个字段用的是 `USER_HZ`，它是内核的稳定 ABI，
+/// 恒为 100，与编译内核时的 `CONFIG_HZ` 无关。本机核对过：pid 1 由此算出的启动时刻与
+/// `btime` 逐秒相等。
+pub(crate) fn process_start_time(pid: u32) -> Option<SystemTime> {
+    let boot = fs::read_to_string("/proc/stat")
+        .ok()?
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("btime ")
+                .and_then(|rest| rest.trim().parse::<u64>().ok())
+        })?;
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // 第 2 个字段是括号包起来的可执行文件名，它自己可以含空格与右括号，
+    // 所以按最后一个 `)` 切开，再从那之后数字段——按空白切整行会数错。
+    let after_name = stat.rsplit_once(')')?.1;
+    let ticks = after_name.split_whitespace().nth(19)?.parse::<u64>().ok()?;
+    Some(SystemTime::UNIX_EPOCH + Duration::from_secs(boot + ticks / 100))
+}
+
+pub(crate) fn describe_time(at: SystemTime) -> String {
+    let secs = at
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let ago = SystemTime::now()
+        .duration_since(at)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    format!("Unix 秒 {secs}（距今 {ago} 秒）")
 }

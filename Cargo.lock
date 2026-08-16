@@ -8014,6 +8014,7 @@ dependencies = [
  "enigo",
  "ferrous-opencc",
  "flate2",
+ "libc",
  "png 0.18.1",
  "rusqlite",
  "serde",

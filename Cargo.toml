@@ -205,6 +205,13 @@ enigo = { version = "0.6", default-features = false, features = ["x11rb"] }
 # `_NET_WM_ICON`）并用 `GetImage` 截图。**刻意不调 `scrot` / `xprop` 子进程**：
 # 那会把「有没有截到图」变成宿主机装了哪些工具的函数，而这两件事本来就各是一次 X11 请求。
 x11rb = "0.14"
+# `xtask acceptance` 拆除被托管子进程时要先发 SIGTERM 再退回 SIGKILL：`Child::kill`
+# 发的是 SIGKILL，捕不到，于是 `tauri-driver` 没有机会回收自己的 `WebKitWebDriver`
+# 子进程（本机实测：SIGTERM 一并退出，SIGKILL 留成孤儿并继续监听端口）。
+# **刻意不 spawn `/bin/kill`**：本模块已有的判据是「不调外部工具，否则会把有没有残留
+# 变成宿主机装了哪些工具的函数」。`libc` 已在 `Cargo.lock` 里（多条依赖经由它），
+# 声明成直接依赖不新增任何构建成本，且只有开发工具用它。
+libc = "0.2"
 # `xtask acceptance` 用它在验收会话里提供一个最小的 `org.kde.StatusNotifierWatcher`，
 # 好让托盘那两条断言可执行——Linux 上托盘是 D-Bus 上的图标与菜单，不是屏幕上的像素，
 # 缺的只是总线上的一个宿主名字。**刻意不引 `ksni`**：它是「实现一个托盘项」的库，而这里

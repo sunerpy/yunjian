@@ -21,6 +21,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use super::Background;
+use crate::verify_sources::emit;
 
 /// 建 session 的等待上限。本机实测：握手不成功时它不会报错，只是永不返回，
 /// 所以超时是这条路径上唯一的判定手段。
@@ -77,6 +78,29 @@ pub(crate) fn connect(
     // 让内核给一个空闲端口，这类跨轮次污染就不存在了。
     let (driver_port, native_port) = free_port_pair()?;
 
+    // 起 driver **之前**先把残留探出来。空闲端口已经让残留 driver 不能再抢走本轮的端口，
+    // 但它仍是一条必须可见的事实：`WebKitWebDriver` 正是启动被测应用的那一方，
+    // 一个泄漏下来的实例会带着一个活着的应用一起占住音频设备。
+    //
+    // 这一步刻意**只报告不失败**：一个跑在别的端口上的残留进程确实不阻塞本轮，
+    // 把它判成失败会把一条卫生问题伪装成环境阻塞。
+    let residual = describe_residual();
+    if let Some(text) = &residual {
+        emit(&format!("  启动前探测到残留 WebDriver 进程：{text}"));
+    }
+
+    // 端口本该是空的（内核刚给的），真被占上只能是 `free_port_pair` 那个极小的竞争窗口
+    // 撞上了。它必须是一句点名占用者的判词，而不是随后那 30 秒的静默超时。
+    if let Some(occupant) = occupant_of(driver_port) {
+        return Ok(Err(HandshakeFailure {
+            detail: format!(
+                "内核刚分配的 {driver_port} 端口在启动 driver 之前就已经有人监听：{occupant}。\
+                 这一轮没有起 driver——继续下去请求会打到那个进程上并挂到超时，\
+                 而超时的判词读起来像 WebKit 的问题。先把占用者停掉再跑。"
+            ),
+        }));
+    }
+
     let mut command = Command::new("tauri-driver");
     command
         .arg("--port")
@@ -87,7 +111,9 @@ pub(crate) fn connect(
         command.env(key, value);
     }
 
-    let driver = Background::spawn("tauri-driver", &mut command)?;
+    let log =
+        std::path::Path::new("target/acceptance").join(format!("tauri-driver-{driver_port}.log"));
+    let mut driver = Background::spawn_logging_stderr("tauri-driver", &mut command, &log)?;
     let base = format!("http://127.0.0.1:{driver_port}");
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(SESSION_TIMEOUT))
@@ -99,10 +125,17 @@ pub(crate) fn connect(
         std::net::TcpStream::connect(("127.0.0.1", driver_port)).is_ok()
     });
     if !ready {
+        // 「N 秒内没有监听端口」是一个纯时序结论，它对真因一个字都没说。
+        // 进程是死了还是活着卡住，以及它自己在 stderr 里说了什么，才是可以据以行动的事实。
         return Ok(Err(HandshakeFailure {
             detail: format!(
-                "`tauri-driver` 起来后 {} 秒内没有监听 {driver_port} 端口。",
-                PORT_LISTEN_TIMEOUT.as_secs()
+                "`tauri-driver` 起来后 {} 秒内没有监听 {driver_port} 端口；{}{}",
+                PORT_LISTEN_TIMEOUT.as_secs(),
+                match driver.exited() {
+                    Some(status) => format!("进程已自己退出，退出状态 {status}"),
+                    None => "进程仍在运行，说明它是卡住而不是退出".to_owned(),
+                },
+                stderr_tail(&log),
             ),
         }));
     }
@@ -121,10 +154,12 @@ pub(crate) fn connect(
         Err(error) => {
             return Ok(Err(HandshakeFailure {
                 detail: format!(
-                    "`POST /session` 未能返回会话：{error}。\
-                     本机实测：应用进程真的起来了、真实窗口映射成功、\
-                     WebKit 的 inspector server 端口也在监听，但 `WebKitWebDriver` \
-                     从不向它建立连接，请求一直挂到超时。"
+                    "`POST /session` 未能返回会话：{error}；{}{}",
+                    match driver.exited() {
+                        Some(status) => format!("driver 已自己退出，退出状态 {status}"),
+                        None => "driver 仍在运行".to_owned(),
+                    },
+                    stderr_tail(&log),
                 ),
             }));
         }
@@ -415,6 +450,110 @@ fn free_port_pair() -> Result<(u16, u16)> {
     }
     drop(listeners);
     Ok((ports[0], ports[1]))
+}
+
+fn describe_residual() -> Option<String> {
+    let found = super::residual_driver_processes();
+    if found.is_empty() {
+        return None;
+    }
+    Some(
+        found
+            .into_iter()
+            .map(|(pid, comm, started)| {
+                format!(
+                    "pid {pid}（{comm}，启动于 {}）",
+                    super::describe_time(started)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("、"),
+    )
+}
+
+/// 谁在监听 `port`：pid、进程名、启动时间。
+///
+/// 走 `/proc` 而不是 `ss` / `lsof`：与本 harness 其余部分一致，不让「有没有占用者」
+/// 变成宿主机装了哪些工具的函数。两步——先从 `/proc/net/tcp{,6}` 按端口找到那个处于
+/// `LISTEN`（状态码 `0A`）的 socket 的 inode，再扫 `/proc/<pid>/fd` 找持有该 inode 的进程。
+fn occupant_of(port: u16) -> Option<String> {
+    let inode = listening_inode(port)?;
+    let entries = std::fs::read_dir("/proc").ok()?;
+    for entry in entries.flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+            continue;
+        };
+        let Ok(fds) = std::fs::read_dir(entry.path().join("fd")) else {
+            continue;
+        };
+        for fd in fds.flatten() {
+            let Ok(target) = std::fs::read_link(fd.path()) else {
+                continue;
+            };
+            if target.to_string_lossy() != format!("socket:[{inode}]") {
+                continue;
+            }
+            let comm = std::fs::read_to_string(entry.path().join("comm"))
+                .map(|text| text.trim().to_owned())
+                .unwrap_or_else(|_| "进程名读不到".to_owned());
+            let started = super::process_start_time(pid)
+                .map(super::describe_time)
+                .unwrap_or_else(|| "启动时间读不到".to_owned());
+            return Some(format!("pid {pid}（{comm}，启动于 {started}）"));
+        }
+    }
+    // inode 找到了但没有进程持有它：socket 属于别的网络命名空间，或刚好在这两步之间关掉了。
+    Some(format!(
+        "有一个 socket 在监听（inode {inode}），但本命名空间里没有进程持有它"
+    ))
+}
+
+fn listening_inode(port: u16) -> Option<u64> {
+    for path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        for line in text.lines().skip(1) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            // local_address 是 `<hex ip>:<hex port>`，st 是连接状态，inode 是第 10 个字段。
+            let (Some(local), Some(state), Some(inode)) =
+                (fields.get(1), fields.get(3), fields.get(9))
+            else {
+                continue;
+            };
+            if *state != "0A" {
+                continue;
+            }
+            let Some(hex_port) = local.rsplit(':').next() else {
+                continue;
+            };
+            if u16::from_str_radix(hex_port, 16).ok() != Some(port) {
+                continue;
+            }
+            if let Ok(inode) = inode.parse::<u64>() {
+                return Some(inode);
+            }
+        }
+    }
+    None
+}
+
+/// 判词里必须带上 driver 自己说的话：一个纯时序结论（「N 秒内没有监听端口」）对真因
+/// 一个字都没说，而它拒绝执行的原因通常就写在 stderr 里（例如 mise shim 找不到配置）。
+fn stderr_tail(log: &std::path::Path) -> String {
+    const LINES: usize = 8;
+    let Ok(text) = std::fs::read_to_string(log) else {
+        return String::new();
+    };
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "；它的 stderr 是空的".to_owned();
+    }
+    let tail: Vec<&str> = trimmed.lines().rev().take(LINES).collect();
+    format!(
+        "；它的 stderr 末尾是「{}」",
+        tail.into_iter().rev().collect::<Vec<_>>().join(" / ")
+    )
 }
 
 /// PATH 查找。刻意不依赖 `which` crate：一个目录遍历不值得多一条依赖。
