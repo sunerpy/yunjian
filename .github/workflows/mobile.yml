@@ -1,5 +1,13 @@
 name: mobile-distribution
 
+# `contract` 与 `report` 只跑 cargo 与 jq，切到 CodeBuild 托管 runner。
+#
+# `android` 刻意留在 GitHub 托管 runner 上，判据是可查的：本文件从未安装 NDK 也没设
+# `NDK_HOME`，而 `cargo tauri android build` 必须有 NDK——也就是说它一直在白拿托管镜像
+# 预装的那一份。`aws/codebuild/standard:7.0` 不带 Android SDK/NDK，切过去会在构建步骤
+# 才失败。要切就得先像 voice-build.yml 那样显式装 NDK，那是另一件事。
+# `ios` 需要 Xcode，只能留在 macOS 托管 runner。
+
 on:
   workflow_dispatch:
 
@@ -11,7 +19,9 @@ env:
 
 jobs:
   contract:
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - mobile-contract
     outputs:
       verdict: ${{ steps.verdict.outputs.value }}
     steps:
@@ -86,7 +96,9 @@ jobs:
   report:
     needs: [contract, android, ios]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - mobile-report
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

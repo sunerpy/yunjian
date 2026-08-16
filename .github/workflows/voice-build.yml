@@ -4,10 +4,13 @@ name: voice-build
 # 环境里无法构建（无 Windows/macOS 宿主机、无 NDK、无 Xcode SDK），只能在有对应宿主机
 # 的地方验证。详见 docs/VOICE-BUILD.zh.md「五平台结论」。
 #
-# CodeBuild 预备（尚未启用）：当前连接为 PENDING，全部 job 保持 GitHub-hosted。授权并
-# 重建 webhook 后，`no-voice-links-nothing` 与汇总 job 可分别用唯一标签
-# `voice-no-native`、`voice-build-success`；`desktop`/`mobile` 是混合平台矩阵，不能整体
-# 切到当前 Linux x86_64 的 `yunjian-runner`，需先按宿主 OS 拆 job。
+# Linux x86_64 的四个执行单元跑在 CodeBuild 托管 runner 上，Windows / macOS 腿继续用
+# GitHub 托管 runner（CodeBuild 那两个平台要预留容量 fleet，按小时计费）。
+#
+# 混合平台矩阵**不需要按宿主 OS 拆 job**：`runs-on: ${{ fromJSON(matrix.runner) }}` 让
+# 每条腿自带一个 JSON 串——Linux 腿给两标签数组，其余腿给单个字符串。拆 job 会改动依赖
+# 图与汇总作业的 needs，而换 runner 本该只改执行机。
+# 注意 matrix 里的 `runner` 值现在是**JSON 文本**，外层单引号是语法的一部分，不是排版。
 
 on:
   push:
@@ -41,9 +44,26 @@ env:
 jobs:
   no-voice-links-nothing:
     name: 无语音构建不链接 onnxruntime
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - voice-no-native
     steps:
       - uses: actions/checkout@v4
+
+      # 钉 Node 的理由与断言写法见 ci.yml `test` 作业的同名步骤：下面那步 `npm ci` 对
+      # 版本过低只 warn 不 fail，失败会推迟到 vite build 才炸，且报错不提版本。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 断言 Node 版本满足 app/ 的下限
+        run: |
+          node --version
+          node -e 'const [a,b]=process.versions.node.split(".").map(Number);
+            if (!((a===20&&b>=19)||(a===22&&b>=12)||a>22)) {
+              console.error("Node "+process.versions.node+" 不满足 app/ 的 ^20.19 || >=22.12");
+              process.exit(1);
+            }'
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -81,19 +101,19 @@ jobs:
 
   desktop:
     name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: linux-x64
-            runner: ubuntu-latest
+            runner: '["codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}", "voice-desktop-linux-x64"]'
             target: x86_64-unknown-linux-gnu
           - name: windows-x64
-            runner: windows-latest
+            runner: '"windows-latest"'
             target: x86_64-pc-windows-msvc
           - name: macos-arm64
-            runner: macos-14
+            runner: '"macos-14"'
             target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
@@ -194,16 +214,16 @@ jobs:
   # 物理设备 harness——GitHub runner 既无真机也无可用麦克风。
   mobile:
     name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: android-arm64
-            runner: ubuntu-latest
+            runner: '["codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}", "voice-mobile-android-arm64"]'
             target: aarch64-linux-android
           - name: ios-arm64
-            runner: macos-14
+            runner: '"macos-14"'
             target: aarch64-apple-ios
     steps:
       - uses: actions/checkout@v4
@@ -354,7 +374,9 @@ jobs:
 
   voice-build-success:
     name: voice-build 汇总
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - voice-build-success
     needs: [no-voice-links-nothing, desktop, mobile]
     if: always()
     steps:
