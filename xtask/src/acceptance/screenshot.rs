@@ -33,7 +33,7 @@ pub(crate) struct Paint {
 }
 
 impl Paint {
-    fn measure(rgba: &[u8]) -> Self {
+    pub(crate) fn measure(rgba: &[u8]) -> Self {
         // 直方图开在 5 位色深上（32³ = 32768 桶）：要回答的是「这一大片是不是同一个颜色」，
         // 而抗锯齿会让同一片底色散成若干个相差 1 的值，按全 24 位统计反而把它拆开。
         let mut histogram = vec![0u32; 32 * 32 * 32];

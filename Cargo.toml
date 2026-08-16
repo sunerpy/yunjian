@@ -205,6 +205,20 @@ enigo = { version = "0.6", default-features = false, features = ["x11rb"] }
 # `_NET_WM_ICON`）并用 `GetImage` 截图。**刻意不调 `scrot` / `xprop` 子进程**：
 # 那会把「有没有截到图」变成宿主机装了哪些工具的函数，而这两件事本来就各是一次 X11 请求。
 x11rb = "0.14"
+# `xtask acceptance` 拆除被托管子进程时要先发 SIGTERM 再退回 SIGKILL：`Child::kill`
+# 发的是 SIGKILL，捕不到，于是 `tauri-driver` 没有机会回收自己的 `WebKitWebDriver`
+# 子进程（本机实测：SIGTERM 一并退出，SIGKILL 留成孤儿并继续监听端口）。
+# **刻意不 spawn `/bin/kill`**：本模块已有的判据是「不调外部工具，否则会把有没有残留
+# 变成宿主机装了哪些工具的函数」。`libc` 已在 `Cargo.lock` 里（多条依赖经由它），
+# 声明成直接依赖不新增任何构建成本，且只有开发工具用它。
+libc = "0.2"
+# `xtask acceptance` 用它在验收会话里提供一个最小的 `org.kde.StatusNotifierWatcher`，
+# 好让托盘那两条断言可执行——Linux 上托盘是 D-Bus 上的图标与菜单，不是屏幕上的像素，
+# 缺的只是总线上的一个宿主名字。**刻意不引 `ksni`**：它是「实现一个托盘项」的库，而这里
+# 要的是反过来的一侧（观测应用真的发布了什么），且 `zbus` 已经在依赖树里（`keyring` 的
+# secret-service 后端经由它），版本与 `Cargo.lock` 里已解析的那个一致。
+# 只用阻塞 API：xtask 是同步程序，为一个子命令引一棵 async 运行时不划算。
+zbus = "5.19"
 # 仅 `yunjian-mcp` 的 `http` 特性使用（默认关闭）：把 `rmcp` 的 `StreamableHttpService`
 # 挂成一个 tower service，并在它前面叠一层 bearer + Origin 守卫。**刻意选 axum 而不是
 # 裸 hyper**：守卫必须是一层无法被绕过的中间件，而 `Router::nest_service` + `layer` 是

@@ -849,5 +849,67 @@ fn stub_session() -> SessionFacts {
             detail: "测试桩".to_owned(),
         },
         audio_input_devices: 0,
+        audio_capture: "测试桩".to_owned(),
     }
+}
+
+/// 拆除被托管进程时必须连它的子进程一起收干净。
+///
+/// 这条守的是一个**实测过的**泄漏：`Child::kill` 发的是 SIGKILL，捕不到，于是
+/// `tauri-driver` 没有机会回收自己的 `WebKitWebDriver` 子进程——那个孤儿会继续监听端口，
+/// 而它正是启动被测应用的那一方，于是下一轮的判词写成「麦克风被别的程序独占」或
+/// 「driver 起来后没有监听端口」，两句都指着没坏的东西。
+///
+/// 用 `sh -c` 造一棵同形态的进程树而不是真起 `tauri-driver`：要守的是
+/// [`Background`] 的拆除语义，而它与那个具体程序无关；真起 driver 还会让这条用例
+/// 依赖宿主机装了什么。
+///
+/// 只在 unix 上跑：它要 `sh`、要信号语义、还要读 `/proc` 认领进程。Windows 上这三样
+/// 都不成立，而桌面验收本身也只在 Linux 上执行。
+#[cfg(unix)]
+#[test]
+fn dropping_a_background_process_reaps_its_child() {
+    let marker = std::env::temp_dir().join(format!("yunjian-reap-{}", std::process::id()));
+    let _ = fs::remove_file(&marker);
+
+    // 父进程收到 SIGTERM 时先把子进程杀掉再退——`tauri-driver` 就是这个形态。
+    // 子进程留一个文件当活着的证据，好让「有没有被收掉」变成一个可观测的事实。
+    let script = format!(
+        "trap 'kill $CHILD 2>/dev/null; exit 0' TERM; \
+         sh -c 'touch {marker}; while true; do sleep 0.2; done' & \
+         CHILD=$!; wait $CHILD",
+        marker = marker.display()
+    );
+    let mut command = Command::new("sh");
+    command.arg("-c").arg(&script);
+    let process = Background::spawn("reap-probe", &mut command).expect("起探针进程");
+
+    let appeared = Background::wait_until(Duration::from_secs(10), || marker.is_file());
+    assert!(appeared, "探针的子进程没有起来，这条用例无从判定");
+
+    drop(process);
+
+    let gone = Background::wait_until(Duration::from_secs(10), || !marker_owner_alive(&marker));
+    let _ = fs::remove_file(&marker);
+    assert!(
+        gone,
+        "拆除被托管进程后它的子进程仍活着：说明发的是 SIGKILL，\
+         被托管进程来不及回收自己的子进程"
+    );
+}
+
+/// 还有没有进程持有那棵探针进程树。
+///
+/// 按命令行里的 marker 路径认领进程，而不是按进程名：探针是 `sh`，宿主机上到处都是 `sh`。
+#[cfg(unix)]
+fn marker_owner_alive(marker: &std::path::Path) -> bool {
+    let needle = marker.display().to_string();
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        entry.file_name().to_string_lossy().parse::<u32>().is_ok()
+            && fs::read_to_string(entry.path().join("cmdline"))
+                .is_ok_and(|line| line.contains(&needle))
+    })
 }

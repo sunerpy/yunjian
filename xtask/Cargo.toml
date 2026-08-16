@@ -54,11 +54,28 @@ yunjian-voice = { path = "../crates/yunjian-voice" }
 # 「点下去之后窗口真的最大化了」只能由窗口管理器维护的 `_NET_WM_STATE` 回答。
 enigo = { workspace = true }
 x11rb = { workspace = true }
+# `acceptance` 的托盘宿主。见工作区 `Cargo.toml` 里那一段：托盘断言缺的是总线上的一个
+# 宿主名字，不是显示硬件。
+zbus = { workspace = true }
+# `acceptance` 的首启物化那条会话要定位本机那份待物化的 `.db.gz`。用与应用**同一个**
+# 目录解析实现，否则 harness 找的那个位置可能不是应用会读的那个。
+dirs = { workspace = true }
 
 [features]
 default = []
 # 开启后 `cer-spike` 才真的合成与识别；不开则如实写 NOT MEASURED。
-voice = ["yunjian-voice/voice"]
+voice = ["yunjian-voice/voice", "capture"]
+# 开启后 `acceptance` 才真的开一次输入设备录一秒，用实测 RMS 判断这个会话能不能录音。
+# 不开则如实写「没有做真实采集探测」，**绝不据此宣称能录音**。
+# 只拉 `rodio`（MIT/Apache-2.0），不碰 sherpa-onnx，因此这一条不触发 GPL-3.0。
+capture = ["yunjian-voice/capture"]
 
 [lints]
 workspace = true
+
+# `acceptance` 拆除被托管进程时要先 SIGTERM 后 SIGKILL（见工作区 `Cargo.toml` 那一段：
+# 直接 SIGKILL 会让 `tauri-driver` 的 `WebKitWebDriver` 子进程留成孤儿）。
+# **按 target 声明而不是无条件依赖**：`libc::kill` 与 SIGTERM 是 POSIX 的东西，
+# Windows 上没有对应物，而这个 crate 三个平台都要编得过。
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

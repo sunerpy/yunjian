@@ -28,7 +28,11 @@
 # `build.frontendDist` 指向的目录缺失时直接 panic——但**不能靠往库里放一个 .gitkeep
 # 占位来满足**：`vite build` 会先清空 outDir，占位文件在第一次构建后就消失（已实测）。
 # 因此产物不入库，改由 Makefile 的 `$(FRONTEND_DIST)` 目标在缺失时自动构建。
-/app/dist/
+# 末尾刻意不带斜杠：带斜杠只匹配目录，而在 git worktree 里把它做成指向主检出那份
+# `dist` 的符号链接是常见做法（省一次前端构建），那个符号链接不是目录，于是会以
+# 未跟踪文件的形态出现在 `git status` 里，随时可能被一次 `git add` 连着机器本地的
+# 绝对路径一起提交进来。
+/app/dist
 
 # Tauri 移动端脚手架生成物（todo 68/69 才会出现）
 /crates/yunjian-app/gen/

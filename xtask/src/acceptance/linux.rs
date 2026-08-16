@@ -16,7 +16,7 @@
 //! 总线（本机实测日志：`Failed to connect to address unix:path=/tmp/dbus-…`），
 //! 而 WebKitGTK 的自动化会话要经总线通告自己。`dbus-run-session` 起一条新的。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
@@ -26,9 +26,9 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _, Window};
 use x11rb::rust_connection::RustConnection;
 
-use super::webdriver::{self, Session};
 use super::{
-    APP_BINARY, Background, Collector, SessionFacts, Verdict, WebDriverProbe, geometry, screenshot,
+    APP_BINARY, Background, Collector, SessionFacts, Verdict, WebDriverProbe, dom, geometry,
+    screenshot, tray, webdriver,
 };
 use crate::verify_sources::emit;
 
@@ -37,7 +37,7 @@ const VIRTUAL_DISPLAY: &str = ":99";
 /// 虚拟屏幕尺寸。要比窗口的 1200×800 大，否则「最大化」与「原状」量不出差别。
 const VIRTUAL_SCREEN: &str = "1600x1100x24";
 /// 截图子目录，相对 `docs/reports/`。
-const SHOT_DIR: &str = "desktop-qa";
+pub(crate) const SHOT_DIR: &str = "desktop-qa";
 /// 等窗口出现的上限。debug 构建首帧要几秒。
 const WINDOW_TIMEOUT: Duration = Duration::from_secs(30);
 /// 等窗口状态迁移的上限。窗口管理器处理一次请求是毫秒级，给足余量。
@@ -47,8 +47,6 @@ const WINDOW_TIMEOUT: Duration = Duration::from_secs(30);
 const STATE_TIMEOUT: Duration = Duration::from_secs(5);
 /// 等 WebView 画出第一帧的上限。debug 构建要加载并执行整个前端包。
 const PAINT_TIMEOUT: Duration = Duration::from_secs(20);
-/// 等 React 把首屏挂到 DOM 上的上限。实测约 2 秒，取 20 秒余量。
-const MOUNT_TIMEOUT: Duration = Duration::from_secs(20);
 /// 打断连击链的等待时长。GTK 默认双击时间是 400 毫秒，取两倍余量。
 const CHAIN_ESCAPE_WAIT: Duration = Duration::from_millis(800);
 /// 打断连击链时把指针移开的距离，px。GTK 默认双击距离是 5 px，取远超它的值。
@@ -67,9 +65,9 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
 
     // --- 产物：先判定，因为后面每一条都依赖它 ---
     let artifact_ok = check_artifact(root, &app, collector)?;
-    check_installer(root, collector)?;
 
     if !artifact_ok {
+        check_installer(root, None, collector)?;
         collector.fill_remaining(
             "构建产物不可用，后续断言无从执行",
             "先跑 `cargo build -p yunjian-app`（Linux 上还需 libwebkit2gtk-4.1-dev）",
@@ -84,6 +82,7 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
                 detail: "产物不可用，未尝试握手。".to_owned(),
             },
             audio_input_devices: 0,
+            audio_capture: "无可用显示，未进入会话，没有做真实采集探测".to_owned(),
         });
     }
 
@@ -98,79 +97,82 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
     let root_window = conn.setup().roots[session.screen].root;
     let wm = window_manager_name(&conn, root_window);
     let audio = audio_input_devices();
+    // 采集探测放在起任何应用之前：设备是独占资源，一个已经占着它的进程会让探测
+    // 得出「打不开」，而那句判词说的是占用而不是这台机器有没有可录的输入。
+    let capture = capture_probe();
+    emit(&format!(
+        "  音频：非 monitor 输入设备 {audio} 个；{}",
+        capture.detail
+    ));
 
-    // --- WebDriver 握手探测。结果本身就是「UI 断言为何未执行」的依据 ---
-    let env = vec![
-        ("DISPLAY", session.display.clone()),
-        ("TAURI_WEBVIEW_AUTOMATION", "true".to_owned()),
-        ("YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK", "1".to_owned()),
-    ];
-    emit("  探测 WebDriver 握手（真实 tauri-driver + WebKitWebDriver，无 mock）");
-    let probe = webdriver::connect(&app, &env)?;
-    let (driver, probe_facts) = match probe {
-        Ok(session) => (
-            Some(session),
-            WebDriverProbe {
-                attempted: true,
-                succeeded: true,
-                detail: "会话建立成功，DOM 层断言由真实 WebDriver 执行。".to_owned(),
-            },
-        ),
-        Err(failure) => (
-            None,
-            WebDriverProbe {
-                attempted: true,
-                succeeded: false,
-                detail: failure.detail,
-            },
-        ),
-    };
-
-    match driver {
-        Some(driver) => webdriver_assertions(&driver, &shots, collector)?,
-        None => {
-            let when = "`tauri-driver` 与 `WebKitWebDriver` 能为本次构建建立真实自动化会话；\
-                 也可在支持 embedded WebDriver 的宿主机上改用 `@wdio/tauri-service`";
-            for declared in super::DECLARED {
-                if declared.channel == super::Channel::WebDriver {
-                    let (detail, executable_when) = if declared.id
-                        == "voice_round_succeeds_end_to_end"
-                        && audio == 0
-                    {
-                        (
-                            format!(
-                                "WebDriver 会话未能建立，且本次探测到的音频输入设备数为 {audio}；\
-                                 DOM 与真实采集链均无法执行。握手探测结果：{}",
-                                probe_facts.detail
-                            ),
-                            format!(
-                                "{when}；另需至少一个非 monitor 的可采集音频输入设备及可用语音模型"
-                            ),
-                        )
-                    } else {
-                        (
-                            format!(
-                                "WebDriver 会话未能建立，DOM 层事实无法观测；\
-                                 刻意不用 mock 或 stub 顶替。握手探测结果：{}",
-                                probe_facts.detail
-                            ),
-                            when.to_owned(),
-                        )
-                    };
-                    collector.record(
-                        declared.id,
-                        Verdict::NotExecuted,
-                        detail,
-                        Some(executable_when),
-                        None,
-                    )?;
-                }
-            }
-        }
+    // 一条自建的 session 总线，供本次验收里所有子进程共用。
+    //
+    // 容器里 `DBUS_SESSION_BUS_ADDRESS` 常常指着一个已经死掉的 socket，而 WebKitGTK 的
+    // 自动化会话与托盘协议都要经总线。这条总线同时是托盘断言可执行的前提。
+    let bus = tray::SessionBus::start();
+    if let Err(error) = &bus {
+        emit(&format!("  会话总线起不来：{error}"));
     }
+    let bus = bus.ok();
+    let bus_env: Vec<(String, String)> = bus
+        .as_ref()
+        .map(|bus| {
+            let (key, value) = bus.env();
+            vec![(key.to_owned(), value)]
+        })
+        .unwrap_or_default();
+
+    // 安装包那条要一个可用的显示（它的判据是「从安装路径启动的那个二进制映射出了窗口」），
+    // 所以排在会话拿到之后。
+    check_installer(root, Some(&session.display), collector)?;
+
+    // --- DOM 层断言：三条会话，各自带着自己那条断言要求的前置环境 ---
+    //
+    // 不是一条会话跑六条：首启物化要一个空数据目录、语音降级要一个取不到模型的环境，
+    // 而这两件事与其余四条要的「真实数据目录」互斥，且环境在进程启动时就定死了。
+    emit("  探测 WebDriver 握手（真实 tauri-driver + WebKitWebDriver，无 mock）");
+    let primary_env =
+        dom::SessionEnv::new(&session.display).with_extra(merged_env(library_env(&app), &bus_env));
+    let mut probe_facts = None;
+    let primary_ok = dom::with_session(
+        &app,
+        &primary_env,
+        &[
+            "two_char_search_returns_results",
+            "ime_prefilled_search_box",
+            "shipped_appreciation_without_key",
+            "voice_round_succeeds_end_to_end",
+        ],
+        collector,
+        |driver, collector| dom::drive_primary(driver, &shots, &capture, collector),
+    );
+    let primary_ok = primary_ok?;
+    probe_facts.get_or_insert(WebDriverProbe {
+        attempted: true,
+        succeeded: primary_ok,
+        detail: if primary_ok {
+            "会话建立成功，DOM 层断言由真实 WebDriver 执行。".to_owned()
+        } else {
+            "主会话未能建立，DOM 层断言未执行；逐条依据写在各断言的判词里。".to_owned()
+        },
+    });
+
+    first_run_session(root, &app, &session.display, &bus_env, &shots, collector)?;
+    degradation_session(root, &app, &session.display, &bus_env, &shots, collector)?;
 
     // --- OS 层断言：真实窗口 + 合成输入 ---
-    os_assertions(&conn, root_window, &session, &app, &shots, collector)?;
+    os_assertions(
+        &conn,
+        root_window,
+        OsContext {
+            session: &session,
+            app: &app,
+            bus,
+            bus_env: &bus_env,
+            shots: &shots,
+        },
+        collector,
+    )?;
 
     // 兜底：任何没走到的条目都以未执行入账，而不是从报告里消失。
     collector.fill_remaining(
@@ -182,9 +184,60 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
         display_kind: session.kind.to_owned(),
         display: Some(session.display.clone()),
         window_manager: wm,
-        webdriver: probe_facts,
+        webdriver: probe_facts.unwrap_or(WebDriverProbe {
+            attempted: true,
+            succeeded: false,
+            detail: "未记录握手结果。".to_owned(),
+        }),
         audio_input_devices: audio,
+        audio_capture: capture.detail,
     })
+}
+
+/// 产物自带的那些 `.so` 所在目录。
+///
+/// 开了 `voice` 特性的产物要链 `libsherpa-onnx-c-api.so`，而它被放在**产物旁边**，
+/// 不在系统库路径上；Linux 的加载器默认不看可执行文件所在目录（没有 rpath），
+/// 于是一次裸启动会以 `error while loading shared libraries` 立刻失败。
+///
+/// 本机实测过那个后果：`tauri-driver` 拉起应用失败，而 `POST /session` 那侧看到的是
+/// **请求挂到超时**，判词会写成「`WebKitWebDriver` 从不建立连接」——一条把人引向
+/// WebKit 的错误信息，真因却是少一个库路径。
+///
+/// 这里让 harness 按产物自己的布局去启动它：`ldd` 检查与真正启动用**同一份**环境，
+/// 两者口径一致。安装包那条断言刻意不加这个环境——它要证明的正是安装后的布局自足。
+/// 合并两组环境变量。
+fn merged_env(
+    mut first: Vec<(String, String)>,
+    second: &[(String, String)],
+) -> Vec<(String, String)> {
+    first.extend(second.iter().cloned());
+    first
+}
+
+fn library_env(app: &Path) -> Vec<(String, String)> {
+    let Some(dir) = app.parent() else {
+        return Vec::new();
+    };
+    let has_local_libs = std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("libsherpa-onnx")
+        })
+    });
+    if !has_local_libs {
+        return Vec::new();
+    }
+    let mut value = dir.to_string_lossy().into_owned();
+    if let Some(existing) = std::env::var_os("LD_LIBRARY_PATH")
+        && !existing.is_empty()
+    {
+        value.push(':');
+        value.push_str(&existing.to_string_lossy());
+    }
+    vec![("LD_LIBRARY_PATH".to_owned(), value)]
 }
 
 fn check_artifact(root: &Path, app: &Path, collector: &mut Collector) -> Result<bool> {
@@ -219,6 +272,7 @@ fn check_artifact(root: &Path, app: &Path, collector: &mut Collector) -> Result<
     }
     let missing = Command::new("ldd")
         .arg(app)
+        .envs(library_env(app))
         .output()
         .ok()
         .map(|out| {
@@ -292,7 +346,16 @@ fn newest_modified(path: &Path, newest: &mut (SystemTime, std::path::PathBuf)) -
     Ok(())
 }
 
-fn check_installer(root: &Path, collector: &mut Collector) -> Result<()> {
+/// 安装包：解到一个临时 root，再**从安装后的那个路径**启动。
+///
+/// 判据刻意是「从安装路径启动的那个二进制映射出了窗口」，而不是「产物文件存在」：
+/// 后者已经由 `artifact_present` 判了，而安装包能坏在别处——漏打 sidecar、
+/// `.desktop` 指到不存在的路径、动态库依赖在安装后解不开。这些只有真的从安装路径
+/// 跑一次才看得见。
+///
+/// 用 `dpkg-deb -x` 解到临时目录而**不是** `dpkg -i`：后者要 root、会动宿主机的包数据库，
+/// 而本条要证明的是包里的内容能跑，不是宿主机的 dpkg 能装。
+fn check_installer(root: &Path, display: Option<&str>, collector: &mut Collector) -> Result<()> {
     let bundle = root.join("target/debug/bundle");
     let found: Vec<String> = std::fs::read_dir(&bundle)
         .ok()
@@ -321,19 +384,167 @@ fn check_installer(root: &Path, collector: &mut Collector) -> Result<()> {
             ),
             None,
         )?;
-    } else {
+        return Ok(());
+    }
+
+    let Some(deb) = newest_file(&bundle.join("deb"), "deb") else {
         collector.record(
             "installer_runs",
             Verdict::NotExecuted,
             format!(
-                "发现产物 {}，但本 harness 尚未实现安装后启动",
+                "发现产物 {}，但其中没有 `.deb`；本 harness 的安装路径实现基于 `dpkg-deb -x`，\
+                 AppImage 与 rpm 各自要另一套解包与启动步骤",
                 found.join("、")
             ),
-            Some("实现安装到临时 root 并从该路径启动的步骤".to_owned()),
+            Some("`cargo tauri build --bundles deb` 产出一个 `.deb`".to_owned()),
             None,
         )?;
+        return Ok(());
+    };
+    let Some(dpkg_deb) = webdriver::which("dpkg-deb") else {
+        collector.record(
+            "installer_runs",
+            Verdict::NotExecuted,
+            "`dpkg-deb` 不在 PATH 上，无法把安装包解到临时 root".to_owned(),
+            Some("安装 `dpkg` 后重跑".to_owned()),
+            None,
+        )?;
+        return Ok(());
+    };
+    let Some(display) = display else {
+        collector.record(
+            "installer_runs",
+            Verdict::NotExecuted,
+            "没有可用的桌面会话，装好之后也无从证明它启动得起来".to_owned(),
+            Some("一个可用的 X 显示".to_owned()),
+            None,
+        )?;
+        return Ok(());
+    };
+
+    let install_root = root.join("target/acceptance/install-root");
+    if install_root.exists() {
+        std::fs::remove_dir_all(&install_root)
+            .with_context(|| format!("清理上一次的 {} 失败", install_root.display()))?;
+    }
+    std::fs::create_dir_all(&install_root)
+        .with_context(|| format!("创建 {} 失败", install_root.display()))?;
+
+    let extract = Command::new(dpkg_deb)
+        .arg("-x")
+        .arg(&deb)
+        .arg(&install_root)
+        .output()
+        .context("运行 dpkg-deb -x 失败")?;
+    if !extract.status.success() {
+        collector.record(
+            "installer_runs",
+            Verdict::Fail,
+            format!(
+                "`dpkg-deb -x {}` 失败：{}",
+                deb.display(),
+                String::from_utf8_lossy(&extract.stderr).trim()
+            ),
+            None,
+            None,
+        )?;
+        return Ok(());
+    }
+
+    let installed = install_root.join("usr/bin/yunjian-desktop");
+    if !installed.is_file() {
+        collector.record(
+            "installer_runs",
+            Verdict::Fail,
+            format!(
+                "安装包解开后 {} 不存在；包里没有把可执行文件放到预期路径",
+                installed.display()
+            ),
+            None,
+            None,
+        )?;
+        return Ok(());
+    }
+
+    let launched = launch_from_install_root(&installed, display)?;
+    match launched {
+        Some(title) => collector.record(
+            "installer_runs",
+            Verdict::Pass,
+            format!(
+                "把 {} 解到 {} 后，从安装路径 {} 启动，映射出顶层窗口且 `_NET_WM_NAME` = 「{title}」",
+                deb.file_name().unwrap_or_default().to_string_lossy(),
+                install_root.display(),
+                installed.display()
+            ),
+            None,
+            None,
+        )?,
+        None => collector.record(
+            "installer_runs",
+            Verdict::Fail,
+            format!(
+                "把 {} 解到 {} 后，从安装路径 {} 启动，但 {} 秒内没有映射出顶层窗口",
+                deb.file_name().unwrap_or_default().to_string_lossy(),
+                install_root.display(),
+                installed.display(),
+                WINDOW_TIMEOUT.as_secs()
+            ),
+            None,
+            None,
+        )?,
     }
     Ok(())
+}
+
+/// 从安装路径启动一次，返回窗口标题。
+fn launch_from_install_root(binary: &Path, display: &str) -> Result<Option<String>> {
+    let (conn, screen) =
+        x11rb::connect(Some(display)).with_context(|| format!("连接 X 显示 {display} 失败"))?;
+    let root_window = conn.setup().roots[screen].root;
+    let before = top_level_windows(&conn, root_window);
+
+    let mut command = Command::new(binary);
+    command
+        .env("DISPLAY", display)
+        .env("YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK", "1");
+    let _process = Background::spawn("installed-yunjian-desktop", &mut command)?;
+
+    let mut title = None;
+    Background::wait_until(WINDOW_TIMEOUT, || {
+        let fresh: Vec<Window> = top_level_windows(&conn, root_window)
+            .into_iter()
+            .filter(|window| !before.contains(window))
+            .collect();
+        for window in fresh {
+            if let Some(name) = window_title(&conn, window)
+                && !name.is_empty()
+            {
+                title = Some(name);
+                return true;
+            }
+        }
+        false
+    });
+    Ok(title)
+}
+
+/// 目录下最新的一个指定扩展名文件。
+fn newest_file(dir: &Path, extension: &str) -> Option<PathBuf> {
+    let mut best: Option<(SystemTime, PathBuf)> = None;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some(extension) {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().and_then(|meta| meta.modified()) else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|(best, _)| modified > *best) {
+            best = Some((modified, path));
+        }
+    }
+    best.map(|(_, path)| path)
 }
 
 /// 一个交互式桌面会话。
@@ -487,80 +698,163 @@ fn audio_input_devices() -> usize {
             String::from_utf8_lossy(&out.stdout)
                 .lines()
                 .filter(|line| !line.trim().is_empty())
-                // `.monitor` 是输出的回环监听，不是麦克风。把它算成输入设备就会
-                // 得出「有麦克风」这个假结论，而随后的采集必然拿到静音。
+                // `.monitor` 是输出的回环监听，不是麦克风。这个计数刻意排除它，
+                // 因为它回答的是「这台机器上有几个麦克风」。
+                //
+                // 但**它不再是语音那条断言能不能执行的判据**：见 [`capture_probe`]。
+                // 一个喂了信号的 monitor 源确实可以采到非静音音频，此时把语音一轮记成
+                // 未执行是低报；而反过来，凭「有一个源」就宣称有麦克风是高报。
+                // 两个方向都错，所以判据换成一次真实采集的实测值。
                 .filter(|line| !line.contains(".monitor"))
                 .count()
         })
         .unwrap_or(0)
 }
 
-/// DOM 层断言。只在真实会话建立后调用。
-fn webdriver_assertions(driver: &Session, shots: &Path, collector: &mut Collector) -> Result<()> {
-    // 两字检索。`search-input` / `search-submit` / `result-row` 是 app/src/search 里
-    // 真实存在的 data-testid，不是猜的。
-    let two_char = (|| -> Result<String> {
-        if !driver.wait_for("[data-testid='search-input']", MOUNT_TIMEOUT) {
-            bail!(
-                "等了 {} 秒，`[data-testid='search-input']` 仍未出现在 DOM 里",
-                MOUNT_TIMEOUT.as_secs()
-            );
-        }
-        driver.send_keys("[data-testid='search-input']", "明月")?;
-        driver.click("[data-testid='search-submit']")?;
-        // 等摘要出现，**不要**换回一个固定 `sleep`：本机实测这一步要 5.09 秒
-        // （debug 构建、47 万首、FTS5 检索加渲染），原先那个 2 秒的固定等待因此会把
-        // 「还没渲染完」读成「检索没有结果」，判词说的是产品，坏的却是等待时长。
-        // 断言本身不受影响：下面仍然要求摘要文本非空。
-        if !driver.wait_for("[data-testid='search-summary']", MOUNT_TIMEOUT) {
-            bail!(
-                "等了 {} 秒，`[data-testid='search-summary']` 仍未出现在 DOM 里",
-                MOUNT_TIMEOUT.as_secs()
-            );
-        }
-        driver.text("[data-testid='search-summary']")
-    })();
-    let shot = shots.join("two-char-search.png");
-    match two_char {
-        Ok(summary) if !summary.trim().is_empty() => collector.record(
-            "two_char_search_returns_results",
-            Verdict::Pass,
-            format!("检索「明月」后摘要为「{summary}」"),
-            None,
-            Some(relative_shot(&shot)),
-        )?,
-        Ok(_) => collector.record(
-            "two_char_search_returns_results",
-            Verdict::Fail,
-            "检索「明月」后 search-summary 为空",
-            None,
-            Some(relative_shot(&shot)),
-        )?,
-        Err(error) => collector.record(
-            "two_char_search_returns_results",
-            Verdict::Fail,
-            format!("驱动检索失败：{error}"),
-            None,
-            None,
-        )?,
-    }
+pub(crate) struct CaptureProbe {
+    pub(crate) detail: String,
+    /// 采到了非静音音频。这才是语音一轮能不能执行的判据。
+    pub(crate) usable: bool,
+}
 
-    // 其余 DOM 断言尚未实现驱动步骤。**如实标未执行**，而不是让它们从报告里消失。
-    for id in [
-        "ime_prefilled_search_box",
-        "corpus_first_run_materialization",
-        "shipped_appreciation_without_key",
-        "voice_round_succeeds_end_to_end",
-        "voice_degradation_states_reason",
-    ] {
+/// 真的开一次默认输入设备，录一秒，量它的采样率、声道数与 RMS。
+///
+/// 为什么不用设备计数当判据：**两个方向都会错**。本机实测，唯一的源是
+/// `auto_null.monitor`（`pactl` 计数为 0 个非 monitor 源），而
+/// `capture::capture_default` 在它上面采到 16000 Hz / 1 声道 / RMS≈0.026 的非静音音频
+/// ——因为 `module-sine` 正往那个 sink 里喂 440 Hz。所以：
+///
+/// - 只看非 monitor 计数会把一个**真的能录音**的会话记成未执行（低报）；
+/// - 反过来把 `.monitor` 计进设备数，则会在没喂信号时宣称有麦克风，而随后必然采到静音
+///   （高报，且下一条判词会指向没坏的东西）。
+///
+/// 唯一不会错的是直接问「录到了什么」。RMS 是那个问题的答案，因此它必须出现在判词里
+/// ——一句「有麦克风」证不了任何事。
+///
+/// 阈值与 `crates/yunjian-voice/tests/capture.rs` 的 `SILENCE_FLOOR` 一致，只排除
+/// 「一个字节都没录到」，不给信号强度设门。
+#[cfg(feature = "capture")]
+fn capture_probe() -> CaptureProbe {
+    use yunjian_voice::capture;
+
+    const SILENCE_FLOOR: f32 = 1e-4;
+    const SECOND: Duration = Duration::from_secs(1);
+
+    match capture::capture_default(SECOND) {
+        Ok(got) => {
+            let rms = got.rms();
+            let usable = rms > SILENCE_FLOOR;
+            CaptureProbe {
+                detail: format!(
+                    "真实采集一秒成功：设备「{}」，设备原生 {} Hz {} 声道，\
+                     归一到 {} Hz {} 声道后 RMS={rms:.6}（静音阈值 {SILENCE_FLOOR:.0e}），\
+                     因此本会话{}",
+                    got.device,
+                    got.device_sample_rate,
+                    got.device_channels,
+                    got.sample_rate,
+                    got.channels,
+                    if usable {
+                        "确实能录到非静音音频"
+                    } else {
+                        "只能录到静音"
+                    }
+                ),
+                usable,
+            }
+        }
+        Err(error) => CaptureProbe {
+            detail: format!("真实采集一秒失败：{error}"),
+            usable: false,
+        },
+    }
+}
+
+/// 没开 `capture` 特性时如实说明判据缺失，**绝不据此宣称能录音**。
+#[cfg(not(feature = "capture"))]
+fn capture_probe() -> CaptureProbe {
+    CaptureProbe {
+        detail: "本次 xtask 未开 `capture` 特性，没有做真实采集探测；\
+                 用 `cargo run -p xtask --features capture -- acceptance` 才会做"
+            .to_owned(),
+        usable: false,
+    }
+}
+
+/// 首启语料物化那一条会话：把 `HOME` 换成一个空目录，只把生产路径要读的 `.db.gz`
+/// 与它的校验和放进去，于是物化真的从零发生一次。
+fn first_run_session(
+    root: &Path,
+    app: &Path,
+    display: &str,
+    bus_env: &[(String, String)],
+    shots: &Path,
+    collector: &mut Collector,
+) -> Result<()> {
+    let Some(real_data_root) = dirs::data_dir().map(|dir| dir.join("yunjian")) else {
         collector.record(
-            id,
+            "corpus_first_run_materialization",
             Verdict::NotExecuted,
-            "会话已建立，但本条的驱动步骤尚未实现",
-            Some("实现该条的 WebDriver 驱动步骤".to_owned()),
+            "本机定位不到用户数据目录，因而找不到那份待物化的 `.db.gz`",
+            Some("一个 `dirs::data_dir()` 能解析出结果的会话".to_owned()),
             None,
         )?;
-    }
+        return Ok(());
+    };
+    let fresh = dom::temp_home(root, "first-run-root")?;
+    let config = match dom::seed_first_run(&real_data_root, &fresh) {
+        Ok(config) => config,
+        Err(error) => {
+            collector.record(
+                "corpus_first_run_materialization",
+                Verdict::NotExecuted,
+                format!("无法为首启物化准备一个干净数据目录：{error}"),
+                Some(
+                    "本机 `~/.local/share/yunjian/corpus/` 下存在 `yunjian-corpus.db.gz` \
+                     与它的 `.sha256`（先跑一次 `yunjian corpus fetch` 或从语料 release 取）"
+                        .to_owned(),
+                ),
+                None,
+            )?;
+            return Ok(());
+        }
+    };
+    emit("  首启物化会话（空数据目录，走生产解析路径）");
+    let env = dom::SessionEnv::new(display)
+        .with_config(config)
+        .with_extra(merged_env(library_env(app), bus_env));
+    dom::with_session(
+        app,
+        &env,
+        &["corpus_first_run_materialization"],
+        collector,
+        |driver, collector| dom::drive_first_run(driver, shots, collector),
+    )?;
+    Ok(())
+}
+
+/// 语音降级那一条会话：把模型目录指到一个空目录，于是「模型未就绪」是一个被造出来的
+/// 真实条件，而不是等它碰巧发生。
+fn degradation_session(
+    root: &Path,
+    app: &Path,
+    display: &str,
+    bus_env: &[(String, String)],
+    shots: &Path,
+    collector: &mut Collector,
+) -> Result<()> {
+    let empty = dom::empty_model_dir(root)?;
+    emit("  语音降级会话（空模型目录）");
+    let env = dom::SessionEnv::new(display)
+        .with_model_dir(empty)
+        .with_extra(merged_env(library_env(app), bus_env));
+    dom::with_session(
+        app,
+        &env,
+        &["voice_degradation_states_reason"],
+        collector,
+        |driver, collector| dom::drive_degradation(driver, shots, collector),
+    )?;
     Ok(())
 }
 
@@ -572,20 +866,51 @@ fn relative_shot(path: &Path) -> String {
 }
 
 /// OS 层断言：真实窗口 + 合成输入 + 属性观测。
+/// OS 层断言要的那一组上下文。凑成一个结构体而不是继续加参数：八个位置参数里
+/// 相邻两个都是 `&Path`，调用处传错顺序不会有编译错误。
+struct OsContext<'a> {
+    session: &'a Session0,
+    app: &'a Path,
+    bus: Option<tray::SessionBus>,
+    bus_env: &'a [(String, String)],
+    shots: &'a Path,
+}
+
 fn os_assertions(
     conn: &RustConnection,
     root_window: Window,
-    session: &Session0,
-    app: &Path,
-    shots: &Path,
+    context: OsContext<'_>,
     collector: &mut Collector,
 ) -> Result<()> {
+    let OsContext {
+        session,
+        app,
+        bus,
+        bus_env,
+        shots,
+    } = context;
+    // 托盘宿主先起来，再拉应用：`libayatana-appindicator` 只在**启动时**查一次
+    // `org.kde.StatusNotifierWatcher` 在不在，晚一步声明就等于没有宿主。
+    let tray_host = match bus.as_ref().map(tray::TrayHost::claim) {
+        Some(Ok(host)) => Some(host),
+        Some(Err(error)) => {
+            emit(&format!("  托盘宿主声明不下来：{error}"));
+            None
+        }
+        None => None,
+    };
+
     let mut command = Command::new(app);
     command
         .env("DISPLAY", &session.display)
         .env("TAURI_WEBVIEW_AUTOMATION", "false")
-        .env("YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK", "1");
+        .env("YUNJIAN_DISABLE_STARTUP_UPDATE_CHECK", "1")
+        .envs(merged_env(library_env(app), bus_env));
     let mut app_process = Background::spawn("yunjian-desktop", &mut command)?;
+
+    let tray_item = tray_host.as_ref().and_then(tray::TrayHost::wait_for_item);
+    let tray_host = tray_host.as_ref();
+    let tray_item = tray_item.as_ref();
 
     let window = wait_for_window(conn, root_window);
     let Some(window) = window else {
@@ -674,19 +999,9 @@ fn os_assertions(
         }
         // 任务栏图标不依赖 WebView 绘制：它是窗口管理器读的一条属性，照判。
         taskbar_icon(conn, window, shots, collector)?;
-        tray_icon(collector)?;
-        collector.record(
-            "app_exits_cleanly",
-            Verdict::NotExecuted,
-            "应用的正常退出入口是托盘菜单「退出」；本次 Xvfb + Openbox 会话没有托盘宿主，\
-             harness 无法显示并点击该菜单，未用 kill 信号冒充正常退出",
-            Some(
-                "带 StatusNotifier/AppIndicator 托盘宿主的交互式 Linux 桌面，\
-                 并由 harness 观测托盘项后点击「退出」"
-                    .to_owned(),
-            ),
-            None,
-        )?;
+        // 托盘与正常退出都不经过 WebView 绘制：一条在 D-Bus 上，一条是进程生命周期。
+        tray_icon(tray_host, tray_item, shots, collector)?;
+        app_exits_cleanly(tray_host, tray_item, &mut app_process, collector)?;
         return Ok(());
     }
 
@@ -719,7 +1034,7 @@ fn os_assertions(
     }
 
     taskbar_icon(conn, window, shots, collector)?;
-    tray_icon(collector)?;
+    tray_icon(tray_host, tray_item, shots, collector)?;
 
     let mut enigo = Enigo::new(&Settings {
         x11_display: Some(session.display.clone()),
@@ -970,18 +1285,7 @@ fn os_assertions(
         &shot,
     )?;
 
-    collector.record(
-        "app_exits_cleanly",
-        Verdict::NotExecuted,
-        "应用的正常退出入口是托盘菜单「退出」；本次 Xvfb + Openbox 会话没有托盘宿主，\
-         harness 无法显示并点击该菜单，未用 kill 信号冒充正常退出",
-        Some(
-            "带 StatusNotifier/AppIndicator 托盘宿主的交互式 Linux 桌面，\
-             并由 harness 观测托盘项后点击「退出」"
-                .to_owned(),
-        ),
-        None,
-    )?;
+    app_exits_cleanly(tray_host, tray_item, &mut app_process, collector)?;
     Ok(())
 }
 
@@ -1352,20 +1656,251 @@ fn taskbar_icon(
 /// # Errors
 ///
 /// 记录裁决失败（harness 自身的缺陷）。
-fn tray_icon(collector: &mut Collector) -> Result<()> {
-    collector.record(
-        "tray_icon_correct",
-        Verdict::NotExecuted,
-        "应用已通过 `TrayIconBuilder` 创建托盘图标，但本次 Xvfb + Openbox 会话没有\
-         StatusNotifier/AppIndicator 托盘宿主，harness 因而没有可观测的托盘项；\
-         图标资产透明度仍由 `xtask verify-icons` 逐字节守卫",
-        Some(
-            "带 StatusNotifier/AppIndicator 托盘宿主的交互式 Linux 桌面，\
-             并由 harness 从托盘协议侧观测图标"
-                .to_owned(),
-        ),
-        None,
-    )
+/// 托盘图标：从**托盘协议侧**观测应用真的发布了什么。
+///
+/// 不判像素：Linux 上托盘项的图标由宿主按 `IconThemePath` + `IconName` 去取，
+/// 屏幕上那几个像素是宿主画的，判它等于在判宿主。这里判的是应用这一侧可被观测到的
+/// 三件事——托盘项注册了、图标文件存在且解得开、背景真的是透明的。
+///
+/// 透明度**在这里也真的解码一遍**，不只依赖 `xtask verify-icons`：那条守的是仓库里
+/// 的资产，而本条要证明的是**运行期那个进程实际交出去的**那份图标。两者可以不同
+/// （`tray-icon` 会把内嵌图片重新写到 `$XDG_RUNTIME_DIR` 下的一个临时 PNG）。
+fn tray_icon(
+    host: Option<&tray::TrayHost>,
+    item: Option<&tray::TrayItem>,
+    shots: &Path,
+    collector: &mut Collector,
+) -> Result<()> {
+    let (Some(host), Some(item)) = (host, item) else {
+        collector.record(
+            "tray_icon_correct",
+            Verdict::NotExecuted,
+            "本次会话没有可观测的托盘项：harness 已在会话总线上声明 \
+             `org.kde.StatusNotifierWatcher` 并等待注册，但应用在等待窗口内没有发起 \
+             `RegisterStatusNotifierItem`",
+            Some(
+                "一个 `libayatana-appindicator` 能连上的 session 总线，\
+                 且宿主名在应用启动**之前**已被声明"
+                    .to_owned(),
+            ),
+            None,
+        )?;
+        return Ok(());
+    };
+
+    let icon_name = host.property(item, "IconName").unwrap_or_default();
+    let theme_path = host.property(item, "IconThemePath").unwrap_or_default();
+    let status = host.property(item, "Status").unwrap_or_default();
+    let path = resolve_tray_icon(&icon_name, &theme_path);
+
+    let Some(path) = path else {
+        collector.record(
+            "tray_icon_correct",
+            Verdict::Fail,
+            format!(
+                "托盘项已注册，但它公开的图标定位不到文件：`IconName`=「{icon_name}」、\
+                 `IconThemePath`=「{theme_path}」"
+            ),
+            None,
+            None,
+        )?;
+        return Ok(());
+    };
+
+    // 证据就是那张图本身：托盘图标在这块 Xvfb 上没有面板去画它，而**应用运行期实际
+    // 交出去的那个 PNG** 恰好是这条断言的被观测对象，所以把它原样收进报告目录。
+    // 截一张空桌面的图会是一张不能证明任何事的图。
+    let shot = shots.join("tray-icon.png");
+    let copied = std::fs::copy(&path, &shot).is_ok();
+    let shot_ref = copied.then(|| relative_shot(&shot));
+
+    match transparent_pixel_ratio(&path) {
+        Ok((width, height, ratio)) if ratio > 0.0 => collector.record(
+            "tray_icon_correct",
+            Verdict::Pass,
+            format!(
+                "托盘项已在会话总线上注册（`Status`=「{status}」），\
+                 运行期图标为 {}（{width}×{height}），\
+                 其中 {:.1}% 的像素 alpha 为 0，背景确为透明",
+                path.display(),
+                ratio * 100.0
+            ),
+            None,
+            shot_ref.clone(),
+        )?,
+        Ok((width, height, _)) => collector.record(
+            "tray_icon_correct",
+            Verdict::Fail,
+            format!(
+                "托盘项已注册，但运行期图标 {}（{width}×{height}）没有任何 alpha 为 0 的像素，\
+                 即背景不透明——在深色面板上会显示成一个色块",
+                path.display()
+            ),
+            None,
+            shot_ref.clone(),
+        )?,
+        Err(error) => collector.record(
+            "tray_icon_correct",
+            Verdict::Fail,
+            format!(
+                "托盘项已注册，但运行期图标 {} 解码失败：{error}",
+                path.display()
+            ),
+            None,
+            shot_ref.clone(),
+        )?,
+    }
+    Ok(())
+}
+
+/// `IconName` 可能是一个绝对路径（`tray-icon` 就是这么给的），也可能是主题里的一个名字。
+fn resolve_tray_icon(icon_name: &str, theme_path: &str) -> Option<PathBuf> {
+    let direct = PathBuf::from(icon_name);
+    if direct.is_file() {
+        return Some(direct);
+    }
+    let in_theme = PathBuf::from(theme_path).join(format!("{icon_name}.png"));
+    in_theme.is_file().then_some(in_theme)
+}
+
+/// 解码 PNG 并数出 alpha 为 0 的像素占比。
+fn transparent_pixel_ratio(path: &Path) -> Result<(u32, u32, f64)> {
+    let file =
+        std::fs::File::open(path).with_context(|| format!("打开 {} 失败", path.display()))?;
+    let decoder = png::Decoder::new(std::io::BufReader::new(file));
+    let mut reader = decoder.read_info().context("读 PNG 头失败")?;
+    let size = reader
+        .output_buffer_size()
+        .context("PNG 声明的输出缓冲区大小超出本机可表示范围")?;
+    let mut buffer = vec![0; size];
+    let info = reader.next_frame(&mut buffer).context("解 PNG 帧失败")?;
+    if info.color_type != png::ColorType::Rgba {
+        bail!(
+            "托盘图标不是 RGBA，无法判断透明度（实际 {:?}）",
+            info.color_type
+        );
+    }
+    let channels = 4;
+    let total = (info.width as usize) * (info.height as usize);
+    let frame = info.buffer_size();
+    let transparent = buffer[..frame]
+        .chunks_exact(channels)
+        .filter(|pixel| pixel[3] == 0)
+        .count();
+    #[allow(clippy::cast_precision_loss)]
+    let ratio = transparent as f64 / total as f64;
+    Ok((info.width, info.height, ratio))
+}
+
+/// 正常退出：从托盘菜单点「退出」，等进程自己结束。
+///
+/// **不用 kill 信号冒充**。产品的正常退出入口就是这一项（`tray.rs` 里
+/// `TrayAction::Quit` → `app.exit(0)`），而关窗按契约是隐藏到托盘。发一个信号能让进程
+/// 消失，但那证明的是内核会杀进程，不是产品能正常退出。
+fn app_exits_cleanly(
+    host: Option<&tray::TrayHost>,
+    item: Option<&tray::TrayItem>,
+    app_process: &mut Background,
+    collector: &mut Collector,
+) -> Result<()> {
+    let (Some(host), Some(item)) = (host, item) else {
+        collector.record(
+            "app_exits_cleanly",
+            Verdict::NotExecuted,
+            "应用的正常退出入口是托盘菜单「退出」；本次会话没有可观测的托盘项，\
+             harness 因而无法点到那一项，未用 kill 信号冒充正常退出",
+            Some(
+                "一个应用会向其注册托盘项的 session 总线（harness 自带 \
+                 `org.kde.StatusNotifierWatcher`，需在应用启动前声明）"
+                    .to_owned(),
+            ),
+            None,
+        )?;
+        return Ok(());
+    };
+
+    let entries = match host.menu_entries(item) {
+        Ok(entries) => entries,
+        Err(error) => {
+            collector.record(
+                "app_exits_cleanly",
+                Verdict::Fail,
+                format!("托盘项已注册，但读不出它的菜单布局：{error}"),
+                None,
+                None,
+            )?;
+            return Ok(());
+        }
+    };
+    let labels: Vec<&str> = entries.iter().map(|entry| entry.label.as_str()).collect();
+    let Some(quit) = entries.iter().find(|entry| entry.label == "退出") else {
+        collector.record(
+            "app_exits_cleanly",
+            Verdict::Fail,
+            format!(
+                "托盘菜单里没有「退出」这一项，实际有：{}",
+                labels.join("、")
+            ),
+            None,
+            None,
+        )?;
+        return Ok(());
+    };
+
+    host.activate(item, quit.id)?;
+    match tray::wait_for_exit(&mut app_process.child)? {
+        Some(0) => {
+            let orphans = orphan_processes();
+            if orphans.is_empty() {
+                collector.record(
+                    "app_exits_cleanly",
+                    Verdict::Pass,
+                    format!(
+                        "从托盘菜单点「退出」（菜单项 id {}，实际菜单为 {}）后，\
+                         应用以退出码 0 结束，且没有留下同名孤儿进程",
+                        quit.id,
+                        labels.join("、")
+                    ),
+                    None,
+                    None,
+                )?;
+            } else {
+                collector.record(
+                    "app_exits_cleanly",
+                    Verdict::Fail,
+                    format!(
+                        "从托盘菜单点「退出」后主进程以 0 结束，但还留着 {} 个同名进程：{}",
+                        orphans.len(),
+                        orphans.join("、")
+                    ),
+                    None,
+                    None,
+                )?;
+            }
+        }
+        Some(code) => collector.record(
+            "app_exits_cleanly",
+            Verdict::Fail,
+            format!("从托盘菜单点「退出」后应用以退出码 {code} 结束，不是 0"),
+            None,
+            None,
+        )?,
+        None => collector.record(
+            "app_exits_cleanly",
+            Verdict::Fail,
+            "从托盘菜单点「退出」后应用在等待窗口内没有结束".to_owned(),
+            None,
+            None,
+        )?,
+    }
+    Ok(())
+}
+
+fn orphan_processes() -> Vec<String> {
+    super::running_app_pids()
+        .into_iter()
+        .map(|pid| format!("pid {pid}"))
+        .collect()
 }
 
 #[cfg(test)]
