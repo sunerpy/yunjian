@@ -863,6 +863,10 @@ fn stub_session() -> SessionFacts {
 /// 用 `sh -c` 造一棵同形态的进程树而不是真起 `tauri-driver`：要守的是
 /// [`Background`] 的拆除语义，而它与那个具体程序无关；真起 driver 还会让这条用例
 /// 依赖宿主机装了什么。
+///
+/// 只在 unix 上跑：它要 `sh`、要信号语义、还要读 `/proc` 认领进程。Windows 上这三样
+/// 都不成立，而桌面验收本身也只在 Linux 上执行。
+#[cfg(unix)]
 #[test]
 fn dropping_a_background_process_reaps_its_child() {
     let marker = std::env::temp_dir().join(format!("yunjian-reap-{}", std::process::id()));
@@ -897,6 +901,7 @@ fn dropping_a_background_process_reaps_its_child() {
 /// 还有没有进程持有那棵探针进程树。
 ///
 /// 按命令行里的 marker 路径认领进程，而不是按进程名：探针是 `sh`，宿主机上到处都是 `sh`。
+#[cfg(unix)]
 fn marker_owner_alive(marker: &std::path::Path) -> bool {
     let needle = marker.display().to_string();
     let Ok(entries) = fs::read_dir("/proc") else {

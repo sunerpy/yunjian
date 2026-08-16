@@ -992,6 +992,12 @@ impl Background {
     }
 
     /// 发一个 SIGTERM。标准库没有这个能力（`Child::kill` 只发 SIGKILL），所以只能走 FFI。
+    ///
+    /// **只在 unix 上存在**：`libc::kill` 与 SIGTERM 都是 POSIX 的东西，Windows 上没有
+    /// 对应物（那里要 `GenerateConsoleCtrlEvent` 或直接 `TerminateProcess`，语义也不同）。
+    /// 桌面验收本身只在 Linux 上执行（x11rb、`/proc`、D-Bus），但这个 crate 在三个平台
+    /// 都要能编过——本机只跑 Linux 而漏了这一点，CI 的 `Test (Windows)` 逮到了它。
+    #[cfg(unix)]
     #[allow(
         unsafe_code,
         reason = "标准库不提供发 SIGTERM 的接口，而直接 SIGKILL 会让被托管进程来不及\
@@ -1009,6 +1015,13 @@ impl Background {
             libc::kill(pid, libc::SIGTERM);
         }
     }
+
+    /// 非 unix 上没有 SIGTERM 可发，直接进 SIGKILL 那一步。
+    ///
+    /// 这不会让 Windows 上悄悄多一条泄漏：桌面验收只在 Linux 上执行，
+    /// 这里存在的唯一理由是让 crate 在三平台都编得过。
+    #[cfg(not(unix))]
+    fn terminate(&mut self) {}
 
     /// [`Background::spawn`] 把两个输出都接到 null，而托盘用的 `dbus-daemon` 必须把总线
     /// 地址打到 stdout 上，所以它由调用方自己 spawn、再交给这里托管拆除。
