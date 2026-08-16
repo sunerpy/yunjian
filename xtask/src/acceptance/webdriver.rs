@@ -316,6 +316,44 @@ impl Session {
         std::fs::write(path, bytes).with_context(|| format!("写 {} 失败", path.display()))
     }
 
+    /// 只截 `css` 那个元素，并把图写到 `path`。
+    ///
+    /// 一张截不到失败文字的截图不是证据。实测过这个形态：`shipped_appreciation_without_key`
+    /// 与 `corpus_first_run_materialization` 两条 FAIL 的整屏截图都只拍到首屏——赏析面板与
+    /// 语料错误都在折叠线以下，图里能看到前置条件成立，却看不到那句判词。
+    ///
+    /// **本机实测：WebKitGTK 的这个端点返回一块纯黑矩形**，比整屏截图更没有信息量。
+    /// 所以调用方必须把它当成「可能拿不到」的一路，失败时退回整屏截图。规范上它应当先把
+    /// 元素滚进视口再截，但这个实现并没有把内容合成进去。
+    ///
+    /// 保留它是因为那块黑图本身也是一条**可复现的实测结论**，删掉等于让后人再试一次；
+    /// 而 Windows / macOS 的驱动换成别的实现时它可能是可用的。
+    ///
+    /// **刻意不引入脚本执行能力**（`/execute/sync` + `scrollIntoView`）：一条能在被测页面里
+    /// 跑任意 JS 的通道迟早会被用来「顺手」造出一个断言想要的状态，那时报告就不再是在
+    /// 证明产品自己做到了什么。
+    ///
+    /// # Errors
+    ///
+    /// 元素不存在、请求失败、响应不是 base64，或写文件失败。
+    pub(crate) fn screenshot_element(&self, css: &str, path: &std::path::Path) -> Result<()> {
+        let element = self.find(css)?;
+        let value = self.get_json(&format!(
+            "{}/session/{}/element/{element}/screenshot",
+            self.base, self.id
+        ))?;
+        let encoded = value
+            .get("value")
+            .and_then(Value::as_str)
+            .context("元素截图响应里没有 base64 数据")?;
+        let bytes = decode_base64(encoded).context("元素截图响应不是合法 base64")?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("创建 {} 失败", parent.display()))?;
+        }
+        std::fs::write(path, bytes).with_context(|| format!("写 {} 失败", path.display()))
+    }
+
     fn get_json(&self, url: &str) -> Result<Value> {
         let mut response = self
             .agent
