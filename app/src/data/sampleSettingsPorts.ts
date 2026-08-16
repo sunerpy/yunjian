@@ -13,7 +13,7 @@
  * 替身也遵守「读回密钥的方法不存在」这条契约，否则替身会变成绕过契约的后门。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AiSettings,
   CacheStatus,
@@ -81,7 +81,12 @@ export function createTauriSettingsPorts(): SettingsPorts | null {
 
   const corpus: CorpusPort = {
     corpusStatus: () => invoke<CorpusStatus>(SETTINGS_IPC_COMMANDS.corpusStatus),
-    fetchCorpus: () => invoke<CorpusStatus>(SETTINGS_IPC_COMMANDS.fetchCorpus),
+    fetchCorpus: () => {
+      // `fetch_corpus` 的 Rust 签名把进度 Channel 作为必需参数。设置面板暂不渲染进度，
+      // 但仍必须把 Channel 交给 Tauri，否则命令在参数反序列化阶段就会失败。
+      const onEvent = new Channel<unknown>();
+      return invoke<CorpusStatus>(SETTINGS_IPC_COMMANDS.fetchCorpus, { onEvent });
+    },
   };
 
   const models: ModelPort = {

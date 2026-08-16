@@ -352,6 +352,35 @@ describe("失败与返回", () => {
     expect(screen.getByTestId("commentary-citation")).toBeDefined();
   });
 
+  it("AI 端口返回结构化错误时保留 code、message 与 hint", async () => {
+    const poemPort: PoemPort = {
+      poemDetail: () => Promise.resolve(detailFixture()),
+      poemAnnotations: (request) =>
+        Promise.resolve({ poem_id: request.poem_id, lines: [], coverage: EMPTY_COVERAGE }),
+    };
+    render(
+      <PoemDetailScreen
+        poemId="p-1"
+        poemPort={poemPort}
+        appreciationPort={{
+          appreciate: () =>
+            Promise.reject({
+              code: "provider_unavailable",
+              message: "AI 服务不可用",
+              hint: "请检查服务商设置",
+            }),
+        }}
+        onBack={vi.fn()}
+      />,
+    );
+    await settled();
+    await waitFor(() => {
+      expect(screen.getByTestId("ai-failed").textContent).toBe(
+        "[provider_unavailable] AI 服务不可用；请检查服务商设置",
+      );
+    });
+  });
+
   it("返回按钮回调", async () => {
     const { onBack } = mount(detailFixture());
     await settled();
