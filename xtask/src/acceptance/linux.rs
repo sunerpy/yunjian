@@ -82,6 +82,7 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
                 detail: "产物不可用，未尝试握手。".to_owned(),
             },
             audio_input_devices: 0,
+            audio_capture: "无可用显示，未进入会话，没有做真实采集探测".to_owned(),
         });
     }
 
@@ -96,6 +97,13 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
     let root_window = conn.setup().roots[session.screen].root;
     let wm = window_manager_name(&conn, root_window);
     let audio = audio_input_devices();
+    // 采集探测放在起任何应用之前：设备是独占资源，一个已经占着它的进程会让探测
+    // 得出「打不开」，而那句判词说的是占用而不是这台机器有没有可录的输入。
+    let capture = capture_probe();
+    emit(&format!(
+        "  音频：非 monitor 输入设备 {audio} 个；{}",
+        capture.detail
+    ));
 
     // 一条自建的 session 总线，供本次验收里所有子进程共用。
     //
@@ -136,7 +144,7 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
             "voice_round_succeeds_end_to_end",
         ],
         collector,
-        |driver, collector| dom::drive_primary(driver, &shots, audio, collector),
+        |driver, collector| dom::drive_primary(driver, &shots, &capture, collector),
     );
     let primary_ok = primary_ok?;
     probe_facts.get_or_insert(WebDriverProbe {
@@ -182,6 +190,7 @@ pub(crate) fn execute(root: &Path, collector: &mut Collector) -> Result<SessionF
             detail: "未记录握手结果。".to_owned(),
         }),
         audio_input_devices: audio,
+        audio_capture: capture.detail,
     })
 }
 
@@ -689,12 +698,87 @@ fn audio_input_devices() -> usize {
             String::from_utf8_lossy(&out.stdout)
                 .lines()
                 .filter(|line| !line.trim().is_empty())
-                // `.monitor` 是输出的回环监听，不是麦克风。把它算成输入设备就会
-                // 得出「有麦克风」这个假结论，而随后的采集必然拿到静音。
+                // `.monitor` 是输出的回环监听，不是麦克风。这个计数刻意排除它，
+                // 因为它回答的是「这台机器上有几个麦克风」。
+                //
+                // 但**它不再是语音那条断言能不能执行的判据**：见 [`capture_probe`]。
+                // 一个喂了信号的 monitor 源确实可以采到非静音音频，此时把语音一轮记成
+                // 未执行是低报；而反过来，凭「有一个源」就宣称有麦克风是高报。
+                // 两个方向都错，所以判据换成一次真实采集的实测值。
                 .filter(|line| !line.contains(".monitor"))
                 .count()
         })
         .unwrap_or(0)
+}
+
+pub(crate) struct CaptureProbe {
+    pub(crate) detail: String,
+    /// 采到了非静音音频。这才是语音一轮能不能执行的判据。
+    pub(crate) usable: bool,
+}
+
+/// 真的开一次默认输入设备，录一秒，量它的采样率、声道数与 RMS。
+///
+/// 为什么不用设备计数当判据：**两个方向都会错**。本机实测，唯一的源是
+/// `auto_null.monitor`（`pactl` 计数为 0 个非 monitor 源），而
+/// `capture::capture_default` 在它上面采到 16000 Hz / 1 声道 / RMS≈0.026 的非静音音频
+/// ——因为 `module-sine` 正往那个 sink 里喂 440 Hz。所以：
+///
+/// - 只看非 monitor 计数会把一个**真的能录音**的会话记成未执行（低报）；
+/// - 反过来把 `.monitor` 计进设备数，则会在没喂信号时宣称有麦克风，而随后必然采到静音
+///   （高报，且下一条判词会指向没坏的东西）。
+///
+/// 唯一不会错的是直接问「录到了什么」。RMS 是那个问题的答案，因此它必须出现在判词里
+/// ——一句「有麦克风」证不了任何事。
+///
+/// 阈值与 `crates/yunjian-voice/tests/capture.rs` 的 `SILENCE_FLOOR` 一致，只排除
+/// 「一个字节都没录到」，不给信号强度设门。
+#[cfg(feature = "capture")]
+fn capture_probe() -> CaptureProbe {
+    use yunjian_voice::capture;
+
+    const SILENCE_FLOOR: f32 = 1e-4;
+    const SECOND: Duration = Duration::from_secs(1);
+
+    match capture::capture_default(SECOND) {
+        Ok(got) => {
+            let rms = got.rms();
+            let usable = rms > SILENCE_FLOOR;
+            CaptureProbe {
+                detail: format!(
+                    "真实采集一秒成功：设备「{}」，设备原生 {} Hz {} 声道，\
+                     归一到 {} Hz {} 声道后 RMS={rms:.6}（静音阈值 {SILENCE_FLOOR:.0e}），\
+                     因此本会话{}",
+                    got.device,
+                    got.device_sample_rate,
+                    got.device_channels,
+                    got.sample_rate,
+                    got.channels,
+                    if usable {
+                        "确实能录到非静音音频"
+                    } else {
+                        "只能录到静音"
+                    }
+                ),
+                usable,
+            }
+        }
+        Err(error) => CaptureProbe {
+            detail: format!("真实采集一秒失败：{error}"),
+            usable: false,
+        },
+    }
+}
+
+/// 没开 `capture` 特性时如实说明判据缺失，**绝不据此宣称能录音**。
+#[cfg(not(feature = "capture"))]
+fn capture_probe() -> CaptureProbe {
+    CaptureProbe {
+        detail: "本次 xtask 未开 `capture` 特性，没有做真实采集探测；\
+                 用 `cargo run -p xtask --features capture -- acceptance` 才会做"
+            .to_owned(),
+        usable: false,
+    }
 }
 
 /// 首启语料物化那一条会话：把 `HOME` 换成一个空目录，只把生产路径要读的 `.db.gz`

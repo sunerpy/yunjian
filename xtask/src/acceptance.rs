@@ -345,8 +345,12 @@ pub(crate) struct SessionFacts {
     pub(crate) window_manager: Option<String>,
     /// WebDriver 握手探测结果。
     pub(crate) webdriver: WebDriverProbe,
-    /// 音频输入设备数。0 意味着语音端到端那条必然 NOT EXECUTED。
+    /// 非 monitor 音频输入设备数。**它不是语音那条能不能执行的判据**，
+    /// 判据是 `audio_capture` 那次真实采集的结果——一个喂了信号的 monitor 源
+    /// 在这个计数为 0 时照样能录到非静音音频。
     pub(crate) audio_input_devices: usize,
+    /// 一次真实采集一秒的实测判词（设备、采样率、声道数、RMS）。
+    pub(crate) audio_capture: String,
 }
 
 /// WebDriver 握手探测。**探测结果本身就是证据**：它是「UI 断言为何未执行」这句话的依据。
@@ -547,6 +551,7 @@ pub(crate) fn run(platform: &str, set: &str) -> Result<()> {
                     detail: reason.to_owned(),
                 },
                 audio_input_devices: 0,
+                audio_capture: "未进入桌面执行器，没有做真实采集探测".to_owned(),
             }
         }
         Platform::Android | Platform::Ios => unreachable!("移动平台已在进入桌面执行器前拒绝"),
@@ -750,9 +755,10 @@ fn render_markdown(report: &Report) -> String {
     );
     let _ = writeln!(
         out,
-        "| 音频输入设备 | {} |",
+        "| 非 monitor 音频输入设备 | {} |",
         report.session.audio_input_devices
     );
+    let _ = writeln!(out, "| 真实采集探测 | {} |", report.session.audio_capture);
     let _ = writeln!(out);
 
     if report.session.display_kind == "virtual" {

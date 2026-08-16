@@ -67,7 +67,11 @@ dirs = { workspace = true }
 [features]
 default = []
 # 开启后 `cer-spike` 才真的合成与识别；不开则如实写 NOT MEASURED。
-voice = ["yunjian-voice/voice"]
+voice = ["yunjian-voice/voice", "capture"]
+# 开启后 `acceptance` 才真的开一次输入设备录一秒，用实测 RMS 判断这个会话能不能录音。
+# 不开则如实写「没有做真实采集探测」，**绝不据此宣称能录音**。
+# 只拉 `rodio`（MIT/Apache-2.0），不碰 sherpa-onnx，因此这一条不触发 GPL-3.0。
+capture = ["yunjian-voice/capture"]
 
 [lints]
 workspace = true

@@ -849,6 +849,7 @@ fn stub_session() -> SessionFacts {
             detail: "测试桩".to_owned(),
         },
         audio_input_devices: 0,
+        audio_capture: "测试桩".to_owned(),
     }
 }
 

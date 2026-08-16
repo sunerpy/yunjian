@@ -147,7 +147,7 @@ impl SessionEnv {
 pub(crate) fn drive_primary(
     driver: &Session,
     shots: &Path,
-    audio_inputs: usize,
+    capture: &super::linux::CaptureProbe,
     collector: &mut Collector,
 ) -> Result<()> {
     let mounted = driver.wait_for(SEARCH_INPUT, MOUNT_TIMEOUT);
@@ -194,17 +194,18 @@ pub(crate) fn drive_primary(
             "一次 React 首屏挂载成功的会话",
         )
     };
-    record(
+    record_focused(
         driver,
         collector,
         "shipped_appreciation_without_key",
         appreciation,
         shots,
         "shipped-appreciation.png",
+        Some("[data-testid='ai-panel']"),
     )?;
 
     let voice = if mounted {
-        voice_round(driver, audio_inputs)
+        voice_round(driver, capture)
     } else {
         Outcome::not_executed(
             "首屏未挂载，无法进入背诵页",
@@ -229,13 +230,22 @@ pub(crate) fn drive_first_run(
     collector: &mut Collector,
 ) -> Result<()> {
     let outcome = corpus_first_run(driver);
-    record(
+    // 语料那条的判词在设置弹窗里的折叠线以下。聚焦到语料区那三种终态各自的元素：
+    // 失败时是 `corpus-error`，成功时是 `corpus-facts`，都还没出现时退回 `fetch-corpus`
+    // 那个按钮。**没有 `corpus-panel` 这个 testid**——凭记忆写标识符正是本项目栽过的那一类，
+    // 这三个名字逐一 grep 自 `app/src/settings/CorpusPanel.tsx`。
+    let focus = ["corpus-error", "corpus-facts", "fetch-corpus"]
+        .into_iter()
+        .map(|id| format!("[data-testid='{id}']"))
+        .find(|css| driver.find(css).is_ok());
+    record_focused(
         driver,
         collector,
         "corpus_first_run_materialization",
         outcome,
         shots,
         "corpus-first-run.png",
+        focus.as_deref(),
     )
 }
 
@@ -656,7 +666,7 @@ enum Appreciation {
 /// CER 77.01%，所以 v1 不做机器自动评分，反馈只有「是否开口 / 停顿 / 相对节奏」，
 /// FSRS 等级由用户自选。因此本条要求的是那三项反馈都渲染出来，且旁边那句
 /// 「不做机器评分」的口径说明在场——如果哪天报告里冒出一个完整度分数，那才是缺陷。
-fn voice_round(driver: &Session, audio_inputs: usize) -> Outcome {
+fn voice_round(driver: &Session, capture: &super::linux::CaptureProbe) -> Outcome {
     let observed = (|| -> Result<VoiceRound> {
         enter_voice_mode(driver)?;
         match voice_phase(driver)? {
@@ -752,14 +762,28 @@ fn voice_round(driver: &Session, audio_inputs: usize) -> Outcome {
                      （该特性同时是许可边界，见 `docs/VOICE-BUILD.zh.md`），\
                      并提供一个非 monitor 的可采集输入设备",
                 )
+            } else if capture.usable && is_input_device_reason(&reason) {
+                // 采集探测已经**实测**这个会话能录到非静音音频，而应用却说打不开麦克风
+                // 或没有麦克风：这两句话不可能同时为真，所以这是产品缺陷而不是环境阻塞。
+                //
+                // 这条分支正是把「.monitor 该不该算设备」从一个口径问题变成一个可判定
+                // 事实的地方：判据不是设备名长什么样，是同一台机器上刚刚录到了什么。
+                Outcome::fail(format!(
+                    "语音降级为「{reason}」，但本会话的采集探测是成功的——{}。\
+                     同一台机器上 harness 刚刚录到了非静音音频，应用却报打不开或没有输入设备，\
+                     两者不可能同时为真，故记产品缺陷而非环境阻塞。判词：「{}」",
+                    capture.detail,
+                    one_line(&message)
+                ))
             } else {
                 Outcome::not_executed(
                     format!(
                         "语音降级为「{reason}」，因此这一轮没有采集与识别可判；\
-                         本次探测到的非 monitor 音频输入设备数为 {audio_inputs}。判词：「{}」",
+                         采集探测结果：{}。判词：「{}」",
+                        capture.detail,
                         one_line(&message)
                     ),
-                    "一个语音模型就绪且有非 monitor 可采集输入设备的会话",
+                    "一个语音模型就绪、且真实采集探测能录到非静音音频的会话",
                 )
             }
         }
@@ -773,6 +797,23 @@ fn voice_round(driver: &Session, audio_inputs: usize) -> Outcome {
         )),
         Err(error) => Outcome::fail(format!("驱动语音一轮失败：{error}")),
     }
+}
+
+/// 降级原因是否在说「输入设备本身不可用」。
+///
+/// 只有这几个原因与采集探测的结论**直接矛盾**，因此只有它们会在探测成功时升为 FAIL。
+/// 其余原因（模型未就绪、未编译语音、这一次录音未被识别接受……）与「能不能录到声音」
+/// 是两件事，探测成功也不能据以判定它们错了。名单逐字取自
+/// `app/src/contracts/voice.ts` 的 `DEGRADE_REASON_LABEL`。
+fn is_input_device_reason(reason: &str) -> bool {
+    const DEVICE_REASONS: [&str; 5] = [
+        "没有可用的麦克风",
+        "麦克风打开失败",
+        "麦克风被占用",
+        "麦克风授权被拒绝",
+        "尚未获得麦克风授权",
+    ];
+    DEVICE_REASONS.contains(&reason)
 }
 
 enum VoiceRound {
@@ -981,9 +1022,42 @@ fn record(
     shots: &Path,
     file: &str,
 ) -> Result<()> {
+    record_focused(driver, collector, id, outcome, shots, file, None)
+}
+
+/// 同 [`record`]，但当 `focus` 给了一个选择器时只截那个元素。
+///
+/// 判词落在折叠线以下的断言必须用它：整屏截图会拍到前置条件成立而拍不到那句判词，
+/// 于是报告里那一列指向的是一张证明不了裁决的图。
+fn record_focused(
+    driver: &Session,
+    collector: &mut Collector,
+    id: &str,
+    outcome: Outcome,
+    shots: &Path,
+    file: &str,
+    focus: Option<&str>,
+) -> Result<()> {
     let path = shots.join(file);
-    let shot = driver
-        .screenshot(&path)
+    // 聚焦截图**先试、并校验它真的拍到了东西**，拍不到就退回整屏。
+    //
+    // 本机实测 WebKitGTK 的元素截图端点返回一块纯黑矩形（418 字节的 PNG），
+    // 它「成功」了却什么都没证明——比整屏截图更差。所以这里不能只看 `is_ok()`：
+    // 那正是「退出码 0 不等于验收通过」在截图上的同一个形态。
+    let captured = match focus {
+        Some(css) => driver
+            .screenshot_element(css, &path)
+            .and_then(|()| {
+                if screenshot_has_content(&path) {
+                    Ok(())
+                } else {
+                    anyhow::bail!("元素截图是一块纯色，没有拍到内容")
+                }
+            })
+            .or_else(|_| driver.screenshot(&path)),
+        None => driver.screenshot(&path),
+    };
+    let shot = captured
         .is_ok()
         .then(|| format!("{}/{file}", super::linux::SHOT_DIR));
     collector.record(
@@ -1089,4 +1163,40 @@ pub(crate) fn with_session(
             Ok(false)
         }
     }
+}
+
+/// 一张 PNG 里是不是真的有内容，而不是一块纯色。
+///
+/// 判据复用 OS 通道那道绘制门的 [`super::screenshot::Paint::painted`]：主色占比 < 95%
+/// 且至少三个占比达 1% 的颜色区域。**刻意不另写一套阈值**——「这张图有没有内容」
+/// 只该有一个判据，两套会在某天给出互相矛盾的结论。
+///
+/// 读不出来时返回 `false`（当作没拍到），因为这一路的作用是决定要不要退回整屏截图，
+/// 而在「不确定」时退回整屏永远不会更差。
+fn screenshot_has_content(path: &Path) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    let Ok(mut reader) = decoder.read_info() else {
+        return false;
+    };
+    let Some(size) = reader.output_buffer_size() else {
+        return false;
+    };
+    let mut buffer = vec![0; size];
+    let Ok(info) = reader.next_frame(&mut buffer) else {
+        return false;
+    };
+    // `Paint::measure` 按 4 字节步进读 RGBA。元素截图是 RGB 或 RGBA，前者要先补齐，
+    // 否则会把相邻像素的通道混起来读，得出一个与图无关的直方图。
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => buffer[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => buffer[..info.buffer_size()]
+            .chunks_exact(3)
+            .flat_map(|px| [px[0], px[1], px[2], 0xFF])
+            .collect(),
+        _ => return false,
+    };
+    super::screenshot::Paint::measure(&rgba).painted()
 }
