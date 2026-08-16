@@ -1,0 +1,11 @@
+[bindings.kotlin]
+package_name = "top.yunjian.mobile"
+cdylib_name = "yunjian_mobile"
+android = true
+kotlin_target_version = "1.9"
+
+[bindings.swift]
+module_name = "YunjianMobile"
+ffi_module_name = "YunjianMobileFFI"
+ffi_module_filename = "YunjianMobileFFI"
+generate_module_map = true

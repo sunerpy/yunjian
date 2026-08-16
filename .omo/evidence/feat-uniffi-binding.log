@@ -1,0 +1,29 @@
+feat/uniffi-native-binding 验证证据
+日期：2026-08-16
+基线：eee73e89fcfc4e742cab65137b192d8826191421
+
+实现范围
+- yunjian-mobile 提供 UniFFI NativeFacade、NativeOperation、NativeAsrOperation 与 NativeEventSink。
+- 长任务同时支持 pull、callback、cancel、close，事件 JSON 与核心/Tauri Channel 契约逐字节一致。
+- 普通 uniffi feature 不引入 GPL 语音依赖；native-voice 显式启用真实 StreamingDualDecoder。
+- Android 通过 YunjianAndroid.initialize(context) 在 KeyStore 前初始化 ndk-context。
+- generate-bindings.sh 可重复生成 Kotlin、Swift、C header 与 modulemap。
+
+成功验证
+- cargo check -p yunjian-mobile --features uniffi：PASS。
+- cargo check -p yunjian-mobile --features native-voice：PASS；仅有 yunjian-voice 既有 unsafe-code 警告。
+- cargo test -p yunjian-mobile --test architecture --test surface：PASS，9 项通过。
+- cargo test -p yunjian-mobile --features uniffi --test uniffi_native：PASS，4 项通过。
+- 协议覆盖 assert_conforms、callback 保序与唯一终态、450 ms 空窗、Tauri JSON 字节一致性。
+- 破坏性注入：删除 Swift 产物时结构测试按预期失败，恢复成功。
+- 破坏性注入：普通 uniffi feature 接入 yunjian-voice/voice 时结构测试按预期失败，恢复成功。
+- lsp_diagnostics：6 个改动 Rust 文件均 No diagnostics found。
+- crates/yunjian-mobile/generate-bindings.sh：PASS。
+- make fmt：PASS。
+- make ci：PASS。
+- git diff --check：PASS。
+
+环境限制
+- cargo check --target aarch64-linux-android 到达 Android 交叉编译阶段后失败：宿主缺少 aarch64-linux-android-clang/Android NDK；不是 Rust 源码诊断。
+- cargo test --workspace --all-features --no-fail-fast 完成其余目标，仅 yunjian-voice/tests/streaming.rs 的 5 项失败；共同原因是本机缺少 sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20 真实模型目录，测试明确声明不跳过。
+- 本机没有 kotlinc、swiftc，因此未执行平台编译器验证；已验证 UniFFI 生成成功和产物结构。
