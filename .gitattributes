@@ -26,3 +26,8 @@ licenses/** -text
 
 # 音频 fixture：git 已按内容判定为二进制，这里显式写出，防止将来某条规则误伤。
 *.wav binary
+
+# 随分发件的许可原文。GPL-3.0 那份的 SHA-256 由
+# `cargo test -p yunjian-cli --test distribution_licenses` 断言，而那条断言会在
+# Windows runner 上跑；`core.autocrlf` 把 LF 换成 CRLF 就必然误报（与上面几条同一个坑）。
+packaging/licenses/*.txt -text

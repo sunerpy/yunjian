@@ -47,6 +47,33 @@ Yunjian is a combined work and must be offered in its entirety under GPL-3.0 (so
 further restrictions). The project is fully open source on GitHub, so the compliance cost is close to
 zero.
 
+### How the obligation travels with the artifact
+
+**Source availability satisfies only half of it; the notice obligation requires the licence text to
+travel with the distributed artifact.** Both artifact classes therefore carry their own licence:
+
+| Artifact                | What ships with it                                                                                                                            | Location inside            |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| CLI archive (GPL-3.0)   | All of [`packaging/licenses/`](../../packaging/licenses/): the MIT text, the GPL-3.0 text, and `NOTICE.md` with attribution and source offers | `licenses/` in the archive |
+| Desktop installer (MIT) | The root [`LICENSE`](../../LICENSE)                                                                                                           | `LICENSE` in the installer |
+
+**The GPL-3.0 text is a verbatim copy of `csukuangfj/espeak-ng`'s `COPYING`** (SHA-256
+`8ceb4b9e…`) — the file that actually governs the code we redistribute, not an arbitrary transcript.
+
+`cargo test -p yunjian-cli --test distribution_licenses` guards this in two layers. The in-repo tests
+guarantee the payload itself is complete and correct (all three files present, the MIT copy
+byte-identical to the root `LICENSE`, the GPL digest unchanged, and no extra files in the directory —
+the workflow copies it wholesale). The release workflow then **unpacks the archive after packing and
+checks each file**, which is a judgement about real artifact bytes; `tar.gz` and `zip` are two
+independent packing paths and each carries its own copy of that check.
+
+**One tauri-bundler trap worth recording** on the desktop side: `bundle.licenseFile` only feeds the
+licence page of dmg / msi / nsis — **deb and AppImage never read it** (in `tauri-bundler`'s
+`linux/debian.rs`, `license` appears only in two SPDX header comments). The only thing deb copies is
+`bundle.resources`, landing under `/usr/lib/<productName>/`, and AppImage is assembled from the deb
+payload so it inherits it. Both fields must be set for the two Linux installers to actually carry a
+licence.
+
 ## Voice model weights (downloaded on demand)
 
 **No weights are in the installer.** Weights are downloaded on demand and verified byte for byte

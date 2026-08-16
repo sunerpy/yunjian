@@ -42,6 +42,29 @@ MIT 单向兼容 GPL-3.0，**所以这不是许可冲突**；但一份开启语�
 整体须按 GPL-3.0 条款提供（源码可得、不得附加限制）。项目本身在 GitHub 上完整开源，
 合规成本几近于零。
 
+### 义务怎么随产物走
+
+**源码可得只满足一半，声明义务要求许可原文随分发物走。** 因此两类产物各自带上许可：
+
+| 产物                  | 随带什么                                                                                                | 落点               |
+| --------------------- | ------------------------------------------------------------------------------------------------------- | ------------------ |
+| 命令行归档（GPL-3.0） | [`packaging/licenses/`](packaging/licenses/) 整目录：MIT 原文、GPL-3.0 原文、`NOTICE.md` 署名与源码去处 | 归档内 `licenses/` |
+| 桌面安装包（MIT）     | 仓库根 [`LICENSE`](LICENSE)                                                                             | 安装包内 `LICENSE` |
+
+**GPL-3.0 原文取自 `csukuangfj/espeak-ng` 的 `COPYING` 原样副本**（SHA-256
+`8ceb4b9e…`），即真正约束我们所再分发的那份代码的文件，不是随便一份抄本。
+
+这件事由 `cargo test -p yunjian-cli --test distribution_licenses` 分两层守住：
+本仓测试保证载荷本身完整正确（三份文件齐全、MIT 副本与根 `LICENSE` 逐字节相同、
+GPL 摘要不变、目录里不许有多余文件——工作流是整目录拷贝），发布工作流则在**打包之后
+解开归档逐个核对**。后者是对真实产物字节的判断，`tar.gz` 与 `zip` 两条独立打包路径各有一份。
+
+**桌面侧有一个 tauri-bundler 的坑值得记**：`bundle.licenseFile` 只喂给 dmg / msi / nsis
+的许可页，**deb 与 AppImage 根本不读它**（`tauri-bundler` 的 `linux/debian.rs` 里
+`license` 只出现在两行 SPDX 文件头注释里）。deb 唯一会复制的是 `bundle.resources`，
+落到 `/usr/lib/<productName>/`，AppImage 从 deb 载荷组装因而也跟着有。
+两个字段都配上，Linux 两种安装包才真的带着许可。
+
 ## 语音模型权重（按需下载）
 
 **安装包里不含任何权重。** 权重按需下载并逐字节校验 SHA-256；仓库里只有身份与许可记录，
