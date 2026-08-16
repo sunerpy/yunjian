@@ -227,6 +227,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev
 
+      # 第 2 层的特性集还会把 `sherpa-rs-sys` 拉进图里，它的 build script 跑 bindgen，
+      # 而 bindgen 要 dlopen `libclang.so`。GitHub 托管的 ubuntu-latest 自带 libclang，
+      # CodeBuild 的 `standard:7.0` 不带——也就是说这一步以前是在白拿托管镜像的预装件。
+      # 缺它时的报错是「Unable to find libclang ... (invalid: [])」，字面上指向 sherpa，
+      # 与 MSRV 毫无关系，极易误判成依赖版本问题。
+      #
+      # 不用 `llvm-config --libdir` 取路径：libclang-dev 不带无版本号的 `llvm-config`，
+      # 实测报 command not found，于是 LIBCLANG_PATH 被写成空串，bindgen 的报错里那个
+      # `(invalid: [])` 正是这么来的。直接找 .so 更稳。做法与 voice-build.yml 一致。
+      - name: 安装 libclang 并导出 LIBCLANG_PATH
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+          SO=$(find /usr/lib/llvm-* -name 'libclang.so*' -print -quit 2>/dev/null || true)
+          if [ -z "$SO" ]; then
+            echo "::error::装了 libclang-dev 却找不到 libclang.so"
+            exit 1
+          fi
+          echo "LIBCLANG_PATH=$(dirname "$SO")" >> "$GITHUB_ENV"
+
       - name: 构建桌面端前端
         run: npm ci && npm run build
         working-directory: app
@@ -288,9 +308,14 @@ jobs:
       # 装到 RUNNER_TEMP 而不是 checkout 目录：解到工作树里会污染仓库，
       # 让后续任何「工作树干净」的断言失效。
       # 下载地址里的 %2F 是必需的——tag 名本身含斜杠（cargo-audit/vX.Y.Z）。
+      # 取 musl 而不是 gnu 产物。gnu 那份链接的是宿主 glibc，实测在 CodeBuild 的
+      # `standard:7.0`（Ubuntu 22.04，glibc 2.35）上报 `version GLIBC_2.38 not found`
+      # ——它在 GitHub 托管的 ubuntu-latest（24.04，glibc 2.39）上能跑纯属宿主够新。
+      # musl 产物静态链接，与宿主 glibc 版本无关，换镜像不会再触发这一类失败。
+      # 仍是 RustSec 官方预编译产物，不引第三方 action、不从源码编译。
       - name: 安装 cargo-audit（RustSec 官方预编译产物）
         run: |
-          DIR="cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}"
+          DIR="cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}"
           URL="https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${CARGO_AUDIT_VERSION}/${DIR}.tgz"
           curl -sSLf -o "${RUNNER_TEMP}/cargo-audit.tgz" "$URL"
           tar xzf "${RUNNER_TEMP}/cargo-audit.tgz" -C "${RUNNER_TEMP}"
