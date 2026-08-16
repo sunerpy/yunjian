@@ -37,6 +37,7 @@ PKG=top.onethinker.yunjian
 TEST_PKG="$PKG.test"
 RUNNER="$TEST_PKG/androidx.test.runner.AndroidJUnitRunner"
 TEST_APK=yunjian-spike-androidtest.apk
+APP_APK=yunjian-spike.apk
 CLASS_PREFIX=top.onethinker.yunjian.spike
 
 p() { printf '\n===== %s =====\n' "$1"; }
@@ -66,7 +67,7 @@ FINGERPRINT=$(adb shell getprop ro.build.fingerprint 2>/dev/null | tr -d '\r\n')
 echo "model=$MODEL release=$RELEASE sdk=$SDK"
 echo "fingerprint=$FINGERPRINT"
 
-p "CRITERION 0 - IS YUNJIAN ACTUALLY INSTALLED"
+p "CRITERION 0 - DID DEVICE FARM INSTALL ITS RE-SIGNED COPY"
 INSTALLED=false
 if adb shell pm list packages 2>/dev/null | grep -q "$PKG"; then
   INSTALLED=true
@@ -80,6 +81,40 @@ if [ "$INSTALLED" != "true" ]; then
   echo "云笺未安装，后续判据无法执行"
   adb shell pm list packages 2>/dev/null | head -30
   mark_all_unavailable app_under_test_not_installed
+  exit 0
+fi
+
+p "DEVICE FARM RE-SIGNED THE APP; REPLACE IT WITH OUR OWN COPY"
+# AWS 文档明写：`Device Farm re-signs the app`，且 `skipAppResign` **只对私有设备有效，
+# 公共设备一律重签**（本项目的设备池是 fleetType PUBLIC）。因此 Device Farm 装上去的
+# 应用带的是它自己的证书，而测试包 zip 里的 APK 不经重签，还是我们的调试证书。
+# 两者不一致时 `am instrument` 报
+#   Permission Denial: ... does not have a signature matching the target
+# 那是第一轮真机实测得到的失败形态，三个类全部 SecurityException。
+#
+# 所以这里卸掉重签的那份，改装测试包里我们自己的两个 APK。**不要以为构建期那道
+# 「两个 APK 同签名」断言能预防它**：重签发生在上传之后，那道断言证明不到这一段。
+if [ ! -f "$APP_APK" ]; then
+  echo "测试包里没有应用 APK：$APP_APK"
+  ls -la
+  measure app_install self_installed false
+  mark_all_unavailable app_apk_missing_from_test_bundle
+  exit 0
+fi
+DF_SIGNER=$(adb shell dumpsys package "$PKG" 2>/dev/null | sed -n 's/.*signatures=\[\([^]]*\)\].*/\1/p' | head -1 | tr -d '\r\n')
+echo "Device Farm 装的那份签名摘要片段：[$DF_SIGNER]"
+adb uninstall "$PKG" 2>&1 | tail -2
+ls -la "$APP_APK"
+# `-t` 允许 testOnly；`-g` 一次性授予运行时权限，省掉判据①的对话框。
+adb install -r -t -g "$APP_APK" 2>&1 | tail -5
+SELF_INSTALLED=false
+if adb shell pm list packages 2>/dev/null | grep -q "$PKG"; then
+  SELF_INSTALLED=true
+fi
+measure app_install self_installed "$SELF_INSTALLED"
+if [ "$SELF_INSTALLED" != "true" ]; then
+  echo "自装应用 APK 失败，判据无法执行"
+  mark_all_unavailable self_install_of_app_apk_failed
   exit 0
 fi
 
