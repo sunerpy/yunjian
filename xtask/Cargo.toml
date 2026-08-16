@@ -54,6 +54,12 @@ yunjian-voice = { path = "../crates/yunjian-voice" }
 # 「点下去之后窗口真的最大化了」只能由窗口管理器维护的 `_NET_WM_STATE` 回答。
 enigo = { workspace = true }
 x11rb = { workspace = true }
+# `acceptance` 的托盘宿主。见工作区 `Cargo.toml` 里那一段：托盘断言缺的是总线上的一个
+# 宿主名字，不是显示硬件。
+zbus = { workspace = true }
+# `acceptance` 的首启物化那条会话要定位本机那份待物化的 `.db.gz`。用与应用**同一个**
+# 目录解析实现，否则 harness 找的那个位置可能不是应用会读的那个。
+dirs = { workspace = true }
 
 [features]
 default = []

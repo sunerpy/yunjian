@@ -8010,6 +8010,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
+ "dirs 6.0.0",
  "enigo",
  "ferrous-opencc",
  "flate2",
@@ -8027,6 +8028,7 @@ dependencies = [
  "yunjian-core",
  "yunjian-corpus",
  "yunjian-voice",
+ "zbus",
  "zip",
 ]
 
