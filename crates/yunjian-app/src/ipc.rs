@@ -799,7 +799,9 @@ enum CorpusProgress {
         corpus_version: String,
     },
     Deriving {
-        detail: String,
+        step: String,
+        done: u64,
+        total: u64,
     },
     DeriveFailed {
         reason: String,
@@ -840,8 +842,15 @@ impl From<MaterializationProgress<'_>> for CorpusProgress {
                 path: path.display().to_string(),
                 corpus_version: corpus_version.to_owned(),
             },
+            // 派生占首启总时长的绝大部分（唐宋规模实测 571.8 s 里 487.5 s 在 n-gram），
+            // 所以这一段就是用户唯一会长时间盯着的进度。`DeriveStep::display_name` 是
+            // 内核为此显式提供的中文步骤名，`done`/`total` 也照原样送出去——原先送
+            // `format!("{progress:?}")` 等于把这三样揉成一句 Rust 调试串，界面除了原样
+            // 打印别无选择。
             MaterializationProgress::Deriving(progress) => Self::Deriving {
-                detail: format!("{progress:?}"),
+                step: progress.step.display_name().to_owned(),
+                done: progress.done,
+                total: progress.total,
             },
             MaterializationProgress::DeriveFailed { reason } => Self::DeriveFailed {
                 reason: reason.to_owned(),

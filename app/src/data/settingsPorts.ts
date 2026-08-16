@@ -38,6 +38,7 @@
 import type {
   AiSettings,
   CacheStatus,
+  CorpusProgressEvent,
   CorpusStatus,
   KeyStatus,
   ModelStatus,
@@ -66,10 +67,23 @@ export interface AiSettingsPort {
   writeAiSettings(settings: AiSettings): Promise<void>;
 }
 
-/** 语料端口。`fetchCorpus` 是「取用/更新」动作，完成后返回新的状态。 */
+/**
+ * 语料端口。`fetchCorpus` 是「取用/更新」动作，完成后返回新的状态。
+ *
+ * # `onEvent` 是必需参数，不是可选的
+ *
+ * 首启物化在唐宋规模上实测 571.8 s（`crates/yunjian-core/src/derive.rs` 的量），
+ * 其中 487.5 s 在 n-gram 那一步。一个九分钟没有任何反馈的按钮与「按下去坏了」不可区分。
+ * Rust 侧 `fetch_corpus` 本来就在逐步上报（`ipc.rs` 的 `Channel<Event<CorpusProgress, Value>>`），
+ * 所以这里把进度汇做成**签名的一部分**：调用方拿不到一个「不接收进度」的重载，
+ * 于是「把进度丢掉」这件事在类型层就写不出来。
+ *
+ * 这与 [`VoicePort.startSession`] 的做法一致（`data/voicePorts.ts`），也与本文件顶上
+ * 「读回密钥的方法不存在」同一路——**让错误无从表达**，而不是在注释里嘱咐。
+ */
 export interface CorpusPort {
   corpusStatus(): Promise<CorpusStatus>;
-  fetchCorpus(): Promise<CorpusStatus>;
+  fetchCorpus(onEvent: (event: CorpusProgressEvent) => void): Promise<CorpusStatus>;
 }
 
 /** 模型端口。 */

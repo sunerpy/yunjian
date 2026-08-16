@@ -253,3 +253,98 @@
 .settings-facts dd.settings-facts__number {
   font-family: var(--font-mono);
 }
+
+/* ============================== 物化进度 ============================== */
+
+/*
+ * 只用既有令牌，与本文件开头那条规矩一致：`styles.css` 的 `__tests__/theme.test.ts`
+ * 断言浅色与深色的 `--color-*` 集合必须相等，往那里加一组新令牌要同时改两处共享代码。
+ * 进度条的槽用 `--color-border`（两套主题都有），已完成那段用 `--color-accent`。
+ */
+.corpus-progress {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.corpus-progress__stage {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+/* 百分比等宽：它每秒都在变，比例字体下数字宽度不同会让整行左右抖。 */
+.corpus-progress__percent {
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.corpus-progress__track {
+  block-size: var(--space-2);
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.corpus-progress__bar {
+  block-size: 100%;
+  /* 比例由 React 以 `--corpus-progress-ratio` 传进来（0…1），这里换成轨道宽度。
+     换算放在 CSS 而不是 TypeScript：`__tests__/noScoreArithmetic.test.ts` 禁止前端
+     在比例上做算术，那条门禁守的是「分数权威只在内核」这条边界，这里连带遵守。
+     没传时退回 0，于是缺值不会画成满格。 */
+  inline-size: calc(var(--corpus-progress-ratio, 0) * 100%);
+  background: var(--color-accent);
+  border-radius: var(--radius-sm);
+  /* 事件按 1024 首一批送来（`derive.rs` 的 `PROGRESS_STRIDE`），所以条是跳着走的；
+     这一段过渡把跳变磨平。只动 `inline-size` 会触发布局，但这是一个 8px 高、
+     无兄弟节点的独立盒子，代价可以忽略，而换成 transform 缩放会把圆角一起拉扁。 */
+  transition: inline-size 240ms ease-out;
+}
+
+/*
+ * 总量未知那一段（派生的 `Scan` 步发的是 `total: 0`）画一条来回走的短条。
+ * 内核明写此时「UI 应当显示不确定进度而不是 0%」。
+ */
+.corpus-progress__bar--indeterminate {
+  inline-size: 30%;
+  animation: corpus-progress-sweep 1.2s ease-in-out infinite;
+  transition: none;
+}
+
+@keyframes corpus-progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(333%);
+  }
+}
+
+/*
+ * 前庭功能障碍者对循环动画敏感，而这条动画会连续跑十分钟。
+ * 关掉之后那一段退成一条静止的槽加上面那句文字——文字本来就是权威，不靠动画传信息。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .corpus-progress__bar {
+    transition: none;
+  }
+
+  .corpus-progress__bar--indeterminate {
+    inline-size: 100%;
+    animation: none;
+    background: var(--color-border);
+  }
+}
+
+.corpus-progress__detail {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
