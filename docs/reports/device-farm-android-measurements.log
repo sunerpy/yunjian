@@ -1,120 +1,96 @@
+# 云笺 Android 冒烟判据 —— 物理真机回传测量
+#
+# 来源：AWS Device Farm run
+#   arn:aws:devicefarm:us-west-2:891377171033:run:9b17cc74-307c-4fdb-b97c-90dc308a8a62/d7e54dcc-f227-4b88-8013-43953a2e77e2
+#   名称 spike-instrumented-criteria-2 · 2026-08-16 · COMPLETED/PASSED
+#   设备 Google Pixel 8 / Android 15 / SDK 35 · fleetType PUBLIC
+#   3.4 device-minutes（metered 3.07），走免费额度，增量费用 $0
+#
+# 这些行由 APK 内的 instrumented 测试写下，经 testspec 的
+# `spike-measure.sh` 原样搬回：
+#   microphone_capture      <- SpikeMicrophoneTest（AudioRecord 直采）
+#   corpus_materialization  <- SpikeCorpusTest -> libyunjian_spike.so
+#                              -> yunjian_core::assets::AssetResolver::sync（生产路径）
+#   chinese_ime             <- SpikeImeTest（驱动 SpikeWebViewActivity）
+#
+# `app_launch crashed=true` 是**证据而非判据**：主界面因 `ndk-context` 未初始化
+# 而 SIGABRT，那个缺陷已定位、刻意未修（安全边界，需用户决定移动端 API Key 存哪里），
+# 且三个测试类都不依赖主界面。
+#
+# 阈值判定不在这里。宿主侧由 `xtask acceptance --platform android --set spike` 完成。
 
-===== DEVICE IDENTITY =====
-model=Pixel 8 release=15 sdk=35
-fingerprint=google/shiba/shiba:15/AP3A.241005.015/12366759:user/release-keys
-
-===== CRITERION 0 - IS YUNJIAN ACTUALLY INSTALLED =====
 YUNJIAN-MEASURE app_install device_model=Pixel 8
 YUNJIAN-MEASURE app_install os_build=15/35
 YUNJIAN-MEASURE app_install package=top.onethinker.yunjian
 YUNJIAN-MEASURE app_install installed=true
-
-===== INSTALLED PACKAGE DETAIL (targetSdk / versionName / apk path) =====
-    codePath=/data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==
-    versionCode=1000 minSdk=24 targetSdk=36
-    versionName=0.1.0
-      firstInstallTime=2026-08-15 22:15:22
-parsed target_sdk=36 version_name=0.1.0
-
-===== LAUNCH THE APP AND SEE IF IT STAYS UP =====
-data="android.intent.category.LAUNCHER"
-Events injected: 1
-## Network stats: elapsed time=27ms (0ms mobile, 0ms wifi, 27ms not connected)
-pid after launch: []
-YUNJIAN-MEASURE app_launch process_alive=false
-YUNJIAN-MEASURE app_launch pid=none
-
-===== FOREGROUND ACTIVITY / WINDOW =====
-      topResumedActivity=ActivityRecord{2bf0650 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t57}
-
-===== CRASH / WEBVIEW EVIDENCE FROM LOGCAT =====
-08-15 22:15:29.993 26598 26598 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
-08-15 22:15:29.996 26598 26598 I AndroidRuntime: Using default boot image
-08-15 22:15:29.996 26598 26598 I AndroidRuntime: Leaving lock profiling enabled
-08-15 22:15:30.051 26598 26598 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
-08-15 22:15:30.079 26598 26598 D AndroidRuntime: Calling main entry com.android.commands.monkey.Monkey
-08-15 22:15:30.079 26598 26598 W Monkey  : args: [-p, top.onethinker.yunjian, -c, android.intent.category.LAUNCHER, 1]
-08-15 22:15:30.079 26598 26598 W Monkey  :  arg: "top.onethinker.yunjian"
-08-15 22:15:30.079 26598 26598 W Monkey  : data="top.onethinker.yunjian"
-08-15 22:15:30.118  1669  4436 I ActivityTaskManager: START u0 {act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=top.onethinker.yunjian/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
-08-15 22:15:30.121  1669  3030 I AppsFilter: interaction: PackageSetting{5190403 com.google.android.microdroid.empty_payload/10259} -> PackageSetting{d74011c top.onethinker.yunjian/10282} BLOCKED
-08-15 22:15:30.121  2050  2070 V WindowManagerShell: Transition requested (#81): android.os.BinderProxy@79f9989 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=67 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=top.onethinker.yunjian/.MainActivity } baseActivity=ComponentInfo{top.onethinker.yunjian/top.onethinker.yunjian.MainActivity} topActivity=ComponentInfo{top.onethinker.yunjian/top.onethinker.yunjian.MainActivity} origActivity=null realActivity=ComponentInfo{top.onethinker.yunjian/top.onethinker.yunjian.MainActivity} numActivities=1 lastActiveTime=6792387 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@8b24d8e} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 132 - 0, 0) topActivityInfo=ActivityInfo{16079af top.onethinker.yunjian.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= false isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1080 topActivityLetterboxHeight=2400 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 81 }
-08-15 22:15:30.123  9475  9475 I TopTaskTracker: onTaskMovedToFront: (moved taskInfo to front) taskId=67, baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=top.onethinker.yunjian/.MainActivity }
-08-15 22:15:30.129  1669  1770 I ActivityManager: Start proc 26609:top.onethinker.yunjian/u0a282 for next-top-activity {top.onethinker.yunjian/top.onethinker.yunjian.MainActivity}
-08-15 22:15:30.131 26598 26598 I AndroidRuntime: VM exiting with result code 0.
-08-15 22:15:30.139 26609 26609 I thinker.yunjian: Late-enabling -Xcheck:jni
-08-15 22:15:30.149  1669  2676 D CoreBackPreview: Window{cc7e94c u0 Splash Screen top.onethinker.yunjian}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@9cbea9b, mPriority=0, mIsAnimationCallback=false}
-08-15 22:15:30.155   546   546 W gralloc4: Unable to set buffer name VRI[yunjian]#34(BLAST Consumer)34: File name too long
-08-15 22:15:30.158   546   546 W gralloc4: Unable to set buffer name VRI[yunjian]#34(BLAST Consumer)34: File name too long
-08-15 22:15:30.162  1669  1751 V WindowManager: Sent Transition (#81) createdAt=08-15 22:15:30.111 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=67 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=top.onethinker.yunjian/.MainActivity } baseActivity=ComponentInfo{top.onethinker.yunjian/top.onethinker.yunjian.MainActivity} topActivity=ComponentInfo{top.onethinker.yunjian/top.onethinker.yunjian.MainActivity} origActivity=null realActivity=ComponentInfo{top.onethinker.yunjian/top.onethinker.yunjian.MainActivity} numActivities=1 lastActiveTime=6792387 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{1b815e4 Task{3e603d8 #67 type=standard A=10282:top.onethinker.yunjian}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 132 - 0, 0) topActivityInfo=ActivityInfo{464fa4d top.onethinker.yunjian.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= falseisLetterboxEducationEnabled= false isLetterboxDoubleTapEnabled= false topActivityEligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=1080 topActivityLetterboxHeight=2400 isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false cameraCompatTaskInfo=CameraCompatTaskInfo { cameraCompatControlState=hidden freeformCameraCompatMode=inactive}}}, pipTask = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 81 }
-08-15 22:15:30.162  1669  1751 V WindowManager:         {WCT{RemoteToken{1b815e4 Task{3e603d8 #67 type=standard A=10282:top.onethinker.yunjian}}} m=OPEN f=NONE leash=Surface(name=Task=67)/@0x229db76 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0 taskParent=-1},
-08-15 22:15:30.164   546   546 W gralloc4: Unable to set buffer name VRI[yunjian]#34(BLAST Consumer)34: File name too long
-08-15 22:15:30.166 26609 26609 I thinker.yunjian: Using CollectorTypeCMC GC.
-08-15 22:15:30.170   546   546 W gralloc4: Unable to set buffer name VRI[yunjian]#34(BLAST Consumer)34: File name too long
-08-15 22:15:30.172   546   546 W gralloc4: Unable to set buffer name VRI[yunjian]#34(BLAST Consumer)34: File name too long
-08-15 22:15:30.319 26609 26609 D nativeloader: Configuring clns-7 for other apk /data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==/lib/arm64:/data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/top.onethinker.yunjian
-08-15 22:15:30.324 26609 26609 V GraphicsEnvironment: top.onethinker.yunjian is not listed in per-application setting
-08-15 22:15:30.363 26609 26624 D vulkan  : searching for layers in '/data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==/lib/arm64'
-08-15 22:15:30.363 26609 26624 D vulkan  : searching for layers in '/data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==/base.apk!/lib/arm64-v8a'
-08-15 22:15:30.444 26609 26609 D nativeloader: Load /data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==/base.apk!/lib/arm64-v8a/libyunjian_app.so using class loader ns clns-7 (caller=/data/app/~~e5nrP1wpwX0zhx-LC9mcpg==/top.onethinker.yunjian-q5b3Sv81O7L49bq-TnzjYw==/base.apk!classes7.dex): ok
-08-15 22:15:30.457 26609 26630 I RustStdoutStderr: 2026-08-15T22:15:30.456492207Z  INFO yunjian_core::logger: 日志已初始化 level="info" json=false timezone="local" to_file=true dir=/data/user/0/top.onethinker.yunjian/cache/yunjian/logs
-08-15 22:15:30.457 26609 26630 I RustStdoutStderr: 2026-08-15T22:15:30.457139546Z  INFO yunjian_app: 云笺桌面端启动 app="yunjian" version="0.1.0"
---------- beginning of crash
-08-15 22:15:30.459 26609 26631 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 26631 (thinker.yunjian), pid 26609 (thinker.yunjian)
-08-15 22:15:30.541 26609 26609 I thinker.yunjian: hiddenapi: Accessing hidden method Landroid/view/ViewGroup;->makeOptionalFitsSystemWindows()V (runtime_flags=0, domain=platform, api=unsupported) from Landroidx/appcompat/widget/ViewUtils; (domain=app, TargetSdkVersion=36) using reflection: allowed
-08-15 22:15:30.566  1669  4436 D CoreBackPreview: Window{90053d9 u0 top.onethinker.yunjian/top.onethinker.yunjian.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@4c37113, mPriority=0, mIsAnimationCallback=false}
-08-15 22:15:30.606  1669  1751 I ActivityTaskManager: Displayed top.onethinker.yunjian/.MainActivity for user 0: +489ms
-08-15 22:15:30.618  1669  1920 I ImeTracker: top.onethinker.yunjian:b50630e3: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false
-08-15 22:15:30.618  1669  1920 I ImeTracker: top.onethinker.yunjian:b50630e3: onCancelled at PHASE_SERVER_SHOULD_HIDE
-08-15 22:15:30.625 14167 14167 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():1986 onStartInput(EditorInfo{EditorInfo{packageName=top.onethinker.yunjian, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=0, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
-08-15 22:15:30.626  1669  4436 W PackageConfigPersister: App-specific configuration not found for packageName: top.onethinker.yunjian and userId: 0
-YUNJIAN-MEASURE app_launch crashed=true
-
-===== SCREENSHOT (evidence, not a verdict) =====
-/sdcard/yunjian-launch.png: 1 file pulled. 28.3 MB/s (3234835 bytes in 0.109s)
-
-===== CRITERION 3 - CHINESE IME =====
-Input method com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME: already enabled for user #0
-Input method com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME selected for user #0
-default_input_method=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
-zh subtype count=1
-persist.sys.locale=zh-CN
-YUNJIAN-MEASURE chinese_ime device_model=Pixel 8
-YUNJIAN-MEASURE chinese_ime os_build=15/35
-YUNJIAN-MEASURE chinese_ime target_sdk=36
+YUNJIAN-MEASURE app_install self_installed=true
+YUNJIAN-MEASURE test_package package=top.onethinker.yunjian.test
+YUNJIAN-MEASURE test_package installed=true
+YUNJIAN-MEASURE test_package instrumentation_registered=true
 YUNJIAN-MEASURE chinese_ime default_ime=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
 YUNJIAN-MEASURE chinese_ime zh_subtype_count=1
 YUNJIAN-MEASURE chinese_ime runtime_locale=zh-CN
-YUNJIAN-MEASURE-UNAVAILABLE chinese_ime entered_text reason=needs_in_app_instrumentation
-YUNJIAN-MEASURE-UNAVAILABLE chinese_ime keyboard_overlap_px reason=needs_in_app_instrumentation
-YUNJIAN-MEASURE-UNAVAILABLE chinese_ime input_visible reason=needs_in_app_instrumentation
-YUNJIAN-MEASURE-UNAVAILABLE chinese_ime visual_viewport_updated reason=needs_in_app_instrumentation
-
-===== CRITERION 1 - MICROPHONE (hardware only; PCM needs in-app AudioRecord) =====
-feature:android.hardware.audio.low_latency
-feature:android.hardware.microphone
-  mic mute FromSwitch=false FromRestrictions=false FromApi=false from system=false
 YUNJIAN-MEASURE microphone_capture device_model=Pixel 8
 YUNJIAN-MEASURE microphone_capture os_build=15/35
-YUNJIAN-MEASURE microphone_capture hardware_present=true
-YUNJIAN-MEASURE-UNAVAILABLE microphone_capture sample_rate_hz reason=needs_in_app_audiorecord
-YUNJIAN-MEASURE-UNAVAILABLE microphone_capture channel_count reason=needs_in_app_audiorecord
-YUNJIAN-MEASURE-UNAVAILABLE microphone_capture rms reason=needs_in_app_audiorecord_and_device_farm_has_no_audio_injection
-YUNJIAN-MEASURE-UNAVAILABLE microphone_capture permission_plugin reason=needs_in_app_instrumentation
-
-===== CRITERION 2 - CORPUS MATERIALIZATION (headroom only; path is in-process) =====
-Filesystem       Size Used Avail Use% Mounted on
-/dev/block/dm-57 110G 6.3G  103G   6% /data/user/0
---- 8.8.8.8 ping statistics ---
-2 packets transmitted, 2 received, 0% packet loss, time 1001ms
-rtt min/avg/max/mdev = 11.104/12.510/13.916/1.406 ms
+YUNJIAN-MEASURE microphone_capture record_audio_declared=true
+YUNJIAN-MEASURE microphone_capture modify_audio_settings_declared=true
+YUNJIAN-MEASURE microphone_capture permission_plugin_class_present=false
+YUNJIAN-MEASURE microphone_capture record_audio_granted=true
+YUNJIAN-MEASURE microphone_capture modify_audio_settings_granted=true
+YUNJIAN-MEASURE microphone_capture permission_plugin=record_audio_granted+modify_audio_settings_granted
+YUNJIAN-MEASURE microphone_capture sample_rate_hz=16000
+YUNJIAN-MEASURE microphone_capture channel_count=1
+YUNJIAN-MEASURE microphone_capture audio_source=1
+YUNJIAN-MEASURE microphone_capture audio_format=2
+YUNJIAN-MEASURE microphone_capture frames=20000
+YUNJIAN-MEASURE microphone_capture capture_ms=1578
+YUNJIAN-MEASURE microphone_capture peak_abs=32768
+YUNJIAN-MEASURE microphone_capture rms=0.3098704535241539
 YUNJIAN-MEASURE corpus_materialization device_model=Pixel 8
 YUNJIAN-MEASURE corpus_materialization os_build=15/35
-YUNJIAN-MEASURE-UNAVAILABLE corpus_materialization artifact_bytes reason=needs_in_app_production_fetch
-YUNJIAN-MEASURE-UNAVAILABLE corpus_materialization sha256_verified reason=needs_in_app_production_fetch
-YUNJIAN-MEASURE-UNAVAILABLE corpus_materialization duration_seconds reason=needs_in_app_production_fetch
-YUNJIAN-MEASURE-UNAVAILABLE corpus_materialization atomic_install reason=needs_in_app_production_fetch
-YUNJIAN-MEASURE-UNAVAILABLE corpus_materialization crashed reason=needs_in_app_production_fetch
-YUNJIAN-MEASURE-UNAVAILABLE corpus_materialization production_path reason=needs_in_app_production_fetch
-
-===== PROBE COMPLETE =====
+YUNJIAN-MEASURE corpus_materialization data_root=/data/user/0/top.onethinker.yunjian/files/spike-corpus
+YUNJIAN-MEASURE corpus_materialization free_bytes=110416396288
+YUNJIAN-MEASURE corpus_materialization supported_abis=arm64-v8a
+YUNJIAN-MEASURE corpus_materialization artifact_bytes=223113374
+YUNJIAN-MEASURE corpus_materialization sha256_verified=true
+YUNJIAN-MEASURE corpus_materialization duration_seconds=109.849
+YUNJIAN-MEASURE corpus_materialization atomic_install=true
+YUNJIAN-MEASURE corpus_materialization crashed=false
+YUNJIAN-MEASURE corpus_materialization production_path=yunjian_core::assets::AssetResolver::{discover,new}+sync
+YUNJIAN-MEASURE corpus_materialization sha256=f7d04df3bc5be85b8cd80d952b94934672c8c29610eb9c1f0b0556d8631e4428
+YUNJIAN-MEASURE corpus_materialization download_verify_seconds=105.414
+YUNJIAN-MEASURE corpus_materialization decompress_seconds=4.435
+YUNJIAN-MEASURE corpus_materialization corpus_bytes=631386112
+YUNJIAN-MEASURE corpus_materialization poll_interval_ms=100
+YUNJIAN-MEASURE corpus_materialization derive_awaited=false
+YUNJIAN-MEASURE corpus_materialization started_from_clean_state=true
+YUNJIAN-MEASURE corpus_materialization residual_temp_files=0
+YUNJIAN-MEASURE corpus_materialization manifest_url=
+YUNJIAN-MEASURE chinese_ime device_model=Pixel 8
+YUNJIAN-MEASURE chinese_ime os_build=15/35
+YUNJIAN-MEASURE chinese_ime target_sdk=35
+YUNJIAN-MEASURE chinese_ime default_ime=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
+YUNJIAN-MEASURE chinese_ime app_locales=zh-CN
+YUNJIAN-MEASURE chinese_ime has_visual_viewport=true
+YUNJIAN-MEASURE chinese_ime viewport_height_before=816
+YUNJIAN-MEASURE chinese_ime keyboard_shown=true
+YUNJIAN-MEASURE chinese_ime ime_bottom_inset_px=904
+YUNJIAN-MEASURE chinese_ime ime_commit_path=input_connection_commit_text
+YUNJIAN-MEASURE chinese_ime edge_to_edge=true
+YUNJIAN-MEASURE chinese_ime display_height_px=2400
+YUNJIAN-MEASURE chinese_ime system_bars_bottom_px=126
+YUNJIAN-MEASURE chinese_ime webview_top_px=132
+YUNJIAN-MEASURE chinese_ime webview_height_px=1364
+YUNJIAN-MEASURE chinese_ime device_pixel_ratio=2.625
+YUNJIAN-MEASURE chinese_ime input_bottom_screen_px=1496
+YUNJIAN-MEASURE chinese_ime keyboard_top_screen_px=1496
+YUNJIAN-MEASURE chinese_ime keyboard_overlap_px=0
+YUNJIAN-MEASURE chinese_ime input_visible=true
+YUNJIAN-MEASURE chinese_ime viewport_height_after=520
+YUNJIAN-MEASURE chinese_ime viewport_samples=[816,816,223,520]
+YUNJIAN-MEASURE chinese_ime visual_viewport_updated=true
+YUNJIAN-MEASURE chinese_ime input_focused=true
+YUNJIAN-MEASURE chinese_ime entered_text=云笺
+YUNJIAN-MEASURE app_launch process_alive=false
+YUNJIAN-MEASURE app_launch pid=none
+YUNJIAN-MEASURE app_launch crashed=true

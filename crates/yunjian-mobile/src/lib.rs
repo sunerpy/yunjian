@@ -42,13 +42,22 @@ pub enum BindingVerdict {
     Undetermined,
 }
 
-/// 当前权威报告记录的裁决。
-pub const BINDING_VERDICT: BindingVerdict = BindingVerdict::Undetermined;
+/// 当前权威报告（`docs/reports/mobile-spike.md`）记录的裁决。
+///
+/// 2026-08-16 由 `Undetermined` 变为 `UniffiNative`：判据②语料物化在物理 Pixel 8 上实测
+/// `duration_seconds=109.849`，超过预声明的 60 秒阈值，机械规则据此选择 UniFFI 原生外壳。
+/// **改这个常量前先看报告**，它必须与报告逐字一致，否则 `surface.rs` 的守卫会红。
+pub const BINDING_VERDICT: BindingVerdict = BindingVerdict::UniffiNative;
 
 /// 当前是否构建了 Tauri mobile binding。
 pub const TAURI_MOBILE_BINDING: bool = false;
 
 /// 当前是否构建了 UniFFI native binding。
+///
+/// **裁决已定但这里仍是 `false`，这是正确状态而不是漏改。** 裁决由 todo 68 的门禁产出，
+/// 而构建 binding 分支是 todo 69 的工作；两件事之间必然存在一段「已定选型、尚未落地」的
+/// 时间。把它提前写成 `true` 会让常量声称一个不存在的构建产物——依赖图里既没有 `uniffi`
+/// 也没有生成的 Kotlin/Swift 绑定，那就是伪造构建状态。
 pub const UNIFFI_NATIVE_BINDING: bool = false;
 
 /// 移动端可选择的打字练习形态。

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  androidTest 源集的 manifest。刻意保持最小：三个测试类需要的一切都由应用包提供。
+
+  **不要在这里声明 RECORD_AUDIO。** instrumentation 跑在应用进程、用应用的 UID，
+  权限集取自**应用包**的 manifest；在测试包里声明它不会让 `checkSelfPermission` 变成
+  已授予，只会让读者以为已经处理过了。真正的声明由 buildspec 把
+  `crates/yunjian-voice/mobile/android/AndroidManifest.xml`（todo 46 的那份）合并进
+  应用 manifest 完成。
+
+  **也不要在这里声明 SpikeWebViewActivity。** 它在应用包里，由应用 manifest 声明。
+
+  刻意**不写 `uses-sdk`**：minSdk 由 `spike-androidtest.gradle.kts` 统一设成 26
+  （todo 46 记录的 AAudio 底线）。在这里再写一遍只会多一个能与之漂移的地方，而漂移的
+  表现是 manifest 合并冲突，那条报错读起来与冒烟判据毫无关系。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
