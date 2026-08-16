@@ -22,12 +22,14 @@ name: release
 # 两个 Linux CLI 按安装脚本的兼容性契约发布 musl，并用 cargo-zigbuild 构建；Linux
 # 桌面安装包仍以原生 GNU target 构建，因为 WebKitGTK/GTK 是宿主系统动态依赖。
 #
-# CodeBuild 预备（尚未启用）：`yunjian-github` 连接为 PENDING，授权并重建 webhook 前
-# 全部 job 保持 GitHub-hosted。届时纯 Linux x86_64 控制作业分别用唯一标签
-# `release-please`、`release-verify-ci`、`release-upload-assets`、`release-publish`；
-# `build-binaries` 同时含 Linux ARM、macOS 与 Windows，不能整体切到当前 x86_64 项目，
-# 必须先按宿主平台拆 job。每个 CodeBuild job 都使用第一标签
-# `codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}` 加上述唯一标签。
+# 四个纯 Linux x86_64 的控制作业跑在 CodeBuild 托管 runner 上。
+#
+# `build-binaries` 整个矩阵**保留 GitHub 托管 runner**，判据不是「暂时没做」而是矩阵本身：
+# 六条腿里只有 `x86_64-unknown-linux-musl` 一条落在当前项目的架构上，另外五条分别是
+# Linux ARM、macOS x64/arm64、Windows x64/arm64——CodeBuild 侧对应 ARM 计算与
+# Windows/macOS 预留容量 fleet（按小时计费）。为一条腿引入 `fromJSON` 分叉，换来的是
+# 「产物由两种执行机拼出来」这个更难排查的性质，而发版产物最需要的恰是可复现。
+# 要切就整条矩阵一起切，那是另一件事。
 
 on:
   push:
@@ -67,7 +69,9 @@ env:
 jobs:
   release-please:
     name: Release Please
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - release-please-gate
     outputs:
       build_artifacts: ${{ steps.gate.outputs.build_artifacts }}
       tag_name: ${{ steps.gate.outputs.tag_name }}
@@ -127,7 +131,9 @@ jobs:
     name: Verify CI Passed
     needs: release-please
     if: needs.release-please.outputs.build_artifacts == 'true'
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - release-verify-ci
     timeout-minutes: 30
     steps:
       - name: 手动补挂：跳过 CI 门禁（空操作）
@@ -656,7 +662,9 @@ jobs:
     # → Release 停在 draft。
     needs: [release-please, build-binaries, verify-ci]
     if: needs.release-please.outputs.build_artifacts == 'true'
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - release-upload-assets
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -829,7 +837,9 @@ jobs:
     name: Publish Release
     needs: [release-please, verify-ci, build-binaries, upload-assets]
     if: needs.release-please.outputs.build_artifacts == 'true'
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - release-publish
     timeout-minutes: 10
     steps:
       # 全链路唯一一处把 draft 翻成正式发布。走到这里意味着 CI 绿、每个目标都编译成功、

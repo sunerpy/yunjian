@@ -10,10 +10,13 @@ name: audio-permissions
 # 下载几十 MB 产物、且分发物带 GPL-3.0），这个只验证采集与权限配置（只依赖 rodio，纯
 # MIT/Apache-2.0）。合成一个会让一次权限配置改动去重跑整套原生构建。
 #
-# CodeBuild 预备（尚未启用）：当前连接为 PENDING，全部 job 保持 GitHub-hosted。授权并
-# 重建 webhook 后，只有 Linux x86_64 的 `config` 与汇总 job 可分别改用唯一标签
-# `audio-config`、`audio-permissions-success`；`capture`/`mobile` 是混合 OS 矩阵，
-# `codesign` 是 macOS，不能整体切到当前 Linux x86_64 的 `yunjian-runner` 项目。
+# Linux x86_64 的四个执行单元跑在 CodeBuild 托管 runner 上。`codesign` 与矩阵里的
+# Windows / macOS 腿继续用 GitHub 托管 runner——那两个平台的 CodeBuild runner 要预留
+# 容量 fleet，按小时计费。
+#
+# 混合 OS 矩阵靠 `runs-on: ${{ fromJSON(matrix.runner) }}` 逐腿切换，不拆 job：拆开会
+# 改动 `audio-permissions-success` 的 needs，而换 runner 本该只改执行机。
+# matrix 里的 `runner` 值是 JSON 文本，外层单引号是语法的一部分，不是排版。
 
 on:
   push:
@@ -47,7 +50,9 @@ jobs:
   # 才会失败**的配置：entitlements 缺失、Android 权限缺失、minSdk 过低。
   config:
     name: 平台配置断言
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - audio-config
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -72,17 +77,17 @@ jobs:
 
   capture:
     name: 采集 ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: linux-x64
-            runner: ubuntu-latest
+            runner: '["codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}", "audio-capture-linux-x64"]'
           - name: macos-arm64
-            runner: macos-14
+            runner: '"macos-14"'
           - name: windows-x64
-            runner: windows-latest
+            runner: '"windows-latest"'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -273,16 +278,16 @@ jobs:
   # harness——GitHub runner 既无真机也无可用麦克风。
   mobile:
     name: 构建 ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: android-arm64
-            runner: ubuntu-latest
+            runner: '["codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}", "audio-mobile-android-arm64"]'
             target: aarch64-linux-android
           - name: ios-arm64
-            runner: macos-14
+            runner: '"macos-14"'
             target: aarch64-apple-ios
     steps:
       - uses: actions/checkout@v4
@@ -378,7 +383,9 @@ jobs:
 
   audio-permissions-success:
     name: audio-permissions 汇总
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - audio-permissions-success
     needs: [config, capture, codesign, mobile]
     if: always()
     steps:

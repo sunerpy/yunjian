@@ -23,9 +23,10 @@ name: corpus-release
 # 它作为 workflow artifact 保留 90 天，**不**作为 Release 资产——用户工件里
 # 不该有任何诊断数据。
 #
-# CodeBuild 预备（尚未启用）：连接 AVAILABLE 且 webhook 在授权后重建之前继续使用
-# `ubuntu-latest`。届时 `build` 使用
-# `[codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, corpus-release-build]`。
+# `build` 跑在 CodeBuild 托管 runner 上。它对镜像的实际要求只有 `gh` / `jq` /
+# `sha256sum`，三者都在 `aws/codebuild/standard:7.0` 里；工件本身的确定性不依赖宿主
+# SQLite——`rusqlite` 用 `bundled` 特性从随包源码编译，所以换基础镜像不会动摇上面
+# 「逐字节确定」那条性质。
 
 on:
   push:
@@ -56,7 +57,9 @@ concurrency:
 jobs:
   build:
     name: Build and publish corpus artifact
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - corpus-release-build
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4

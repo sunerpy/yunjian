@@ -10,15 +10,22 @@ name: ci
 # 「CI 绿」会变成两套标准。唯一的例外是 test-windows：它刻意直接跑 cargo，
 # 见该作业的注释。
 #
-# CodeBuild 预备（尚未启用）：`yunjian-github` CodeConnections 状态仍为 PENDING，授权并
-# 重建 `WORKFLOW_JOB_QUEUED` webhook 前不得切 runner。连接 AVAILABLE 后，Linux x86_64
-# 作业可把 `runs-on: ubuntu-latest` 分别替换为下面两标签；每个 job 的第二个标签必须唯一，
-# 否则 GitHub 的 superset 匹配会把 job 路由给错误 runner。`test-windows` 继续 hosted：
+# Linux x86_64 作业跑在 CodeBuild 托管的自托管 runner 上（项目 `yunjian-runner`，
+# us-east-2）。**换的是执行机，不是 CI 的形状**：命令、依赖图与门禁一律不动。
+# 自托管 runner 不计入 GitHub 的 included minutes，只付 CodeBuild 的分钟数。
 #
-#   test       → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-test]
-#   msrv       → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-msrv]
-#   security   → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-security]
-#   ci-success → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-success]
+# 三条硬约束，改这里之前先读：
+#
+# 1. `codebuild-yunjian-runner-` 里的项目名必须与 CodeBuild 项目**逐字相同**。对不上时
+#    CodeBuild 不处理 webhook，**job 会一直挂在 queued 而不报错**——那个症状最难查。
+# 2. 每个 job 的第二个标签必须**全局唯一**。GitHub 按 superset 匹配路由 job，标签少的
+#    job 会被标签多的 job 的 runner 接走，后者永远等不到自己的 runner。今天各 job 标签
+#    数相同也不安全：将来只要给某个 job 加一个 `instance-size:` 覆盖就会触发。
+# 3. `${{ github.run_id }}-${{ github.run_attempt }}` 两段都要。少了 run_attempt，
+#    重跑会去抢上一次那批 runner 的标签。
+#
+# `test-windows` 继续用 GitHub 托管 runner：CodeBuild 的 Windows runner 需要预留容量
+# fleet（按小时计费），而本项目只用它验一条跨平台路径发现行为，不值这个成本。
 #
 # 若仓库转为 private，第三方报告上传还必须配置各服务自己的 token；`GITHUB_TOKEN` 不能
 # 代替 Codecov repository upload token。
@@ -45,9 +52,30 @@ env:
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-test
     steps:
       - uses: actions/checkout@v4
+
+      # 必须显式钉 Node：CodeBuild 的 `standard:7.0` 镜像同时装了 Node 18/20/22/24，
+      # 默认哪一个由镜像自己决定，与 GitHub 托管镜像不同。而 `app/` 的 vite 8 要求
+      # `^20.19 || >=22.12`——落到 Node 18 上时 `npm ci` 对 EBADENGINE **只 warn 不 fail**
+      # （退出码 0），失败被推迟到两步之后，报成 `Cannot find module @rollup/rollup-*`
+      # 这类完全不提版本的错。所以钉版本，并让本步自己断言，把失败拉回成因所在。
+      # 断言写的是 vite 的真实区间而不是「等于 22」，改 node-version 时不会误报。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 断言 Node 版本满足 app/ 的下限
+        run: |
+          node --version
+          npm --version
+          node -e 'const [a,b]=process.versions.node.split(".").map(Number);
+            if (!((a===20&&b>=19)||(a===22&&b>=12)||a>22)) {
+              console.error("Node "+process.versions.node+" 不满足 app/ 的 ^20.19 || >=22.12");
+              process.exit(1);
+            }'
 
       # 显式列出 components：仓库根的 rust-toolchain.toml 虽然声明了
       # rustfmt + clippy，但 action 先装好 stable 之后，rustup 未必会再为
@@ -155,9 +183,25 @@ jobs:
   # （sherpa-rs 等）声明的下限仍由第 1 层覆盖。
   msrv:
     name: MSRV (Rust 1.95)
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-msrv
     steps:
       - uses: actions/checkout@v4
+
+      # 钉 Node 的理由与断言写法见本文件 `test` 作业的同名步骤。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 断言 Node 版本满足 app/ 的下限
+        run: |
+          node --version
+          node -e 'const [a,b]=process.versions.node.split(".").map(Number);
+            if (!((a===20&&b>=19)||(a===22&&b>=12)||a>22)) {
+              console.error("Node "+process.versions.node+" 不满足 app/ 的 ^20.19 || >=22.12");
+              process.exit(1);
+            }'
+
       - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -182,6 +226,26 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev
+
+      # 第 2 层的特性集还会把 `sherpa-rs-sys` 拉进图里，它的 build script 跑 bindgen，
+      # 而 bindgen 要 dlopen `libclang.so`。GitHub 托管的 ubuntu-latest 自带 libclang，
+      # CodeBuild 的 `standard:7.0` 不带——也就是说这一步以前是在白拿托管镜像的预装件。
+      # 缺它时的报错是「Unable to find libclang ... (invalid: [])」，字面上指向 sherpa，
+      # 与 MSRV 毫无关系，极易误判成依赖版本问题。
+      #
+      # 不用 `llvm-config --libdir` 取路径：libclang-dev 不带无版本号的 `llvm-config`，
+      # 实测报 command not found，于是 LIBCLANG_PATH 被写成空串，bindgen 的报错里那个
+      # `(invalid: [])` 正是这么来的。直接找 .so 更稳。做法与 voice-build.yml 一致。
+      - name: 安装 libclang 并导出 LIBCLANG_PATH
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+          SO=$(find /usr/lib/llvm-* -name 'libclang.so*' -print -quit 2>/dev/null || true)
+          if [ -z "$SO" ]; then
+            echo "::error::装了 libclang-dev 却找不到 libclang.so"
+            exit 1
+          fi
+          echo "LIBCLANG_PATH=$(dirname "$SO")" >> "$GITHUB_ENV"
 
       - name: 构建桌面端前端
         run: npm ci && npm run build
@@ -234,7 +298,9 @@ jobs:
 
   security:
     name: Security Audit
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-security
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -242,9 +308,14 @@ jobs:
       # 装到 RUNNER_TEMP 而不是 checkout 目录：解到工作树里会污染仓库，
       # 让后续任何「工作树干净」的断言失效。
       # 下载地址里的 %2F 是必需的——tag 名本身含斜杠（cargo-audit/vX.Y.Z）。
+      # 取 musl 而不是 gnu 产物。gnu 那份链接的是宿主 glibc，实测在 CodeBuild 的
+      # `standard:7.0`（Ubuntu 22.04，glibc 2.35）上报 `version GLIBC_2.38 not found`
+      # ——它在 GitHub 托管的 ubuntu-latest（24.04，glibc 2.39）上能跑纯属宿主够新。
+      # musl 产物静态链接，与宿主 glibc 版本无关，换镜像不会再触发这一类失败。
+      # 仍是 RustSec 官方预编译产物，不引第三方 action、不从源码编译。
       - name: 安装 cargo-audit（RustSec 官方预编译产物）
         run: |
-          DIR="cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}"
+          DIR="cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}"
           URL="https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${CARGO_AUDIT_VERSION}/${DIR}.tgz"
           curl -sSLf -o "${RUNNER_TEMP}/cargo-audit.tgz" "$URL"
           tar xzf "${RUNNER_TEMP}/cargo-audit.tgz" -C "${RUNNER_TEMP}"
@@ -258,7 +329,9 @@ jobs:
 
   ci-success:
     name: CI Success
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-success
     needs: [test, test-windows, msrv, corpus, security]
     # always() 是必需的：默认情况下任一 needs 失败就会让本作业变成 skipped，
     # 而 skipped 在分支保护看来既不是成功也不是失败，必需检查会永远处于 pending。

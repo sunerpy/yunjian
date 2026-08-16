@@ -1,0 +1,32 @@
+# actionlint 只认 GitHub 托管 runner 的标签，自托管标签一律报 unknown。这里登记本仓库
+# 在 CodeBuild 托管 runner 上使用的第二标签，让 `actionlint .github/workflows/*.yml`
+# 保持零输出——否则真正的告警会被 20 条噪声埋掉。
+#
+# 每个 job 一个标签且**全局唯一**：GitHub 按 superset 匹配路由 job，标签少的 job 会被
+# 标签多的 job 的 runner 接走，后者永远等不到自己的 runner。新增 job 时在这里追加一行，
+# 这份清单同时就是那条唯一性约束的可核对之处。
+#
+# 第一标签 `codebuild-yunjian-runner-<run_id>-<run_attempt>` 不必登记：它含 `${{ }}`
+# 表达式，actionlint 不做校验。
+self-hosted-runner:
+  labels:
+    - audio-capture-linux-x64
+    - audio-config
+    - audio-mobile-android-arm64
+    - audio-permissions-success
+    - ci-msrv
+    - ci-security
+    - ci-success
+    - ci-test
+    - corpus-gate
+    - corpus-release-build
+    - mobile-contract
+    - mobile-report
+    - release-please-gate
+    - release-publish
+    - release-upload-assets
+    - release-verify-ci
+    - voice-build-success
+    - voice-desktop-linux-x64
+    - voice-mobile-android-arm64
+    - voice-no-native
