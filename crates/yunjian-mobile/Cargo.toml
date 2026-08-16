@@ -8,13 +8,28 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = []
+uniffi = ["dep:serde_json", "dep:tokio", "dep:uniffi"]
+native-voice = ["uniffi", "yunjian-voice/voice"]
+
 [dependencies]
 secrecy.workspace = true
 serde.workspace = true
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+uniffi = { workspace = true, optional = true, features = ["cli"] }
 yunjian-ai = { path = "../yunjian-ai" }
 yunjian-core = { path = "../yunjian-core" }
 yunjian-recite = { path = "../yunjian-recite" }
 yunjian-voice = { path = "../yunjian-voice" }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni.workspace = true
+ndk-context.workspace = true
 
 [dev-dependencies]
 # 受保护领域逻辑的逐字节摘要守卫。刻意是 SHA-256 而不是 blake3：仓库既有的逐字节门禁
@@ -22,6 +37,11 @@ yunjian-voice = { path = "../yunjian-voice" }
 # 只会让「摘要」这个词在同一个仓库里指两件事。
 sha2 = { workspace = true }
 toml.workspace = true
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["uniffi"]
 
 [lints]
 workspace = true

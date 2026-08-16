@@ -66,33 +66,111 @@ fn manifest_directly_depends_on_all_four_domain_crates() {
     }
 }
 
-/// 尚未构建任何 binding 分支时，manifest 里不得出现 shell 依赖或 feature。
-///
-/// 原名 `undetermined_verdict_builds_neither_binding_branch`。改名的理由是它会说谎：
-/// 2026-08-16 门禁产出了真裁决 `uniffi_native`，裁决已经不是 `undetermined`，而这条断言
-/// 依然成立且依然该成立——因为它保护的从来不是「裁决是 undetermined」，而是
-/// **「常量说没建，manifest 就必须真的没建」**。todo 69 落地 UniFFI 分支时，两处会一起变。
 #[test]
-fn a_repository_with_no_built_binding_declares_no_shell_dependency() {
+fn manifest_builds_only_the_selected_uniffi_branch() {
     let manifest =
         std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
             .expect("读取 mobile manifest");
     let parsed: toml::Value = toml::from_str(&manifest).expect("解析 mobile manifest");
-    let features = parsed.get("features").and_then(toml::Value::as_table);
+    let features = parsed
+        .get("features")
+        .and_then(toml::Value::as_table)
+        .expect("mobile manifest 应声明 features");
     assert!(
-        features.is_none_or(|table| !table.contains_key("uniffi") && !table.contains_key("tauri")),
-        "尚未构建 binding 时不得声明任何 binding feature"
+        features.contains_key("uniffi") && !features.contains_key("tauri"),
+        "裁决为 UniFFI 时必须只声明 uniffi binding feature"
+    );
+    let uniffi = features
+        .get("uniffi")
+        .and_then(toml::Value::as_array)
+        .expect("uniffi feature 应为依赖数组");
+    let uniffi_members = uniffi
+        .iter()
+        .filter_map(toml::Value::as_str)
+        .collect::<Vec<_>>();
+    assert!(uniffi_members.contains(&"dep:uniffi"));
+    assert!(
+        !uniffi_members
+            .iter()
+            .any(|member| member.contains("yunjian-voice/voice")),
+        "普通 UniFFI 绑定不得静默拖入 GPL 语音栈"
+    );
+    let native_voice = features
+        .get("native-voice")
+        .and_then(toml::Value::as_array)
+        .expect("native-voice feature 应为依赖数组")
+        .iter()
+        .filter_map(toml::Value::as_str)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        native_voice,
+        ["uniffi", "yunjian-voice/voice"],
+        "真实 ASR 必须是显式的 UniFFI 语音扩展"
     );
     let dependencies = parsed
         .get("dependencies")
         .and_then(toml::Value::as_table)
         .expect("mobile manifest 应有 dependencies 表");
-    for shell in ["uniffi", "tauri"] {
+    assert!(dependencies.contains_key("uniffi"), "缺少 UniFFI 依赖");
+    assert!(
+        !dependencies.contains_key("tauri"),
+        "不得构建 Tauri mobile 分支"
+    );
+}
+
+#[test]
+fn generated_bindings_and_android_initializer_are_versioned() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let kotlin = std::fs::read_to_string(
+        crate_root.join("bindings/generated/top/yunjian/mobile/yunjian_mobile.kt"),
+    )
+    .expect("缺少生成的 Kotlin binding；运行 generate-bindings.sh");
+    let swift = std::fs::read_to_string(crate_root.join("bindings/generated/YunjianMobile.swift"))
+        .expect("缺少生成的 Swift binding；运行 generate-bindings.sh");
+    let header = crate_root.join("bindings/generated/YunjianMobileFFI.h");
+    let modulemap = crate_root.join("bindings/generated/YunjianMobileFFI.modulemap");
+    let android = std::fs::read_to_string(
+        crate_root.join("bindings/android/top/yunjian/mobile/YunjianAndroid.kt"),
+    )
+    .expect("缺少 Android context 初始化包装器");
+
+    for required in [
+        "package top.yunjian.mobile",
+        "open class NativeFacade",
+        "open class NativeOperation",
+        "open class NativeAsrOperation",
+        "public interface NativeEventSink",
+    ] {
         assert!(
-            !dependencies.contains_key(shell),
-            "尚未构建 binding 时不得依赖 {shell}"
+            kotlin.contains(required),
+            "Kotlin binding 缺少 `{required}`"
         );
     }
+    for required in [
+        "open class NativeFacade",
+        "open class NativeOperation",
+        "open class NativeAsrOperation",
+        "public protocol NativeEventSink",
+        "func appreciateStream",
+        "func startAsr",
+    ] {
+        assert!(swift.contains(required), "Swift binding 缺少 `{required}`");
+    }
+    assert!(header.is_file(), "缺少 Swift C header");
+    assert!(modulemap.is_file(), "缺少 Swift modulemap");
+    for required in [
+        "object YunjianAndroid",
+        "context.applicationContext",
+        "System.loadLibrary(\"yunjian_mobile\")",
+        "initializeNative(context: Context)",
+    ] {
+        assert!(
+            android.contains(required),
+            "Android 初始化器缺少 `{required}`"
+        );
+    }
+    assert!(crate_root.join("generate-bindings.sh").is_file());
+    assert!(crate_root.join("uniffi.toml").is_file());
 }
 
 #[test]

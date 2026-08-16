@@ -5,6 +5,12 @@
 
 #![warn(missing_docs)]
 
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
+
+#[cfg(feature = "uniffi")]
+pub mod uniffi_native;
+
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use secrecy::SecretString;
@@ -54,11 +60,9 @@ pub const TAURI_MOBILE_BINDING: bool = false;
 
 /// 当前是否构建了 UniFFI native binding。
 ///
-/// **裁决已定但这里仍是 `false`，这是正确状态而不是漏改。** 裁决由 todo 68 的门禁产出，
-/// 而构建 binding 分支是 todo 69 的工作；两件事之间必然存在一段「已定选型、尚未落地」的
-/// 时间。把它提前写成 `true` 会让常量声称一个不存在的构建产物——依赖图里既没有 `uniffi`
-/// 也没有生成的 Kotlin/Swift 绑定，那就是伪造构建状态。
-pub const UNIFFI_NATIVE_BINDING: bool = false;
+/// Kotlin、Swift 生成物和 Android 初始化包装器均由 `yunjian-mobile` 提供；
+/// `tests/architecture.rs` 会阻止常量、feature 与版本化产物再次失配。
+pub const UNIFFI_NATIVE_BINDING: bool = true;
 
 /// 移动端可选择的打字练习形态。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

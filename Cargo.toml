@@ -153,6 +153,13 @@ async-trait = "=0.1.89"
 dirs = "6"
 # 仅用于测试：把结构体序列化成 JSON 后检查字段名，守住「配置里不得出现密钥字段」。
 serde_json = "1"
+# 移动原生外壳的唯一 FFI 生成器。精确锁定到方案研究与缺口裁决所针对的版本；升级时必须
+# 重新核对 stream/cancellation 语义和 Kotlin/Swift 生成物，而不能让次版本静默漂移。
+uniffi = "=0.30.0"
+# Android 原生外壳必须在任何系统钥匙串调用前注入 JavaVM 与 application context。
+# 与 android-native-keyring-store 当前依赖精确对齐，避免同一进程出现两份全局 context。
+ndk-context = "=0.1.1"
+jni = "=0.21.1"
 # 自定义 AI endpoint 的安全边界需要按 URL 语义检查 userinfo 与已解码 query key。
 # 精确锁定到当前 Cargo.lock 已解析版本，避免一次安全修复顺带漂移依赖图。
 url = "=2.5.8"

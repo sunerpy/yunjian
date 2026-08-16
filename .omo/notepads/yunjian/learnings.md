@@ -1,0 +1,4 @@
+- 2026-08-16：UniFFI 的普通移动绑定应与 GPL 语音实现拆成 `uniffi` / `native-voice` 两个 feature，避免不使用 ASR 的客户端静默携带语音栈。
+- 2026-08-16：UniFFI callback 不能把一次轮询超时当成终态；必须持续拉取直到核心 operation 报告唯一终态或句柄关闭。
+- 2026-08-16：Android 系统钥匙串之前必须由 Kotlin 使用 `applicationContext` 初始化 JNI 全局引用与 `ndk-context`，且该顺序需要在 Rust 构造入口再次检查。
+- 2026-08-16：生成的 Kotlin/Swift 源码、C header、modulemap、生成脚本和结构测试应一起版本化，才能让“binding 已落地”成为可执行事实而非状态常量声明。
