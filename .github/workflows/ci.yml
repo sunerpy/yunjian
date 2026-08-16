@@ -10,15 +10,22 @@ name: ci
 # 「CI 绿」会变成两套标准。唯一的例外是 test-windows：它刻意直接跑 cargo，
 # 见该作业的注释。
 #
-# CodeBuild 预备（尚未启用）：`yunjian-github` CodeConnections 状态仍为 PENDING，授权并
-# 重建 `WORKFLOW_JOB_QUEUED` webhook 前不得切 runner。连接 AVAILABLE 后，Linux x86_64
-# 作业可把 `runs-on: ubuntu-latest` 分别替换为下面两标签；每个 job 的第二个标签必须唯一，
-# 否则 GitHub 的 superset 匹配会把 job 路由给错误 runner。`test-windows` 继续 hosted：
+# Linux x86_64 作业跑在 CodeBuild 托管的自托管 runner 上（项目 `yunjian-runner`，
+# us-east-2）。**换的是执行机，不是 CI 的形状**：命令、依赖图与门禁一律不动。
+# 自托管 runner 不计入 GitHub 的 included minutes，只付 CodeBuild 的分钟数。
 #
-#   test       → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-test]
-#   msrv       → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-msrv]
-#   security   → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-security]
-#   ci-success → [codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}, ci-success]
+# 三条硬约束，改这里之前先读：
+#
+# 1. `codebuild-yunjian-runner-` 里的项目名必须与 CodeBuild 项目**逐字相同**。对不上时
+#    CodeBuild 不处理 webhook，**job 会一直挂在 queued 而不报错**——那个症状最难查。
+# 2. 每个 job 的第二个标签必须**全局唯一**。GitHub 按 superset 匹配路由 job，标签少的
+#    job 会被标签多的 job 的 runner 接走，后者永远等不到自己的 runner。今天各 job 标签
+#    数相同也不安全：将来只要给某个 job 加一个 `instance-size:` 覆盖就会触发。
+# 3. `${{ github.run_id }}-${{ github.run_attempt }}` 两段都要。少了 run_attempt，
+#    重跑会去抢上一次那批 runner 的标签。
+#
+# `test-windows` 继续用 GitHub 托管 runner：CodeBuild 的 Windows runner 需要预留容量
+# fleet（按小时计费），而本项目只用它验一条跨平台路径发现行为，不值这个成本。
 #
 # 若仓库转为 private，第三方报告上传还必须配置各服务自己的 token；`GITHUB_TOKEN` 不能
 # 代替 Codecov repository upload token。
@@ -45,9 +52,30 @@ env:
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-test
     steps:
       - uses: actions/checkout@v4
+
+      # 必须显式钉 Node：CodeBuild 的 `standard:7.0` 镜像同时装了 Node 18/20/22/24，
+      # 默认哪一个由镜像自己决定，与 GitHub 托管镜像不同。而 `app/` 的 vite 8 要求
+      # `^20.19 || >=22.12`——落到 Node 18 上时 `npm ci` 对 EBADENGINE **只 warn 不 fail**
+      # （退出码 0），失败被推迟到两步之后，报成 `Cannot find module @rollup/rollup-*`
+      # 这类完全不提版本的错。所以钉版本，并让本步自己断言，把失败拉回成因所在。
+      # 断言写的是 vite 的真实区间而不是「等于 22」，改 node-version 时不会误报。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 断言 Node 版本满足 app/ 的下限
+        run: |
+          node --version
+          npm --version
+          node -e 'const [a,b]=process.versions.node.split(".").map(Number);
+            if (!((a===20&&b>=19)||(a===22&&b>=12)||a>22)) {
+              console.error("Node "+process.versions.node+" 不满足 app/ 的 ^20.19 || >=22.12");
+              process.exit(1);
+            }'
 
       # 显式列出 components：仓库根的 rust-toolchain.toml 虽然声明了
       # rustfmt + clippy，但 action 先装好 stable 之后，rustup 未必会再为
@@ -155,9 +183,25 @@ jobs:
   # （sherpa-rs 等）声明的下限仍由第 1 层覆盖。
   msrv:
     name: MSRV (Rust 1.95)
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-msrv
     steps:
       - uses: actions/checkout@v4
+
+      # 钉 Node 的理由与断言写法见本文件 `test` 作业的同名步骤。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 断言 Node 版本满足 app/ 的下限
+        run: |
+          node --version
+          node -e 'const [a,b]=process.versions.node.split(".").map(Number);
+            if (!((a===20&&b>=19)||(a===22&&b>=12)||a>22)) {
+              console.error("Node "+process.versions.node+" 不满足 app/ 的 ^20.19 || >=22.12");
+              process.exit(1);
+            }'
+
       - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -234,7 +278,9 @@ jobs:
 
   security:
     name: Security Audit
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-security
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -258,7 +304,9 @@ jobs:
 
   ci-success:
     name: CI Success
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - ci-success
     needs: [test, test-windows, msrv, corpus, security]
     # always() 是必需的：默认情况下任一 needs 失败就会让本作业变成 skipped，
     # 而 skipped 在分支保护看来既不是成功也不是失败，必需检查会永远处于 pending。
