@@ -924,10 +924,12 @@ fn today() -> String {
 }
 
 pub(crate) mod device_farm;
+pub(crate) mod dom;
 pub(crate) mod linux;
 pub(crate) mod measurements;
 pub(crate) mod mobile;
 pub(crate) mod screenshot;
+pub(crate) mod tray;
 pub(crate) mod webdriver;
 
 #[cfg(test)]
@@ -949,6 +951,12 @@ impl Background {
         Ok(Self { name, child })
     }
 
+    /// [`Background::spawn`] 把两个输出都接到 null，而托盘用的 `dbus-daemon` 必须把总线
+    /// 地址打到 stdout 上，所以它由调用方自己 spawn、再交给这里托管拆除。
+    fn adopt(name: &'static str, child: Child) -> Self {
+        Self { name, child }
+    }
+
     /// 轮询到 `predicate` 为真或超时。
     fn wait_until(deadline: Duration, mut predicate: impl FnMut() -> bool) -> bool {
         let start = Instant::now();
@@ -962,9 +970,37 @@ impl Background {
     }
 }
 
+/// 还活着的被测应用进程 pid。读 `/proc` 自己数，不调 `pgrep`：那会把「有没有残留」
+/// 变成宿主机装了哪些工具的函数。
+pub(crate) fn running_app_pids() -> Vec<u32> {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
+            let comm = fs::read_to_string(entry.path().join("comm")).ok()?;
+            comm.trim().starts_with("yunjian-desktop").then_some(pid)
+        })
+        .collect()
+}
+
+/// 等到没有被测应用进程还活着。
+///
+/// 三条 DOM 会话是顺序跑的，而**上一条的应用退干净之前，下一条不能开始**：
+/// 本机实测过两种后果，且两种的判词都指着没坏的东西——
+/// 一是音频设备仍被上一个进程占着，语音那条降级成「麦克风打开失败」；
+/// 二是上一个 driver 还没释放端口，下一条会话报「driver 起来后没有监听」。
+/// 两者都是会话之间的交接问题，不是产品问题，所以交接必须是确定的而不是靠等一个固定秒数。
+pub(crate) fn wait_for_app_quiesce(timeout: Duration) -> bool {
+    Background::wait_until(timeout, || running_app_pids().is_empty())
+}
+
 impl Drop for Background {
     fn drop(&mut self) {
         // 拆除必须尽力而为且不 panic：Drop 里 panic 会把真正的失败原因盖掉。
+        //
         let _ = self.child.kill();
         let _ = self.child.wait();
         let _ = self.name;
