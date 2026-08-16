@@ -1,0 +1,46 @@
+[package]
+name = "yunjian-spike"
+description = "云笺 Android 冒烟判据②的生产路径桥：把 yunjian-core 的语料获取路径暴露给 instrumented 测试"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# 这个 crate **只服务 todo 68 的判据②**，不进任何分发物。
+#
+# 它存在的理由是判据②的措辞：语料物化必须走**生产用的同一条下载路径**。那条路径
+# （`yunjian_core::assets::AssetResolver::sync`）是 Rust，跑在应用进程里、写进应用私有
+# 存储。Kotlin 侧自己下载再解压会是**另一条路**，而方案明确说过：拿一条产品不会走的
+# 路径去决定框架选型，等于用无关证据下结论。所以判据②必须由 Rust 执行，Kotlin 只负责
+# 调用与上报。
+#
+# 为什么**不**把这个入口加到 `yunjian-app`：`yunjian-app` 经 `yunjian-ai` 拖进
+# `android-native-keyring-store` → `ndk-context`，而 `ndk-context` 在没有 Activity
+# 初始化过 Android context 时是 `panic!` 而不是 `Err`（真机实测 SIGABRT，见
+# `docs/reports/mobile-spike.md`）。本 crate 只依赖 `yunjian-core`，依赖图里没有
+# `ndk-context`，因此不需要任何 Activity 就能在 instrumentation 进程里跑起来。
+#
+# 为什么**不**把这个入口加到 `yunjian-mobile`：todo 69 的 binding 守卫逐字读那个 crate 的
+# `[features]` 与 `[dependencies]`，而门禁裁决还是 `undetermined`，此刻不该动它。
+[lib]
+name = "yunjian_spike"
+path = "src/lib.rs"
+# `cdylib` 供 androidTest APK 的 `System.loadLibrary("yunjian_spike")` 加载；
+# `rlib` 保留是为了宿主上的单元测试能直接链接这个库目标。
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+yunjian-core = { path = "../yunjian-core" }
+
+# JNI 只在 Android 上编译。宿主构建里没有 `jni`，因此 `cargo test --workspace` 不会
+# 为了一个用不到的绑定去拉 Java 头文件。
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "=0.21.1"
+
+[lints]
+workspace = true

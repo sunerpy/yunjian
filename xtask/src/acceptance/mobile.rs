@@ -53,8 +53,14 @@ pub(crate) struct DeclaredCriterion {
 pub(crate) const DECLARED: &[DeclaredCriterion] = &[
     DeclaredCriterion {
         id: "microphone_capture",
-        what: "经 todo 46 权限插件在物理 Android 与物理 iOS 设备上采集麦克风 PCM",
-        threshold: "Android 与 iOS 均满足 sample_rate_hz == 16000、channel_count == 1、rms > 0",
+        what: "经 todo 46 声明的权限路径在物理 Android 与物理 iOS 设备上采集麦克风 PCM",
+        // `permission_plugin` 一项的阈值在 2026-08-15 由「插件类参与」修订为「插件的可观测
+        // 契约成立」，理由记在 `docs/reports/mobile-spike.md` 的「两处判据措辞修订」一节：
+        // todo 46 的 `AudioPermissionPlugin` 是 Tauri 插件，只有被 Rust 侧 `tauri::plugin`
+        // 注册才存在于进程里，而那份注册属于 todo 69 的 `tauri_mobile` 分支——正是本门禁
+        // 要决定的事。让判据依赖它就成了循环：门禁等 binding，binding 等门禁。
+        // 采集参数与 RMS 三项阈值**一字未改**。
+        threshold: "sample_rate_hz == 16000、channel_count == 1、rms > 0，且 permission_plugin == record_audio_granted+modify_audio_settings_granted（todo 46 声明的两条权限在包内齐备且录音权限运行期已授予）",
         required_measurements: &[
             "device_model",
             "os_build",
@@ -63,7 +69,7 @@ pub(crate) const DECLARED: &[DeclaredCriterion] = &[
             "rms",
             "permission_plugin",
         ],
-        driver: "Android: adb + instrumented test APK；iOS: xcrun devicectl + XCUITest bundle",
+        driver: "Android: adb + instrumented test APK（SpikeMicrophoneTest）；iOS: xcrun devicectl + XCUITest bundle",
         executable_when: "同时备妥已授权 USB 调试的物理 Android、已注册到签名身份的物理 iOS、两端已安装的 instrumented 测试包，并授予麦克风权限",
     },
     DeclaredCriterion {
@@ -85,18 +91,27 @@ pub(crate) const DECLARED: &[DeclaredCriterion] = &[
     },
     DeclaredCriterion {
         id: "chinese_ime",
-        what: "在 targetSdk 35 的物理 Android 上用中文输入法向检索框输入中文",
-        threshold: "target_sdk == 35、中文提交成功、keyboard_overlap_px == 0，输入框始终可见且 visualViewport 正常更新",
+        what: "在 targetSdk 35 的物理 Android 上用中文输入法向边到边窗口的检索框输入中文",
+        // `target_sdk == 35` **保持原样**。PR #102 在真机上量到 36 不是阈值定错了，
+        // 而是构建从未把它钉住（tauri 模板取 compileSdk 默认值，AGP 又自动下载缺失平台）。
+        // 修构建比改阈值正确：判据要求在 35 上测，`mobile/android/spike/`
+        // 的 gradle 片段就把 `targetSdk = 35` 写进应用模块。
+        //
+        // 新增的必需项是 `edge_to_edge`。少了它，`keyboard_overlap_px == 0` 证明不了东西：
+        // 非边到边窗口里系统会自己替应用避让键盘，遮挡天然为 0，而判据引用的恰是
+        // edge-to-edge 与 visualViewport 那两个长期缺陷。
+        threshold: "target_sdk == 35、edge_to_edge == true、中文提交成功、keyboard_overlap_px == 0，输入框始终可见且 visualViewport 正常更新",
         required_measurements: &[
             "device_model",
             "os_build",
             "target_sdk",
+            "edge_to_edge",
             "entered_text",
             "keyboard_overlap_px",
             "input_visible",
             "visual_viewport_updated",
         ],
-        driver: "adb + targetSdk 35 instrumented test APK；物理键盘输入法交互由设备端测试记录 viewport 与控件边界",
+        driver: "adb + targetSdk 35 instrumented test APK（SpikeImeTest 驱动 SpikeWebViewActivity）；键盘交互由设备端测试记录 viewport 与控件边界",
         executable_when: "连接已授权的物理 Android，安装 targetSdk 35 测试 APK，启用可输入中文的软键盘，并由设备端 instrumentation 记录输入文本、键盘遮挡和 visualViewport",
     },
     DeclaredCriterion {
@@ -113,9 +128,46 @@ pub(crate) const DECLARED: &[DeclaredCriterion] = &[
             "testflight_build_id",
         ],
         driver: "xcrun devicectl + XCUITest bundle + xcodebuild archive + App Store Connect upload",
-        executable_when: "在安装 Xcode 26 与 iOS 26 SDK 的 macOS 上连接已注册到签名身份的物理 iOS 设备，配置 Distribution 证书、provisioning profile 与 App Store Connect 上传凭据",
+        executable_when: "用户已决定不做商店提交，本判据因此在范围外，不会有测量值。若日后恢复：在安装 Xcode 26 与 iOS 26 SDK 的 macOS 上连接已注册到签名身份的物理 iOS 设备，配置 Distribution 证书、provisioning profile 与 App Store Connect 上传凭据",
     },
 ];
+
+/// 判据①要求的权限路径取值。写成常量而不是散在阈值函数与设备端字符串里，
+/// 是因为两边必须逐字一致：设备端报 `record_audio_granted+modify_audio_settings_granted`
+/// 而这里写别的，结果会是一个读不出原因的 FAIL。
+const PERMISSION_PATH_READY: &str = "record_audio_granted+modify_audio_settings_granted";
+
+/// 预声明阈值的修订记录。门禁的价值取决于阈值不能事后被谈掉，因此任何一次修订都必须
+/// 留在报告里，而不是只留在提交记录里。
+const AMENDMENTS: &[&str] = &[
+    "判据①的 `permission_plugin`：由「todo 46 的 Tauri 插件类参与采集」修订为「该插件的可观测契约成立」，即两条权限在已安装包内声明齐备且 `RECORD_AUDIO` 运行期已授予。理由：那个类是 Tauri 插件，只有被 Rust 侧 `tauri::plugin` 注册才存在于进程里，而这份注册属于 todo 69 的 `tauri_mobile` 分支——正是本门禁要决定的事，依赖它会形成循环。采集参数与 RMS 三项阈值一字未改。",
+    "判据③的 `target_sdk == 35`：**未修订**。PR #102 真机实测 36 是构建缺陷而非阈值错误（tauri 模板取 compileSdk 默认值，AGP 又自动下载缺失平台）；修正方式是在应用模块把 `targetSdk` 钉在 35，而不是放宽判据。",
+    "判据③新增必需项 `edge_to_edge`：非边到边窗口里系统会替应用避让键盘，遮挡天然为 0，那样的 PASS 证明不了产品自己处理了 ime 插入——而判据引用的正是 edge-to-edge 与 visualViewport 两个长期缺陷。",
+];
+
+/// 顶层裁决的语义说明，写进报告。
+///
+/// 三态各有各的话要说，所以按裁决取文案而不是写一句放之四海的套话——一份写着
+/// `uniffi_native` 却在解释 `undetermined` 为何合理的报告，比没有说明更糟。
+///
+/// 关键判断在 `Undetermined` 那一支：判据④（iOS TestFlight）**用户已决定不做**，它既不是
+/// FAIL 也不是 PASS。把 `NOT EXECUTED` 当 FAIL 会让 `uniffi_native` 被一个从未测过的结论
+/// 选中；当 PASS 会让 `tauri_mobile` 建立在一次没做过的上传上。两者都不可接受，所以在没有
+/// FAIL 时顶层只能停在 `undetermined`。
+///
+/// 反过来，**一旦出现实测 FAIL，判据④的范围问题就不再影响结论**：FAIL 在机械规则里是
+/// 决定性的，不需要知道④的结果也能定选型。
+fn verdict_rationale(verdict: SelectionVerdict) -> &'static str {
+    match verdict {
+        SelectionVerdict::UniffiNative => {
+            "存在实测 FAIL，机械规则据此选择 uniffi_native。FAIL 是决定性的：不需要知道判据④（iOS TestFlight，用户已决定不做）的结果也能定选型，因此④的范围问题不影响本次结论。要改变它只能靠让那条 FAIL 在真机上变成 PASS，而不是重新解释阈值——阈值在执行前已声明，事后放宽等于把门禁谈掉。"
+        }
+        SelectionVerdict::TauriMobile => "四条判据全部实测 PASS，机械规则据此选择 tauri_mobile。",
+        SelectionVerdict::Undetermined => {
+            "没有实测 FAIL，但存在 NOT EXECUTED，故顶层保持 undetermined。其中判据④ iOS TestFlight 提交经用户决定不做，处于门禁范围外：它不是 FAIL（没有实测失败），也不是 PASS（没有成功上传）。机械规则要求四条全 PASS 才选 tauri_mobile、任一 FAIL 才选 uniffi_native，两者都不成立。结束它需要用户决定：正式把判据④移出门禁（于是三条判据的结果直接决定选型），或恢复 iOS 提交并实测。"
+        }
+    }
+}
 
 /// 移动框架选型。第三态防止把未执行伪造成产品失败或成功。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -144,7 +196,7 @@ pub(crate) struct CriterionResult {
     driver: &'static str,
     pub(crate) verdict: Verdict,
     pub(crate) measurement: BTreeMap<&'static str, Value>,
-    detail: String,
+    pub(crate) detail: String,
     pub(crate) executable_when: String,
 }
 
@@ -159,6 +211,7 @@ pub(crate) struct MobileReport {
     physical_devices: Vec<PhysicalDevice>,
     preflight: ToolProbe,
     pub(crate) verdict: SelectionVerdict,
+    pub(crate) verdict_rationale: &'static str,
     pub(crate) criteria: Vec<CriterionResult>,
 }
 
@@ -195,16 +248,36 @@ pub(crate) fn selection_verdict(verdicts: &[Verdict]) -> SelectionVerdict {
 pub(crate) fn build_unexecuted_report(platform: Platform) -> MobileReport {
     build_report(
         platform,
-        ToolProbe {
-            command: "not probed".to_owned(),
-            available: false,
-            exit_code: None,
-            stdout: String::new(),
-            stderr: "unit-test constructor: platform driver was not invoked".to_owned(),
-        },
+        unprobed(),
         Vec::new(),
         &MeasurementsByCriterion::new(),
     )
+}
+
+/// 用一段设备侧测量日志构造报告。
+///
+/// 一致性测试必须走**真实的解析 + 判决 + 导出**这条链，而不是手搓 `CriterionResult`：
+/// 手搓能造出「阈值函数从未被调用过」的报告，于是「注入一个 FAIL 会强制 uniffi_native」
+/// 这条断言就绕过了它本该保护的那段代码。
+#[cfg(test)]
+pub(crate) fn build_report_from_device_log(platform: Platform, log: &str) -> MobileReport {
+    build_report(
+        platform,
+        unprobed(),
+        Vec::new(),
+        &measurements::parse_measurements(log),
+    )
+}
+
+#[cfg(test)]
+fn unprobed() -> ToolProbe {
+    ToolProbe {
+        command: "not probed".to_owned(),
+        available: false,
+        exit_code: None,
+        stdout: String::new(),
+        stderr: "unit-test constructor: platform driver was not invoked".to_owned(),
+    }
 }
 
 /// 四条判据的阈值判定。**只在必需测量值全部齐备后才会被调用**，
@@ -228,6 +301,12 @@ fn threshold_for(
                 .unwrap_or(0.0);
             if rms <= 0.0 {
                 return Err(format!("采到的是静音，RMS={rms}"));
+            }
+            let path = values.get("permission_plugin").map(String::as_str);
+            if path != Some(PERMISSION_PATH_READY) {
+                return Err(format!(
+                    "todo 46 的权限路径未成立，要求 {PERMISSION_PATH_READY}，实测 {path:?}"
+                ));
             }
             Ok(())
         },
@@ -256,6 +335,11 @@ fn threshold_for(
                     "判据要求 targetSdk 35，实测 {:?}",
                     values.get("target_sdk")
                 ));
+            }
+            if values.get("edge_to_edge").map(String::as_str) != Some("true") {
+                return Err(
+                    "窗口不在 edge-to-edge 下，键盘遮挡为零只是系统替应用避让的结果，证明不了产品自己处理了 ime 插入".to_owned(),
+                );
             }
             let overlap = values
                 .get("keyboard_overlap_px")
@@ -331,6 +415,7 @@ fn build_report(
         physical_devices,
         preflight,
         verdict,
+        verdict_rationale: verdict_rationale(verdict),
         criteria,
     }
 }
@@ -449,7 +534,7 @@ fn probe_driver(platform: Platform) -> ToolProbe {
     }
 }
 
-fn validate_consistency(report: &MobileReport) -> Result<()> {
+pub(crate) fn validate_consistency(report: &MobileReport) -> Result<()> {
     if report.criteria.len() != DECLARED.len() {
         bail!(
             "移动报告有 {} 项，预声明 {} 项",
@@ -553,8 +638,9 @@ fn render_markdown(report: &MobileReport) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "> [!WARNING]\n> **verdict: `{}`。** `NOT EXECUTED` 不是产品失败，也不是通过；\n> 在四项真机判据全部得到 PASS/FAIL 之前，移动端框架选型保持 `undetermined`。",
-        report.verdict.as_str()
+        "> [!WARNING]\n> **verdict: `{}`。** `NOT EXECUTED` 既不是产品失败也不是通过；只有实测 FAIL 才选 `uniffi_native`，只有四条全 PASS 才选 `tauri_mobile`。\n>\n> {}",
+        report.verdict.as_str(),
+        report.verdict_rationale
     );
     let _ = writeln!(out);
     let _ = writeln!(out, "## 本次运行");
@@ -606,5 +692,15 @@ fn render_markdown(report: &MobileReport) -> String {
         out,
         "1. 四项全为 `PASS` → `tauri_mobile`；\n2. 任一项为 `FAIL` → `uniffi_native`；\n3. 没有 `FAIL` 但存在 `NOT EXECUTED` → `undetermined`。\n\n第三态防止把缺设备误写成产品失败，也防止在没有证据时推进移动 shell。"
     );
+    let _ = writeln!(out);
+    let _ = writeln!(out, "## 本次顶层裁决的语义");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "{}", report.verdict_rationale);
+    let _ = writeln!(out);
+    let _ = writeln!(out, "## 预声明阈值的修订记录");
+    let _ = writeln!(out);
+    for amendment in AMENDMENTS {
+        let _ = writeln!(out, "- {amendment}");
+    }
     out
 }
