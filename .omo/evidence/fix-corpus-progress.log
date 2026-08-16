@@ -1,0 +1,128 @@
+Fix: corpus materialization progress display
+Date: 2026-08-16
+Branch: fix/corpus-progress-display
+Baseline: 83b78a4 (main)
+
+DEFECT (from desktop QA 2026-08-16, 18 PASS / 1 FAIL / 1 NOT EXECUTED)
+`corpus_first_run_materialization` FAIL: materialization completed and rendered
+`corpus-facts`, but no progress was shown at any point. Rust `fetch_corpus` does
+report progress step by step through `Channel<Event<CorpusProgress, Value>>`
+(crates/yunjian-app/src/ipc.rs), and PR #105 had already created the Channel on
+the frontend — but never subscribed `onmessage`, so every event was dropped.
+The inline comment admitted it: "设置面板暂不渲染进度".
+
+BACKEND EVENT SHAPE (read from source, not guessed)
+- Outer `Event<P, I>` is ADJACENTLY tagged: #[serde(tag="type", content="payload")]
+  (crates/yunjian-core/src/operation.rs:14) → progress / item / done / cancelled / failed
+- Inner `CorpusProgress` is INTERNALLY tagged: #[serde(tag="stage")]
+  (crates/yunjian-app/src/ipc.rs:781), eight variants:
+  already_present{path} verifying_archive{archive,bytes} archive_verified{sha256}
+  decompressing{bytes_done,bytes_total} materialized{path,corpus_version}
+  deriving{...} derive_failed{reason} ready{path,corpus_version,derived}
+- Wire form: {type:"progress", payload:{stage:"decompressing", bytes_done, bytes_total}}
+- Terminal: Event::Done on success, Event::Failed{message} on error.
+
+BACKEND CHANGE
+`CorpusProgress::Deriving` previously carried `detail: format!("{progress:?}")`,
+collapsing the kernel's UI-facing `DeriveStep::display_name()` (derive.rs:60) plus
+done/total into one Rust debug string. Changed to structured {step, done, total}.
+
+$ cargo check -p yunjian-app
+RESULT: PASS
+
+FRONTEND CHANGES
+- app/src/contracts/settings.ts: CorpusProgress (8 variants), CORPUS_PROGRESS_LABEL,
+  CorpusProgressEvent. Field names copied verbatim from ipc.rs.
+- app/src/data/progressChannel.ts (NEW): the single Channel construction point.
+  Construction and subscription are one indivisible action.
+- app/src/data/settingsPorts.ts: CorpusPort.fetchCorpus(onEvent) — REQUIRED param.
+- app/src/data/{sampleSettingsPorts,tauriPorts,sampleVoicePorts}.ts: all routed
+  through progressChannel.
+- app/src/settings/CorpusPanel.tsx: progress block with role=progressbar, stage
+  label, percent, detail line; no aria-valuenow when the denominator is unknown.
+- app/src/settings/settings.css: existing tokens only; ratio→width via calc() in
+  CSS (noScoreArithmetic.test.ts forbids ratio arithmetic in TS);
+  prefers-reduced-motion disables the indeterminate sweep.
+
+ASSERTIONS ADDED (three layers)
+1. Behavioral — app/src/data/__tests__/tauriChannelContract.test.ts
+   Sends a real event into the handed-over Channel and requires it to reach the
+   caller's callback. The pre-existing assertion only asked whether a Channel was
+   present in the args, which is exactly why "created but unsubscribed" was green.
+2. Structural — app/src/data/__tests__/channelSubscription.test.ts (NEW)
+   `new Channel` may appear only in progressChannel.ts; that factory must assign
+   `onmessage`; comments and string literals are stripped before scanning, and a
+   third test pins the stripping behaviour itself.
+3. Rendering — app/src/settings/__tests__/SettingsScreen.test.tsx (7 new)
+   Immediate feedback before the first event; MiB + percent while decompressing;
+   kernel step name + poem counts while deriving; no 0% when total==0;
+   derive_failed is informational, not an error; progress yields to the facts
+   table on completion; the "not downloaded" note disappears during the fetch.
+
+INJECTION VERIFICATION (tsc state checked each round before judging red)
+a) Removed `channel.onmessage = onEvent;` from progressChannel.ts
+   → tsc: TS6133 'onEvent' declared but never read
+   → 2 tests FAILED (structural factory check + behavioural delivery check)
+b) Reverted; changed sampleSettingsPorts.ts back to a bare `new Channel<unknown>()`
+   → tsc: TS6133 on both the unused import and the unused param
+   → 2 tests FAILED (construction-site check + behavioural delivery check)
+c) Reverted; removed `{busy && <CorpusProgressView …/>}` leaving the comment
+   → tsc: TS6133 on `progress` and `CorpusProgressView`
+   → 6 tests FAILED (all rendering assertions)
+All three restored; `npx tsc --noEmit` clean afterwards.
+Note: every round also produced TS6133 — that is the type-layer guard working.
+
+HARNESS CHANGES (xtask/src/acceptance/dom.rs)
+- Screenshot the progress block when the FIRST progress text arrives. The
+  end-of-run full-window screenshot cannot show progress (the block yields to the
+  facts table by design), so without this the PASS had text but no image.
+  Falls back to a full-window shot when the element endpoint returns flat colour,
+  same escape hatch as record_focused.
+- Verdict text now samples the progress texts (first 3 … omitted N … last 3).
+  The first run listed all 484 near-identical strings, making that report row too
+  long to read — an unread verdict is equivalent to no verdict. The count itself
+  stays exact via progress_seen.len().
+- 3 unit tests for the sampling helper and the screenshot filename.
+
+$ cargo test -p xtask acceptance::dom
+RESULT: PASS (3 passed)
+
+GATES
+$ make fmt && make ci
+RESULT: PASS — fmt-check lint test mcp-conformance frontend-test
+Frontend: 36 files, 427 tests passed.
+
+$ cargo test --workspace --all-features --no-fail-fast
+RESULT: PASS — 1288 passed, 0 failed, 9 ignored (pre-change baseline was 1283/0)
+
+DESKTOP ACCEPTANCE (re-run by me, report written to disk and committed)
+Preconditions performed: proxy vars unset, YUNJIAN_MODEL_DIR exported,
+`npm ci && npm run build` in app/ (dist must exist or generate_context! panics),
+`cargo build -p yunjian-app --bin yunjian-desktop --features custom-protocol`,
+`make bundle` for the .deb (so installer_runs is executed rather than skipped),
+PulseAudio sine module loaded, monitor set as default source, stale X99 socket
+removed only after confirming no Xvfb owns it, port 4444 confirmed free.
+
+$ cargo run -p xtask -- acceptance --platform linux --set desktop
+RESULT: PASS 19  FAIL 0  NOT EXECUTED 1  all_pass false
+
+corpus_first_run_materialization: FAIL → PASS
+  481 distinct progress texts observed, from "正在核对归档摘要212.8 MiB" through
+  "正在本机派生检索结构100%构建候选索引（473,088 / 474,043 首）", then corpus-facts
+  (0.1.0 / 474,043 poems / schema 2 / full / first_launch / tang-song).
+
+The single NOT EXECUTED is voice_round_succeeds_end_to_end — a product fact: the
+desktop artifact does not compile `voice` (licence boundary, 2026-08-10 decision).
+
+SCREENSHOTS OPENED AND INSPECTED
+- desktop-qa/corpus-progress.png: settings dialog mid-materialization. Corpus panel
+  shows the "下载语料库" button, then the progress block: stage line
+  "正在核对归档摘要", the progress track, and detail "212.8 MiB". The stale
+  "尚未下载语料库" note is gone (that is the `!busy` guard working).
+- desktop-qa/corpus-first-run.png: post-completion. Facts table renders 0.1.0,
+  474,043 首, schema 2, 2026-08-10T00:00:00Z. No progress block — as designed.
+
+HARNESS FLAKE OBSERVED (not caused by this change)
+One run reported 18 PASS / 0 FAIL / 2 NOT EXECUTED; the extra NOT EXECUTED was
+voice_degradation_states_reason with "POST /session 未能返回会话；driver 仍在运行；
+它的 stderr 是空的". Ports were clean; a re-run returned 19/0/1.

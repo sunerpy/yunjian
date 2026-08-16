@@ -15,7 +15,7 @@
  * 不说的话，一个开发者截的图会被当成产品行为，而里面每一首诗的归属都是我编的。
  */
 
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import type { AppreciationState } from "../contracts/ai";
 import type {
   DictionaryLookup,
@@ -36,6 +36,7 @@ import type {
   TagBrowseRequest,
   TextSearchRequest,
 } from "./ports";
+import { progressChannel } from "./progressChannel";
 
 /**
  * todo 64 要注册的命令名。
@@ -86,13 +87,19 @@ export function createTauriPorts(): {
   };
 
   const appreciation: AppreciationPort = {
-    appreciate: (request: PoemDetailRequest) => {
+    appreciate: (request: PoemDetailRequest) =>
       // Rust 侧即使最终只返回一个 AppreciationState，也要求调用方提供流式事件 Channel。
-      // 当前面板不消费中间增量，但 Channel 仍是命令的必需参数；漏掉会在进入命令前因
-      // `onEvent` 缺失而被 Tauri 拒绝。
-      const onEvent = new Channel<unknown>();
-      return invoke<AppreciationState>(IPC_COMMANDS.appreciate, { request, onEvent });
-    },
+      // 漏掉会在进入命令前因 `onEvent` 缺失而被 Tauri 拒绝。
+      //
+      // 赏析面板只渲染最终状态，不逐字上屏，所以这里的回调是一次**显式丢弃**——
+      // 写出来是为了让「丢掉」这个决定看得见。语料那侧曾经是**隐式**丢弃
+      // （Channel 建了但 `onmessage` 从未赋值），结果首启物化全程无反馈，
+      // 见 `data/progressChannel.ts`。要逐字上屏就把这个回调接到状态上，
+      // 而不是回去自己 `new Channel`。
+      invoke<AppreciationState>(IPC_COMMANDS.appreciate, {
+        request,
+        onEvent: progressChannel(() => undefined),
+      }),
   };
 
   const dictionary: DictionaryPort = {

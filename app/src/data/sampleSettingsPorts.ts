@@ -13,10 +13,11 @@
  * 替身也遵守「读回密钥的方法不存在」这条契约，否则替身会变成绕过契约的后门。
  */
 
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import type {
   AiSettings,
   CacheStatus,
+  CorpusProgress,
   CorpusStatus,
   KeyStatus,
   ModelStatus,
@@ -24,6 +25,7 @@ import type {
   StorageReport,
 } from "../contracts/settings";
 import { PROVIDER_NONE } from "../contracts/settings";
+import { progressChannel } from "./progressChannel";
 import type {
   AiSettingsPort,
   CachePort,
@@ -81,12 +83,13 @@ export function createTauriSettingsPorts(): SettingsPorts | null {
 
   const corpus: CorpusPort = {
     corpusStatus: () => invoke<CorpusStatus>(SETTINGS_IPC_COMMANDS.corpusStatus),
-    fetchCorpus: () => {
-      // `fetch_corpus` 的 Rust 签名把进度 Channel 作为必需参数。设置面板暂不渲染进度，
-      // 但仍必须把 Channel 交给 Tauri，否则命令在参数反序列化阶段就会失败。
-      const onEvent = new Channel<unknown>();
-      return invoke<CorpusStatus>(SETTINGS_IPC_COMMANDS.fetchCorpus, { onEvent });
-    },
+    // 参数名 `onEvent` 要与 Rust 形参 `on_event` 逐字对应（`ipc.rs` 的 `fetch_corpus`，
+    // 该命令没有 `rename_all`）。通道由 `progressChannel` 建，因此它一定已经订阅——
+    // 「建了通道却不读」是本项目在这一行上栽过的那次，见该模块的说明。
+    fetchCorpus: (onEvent) =>
+      invoke<CorpusStatus>(SETTINGS_IPC_COMMANDS.fetchCorpus, {
+        onEvent: progressChannel(onEvent),
+      }),
   };
 
   const models: ModelPort = {
@@ -185,6 +188,28 @@ function absentReport(stored: StorageReport): StorageReport {
     location: stored.location,
   };
 }
+
+/**
+ * 样例宿主吐出的物化进度序列。
+ *
+ * 与 `data/sampleVoicePorts.ts` 同一条规矩：替身**不做任何真实工作**，所以这里是一串
+ * 写死的常量而不是算出来的——样例宿主里没有归档、没有解压、没有派生。它只做一件事：
+ * 按 Rust 侧真实的发送顺序把事件吐出来（核对归档 → 摘要已核对 → 解压 → 落地 → 派生 →
+ * 就绪，见 `crates/yunjian-core/src/corpus.rs` 的 `open_with_progress`），
+ * 因为面板的进度状态机要靠那个顺序驱动，而顺序是接线的一部分。
+ *
+ * 字节数刻意取一个**一眼看得出是样例**的小数，而不是照抄 211 MiB：一张 dev 截图会被
+ * 当成产品行为。派生那两步的 `total` 用样例语料的 4 首，与 [`SAMPLE_CORPUS`] 一致。
+ */
+const SAMPLE_CORPUS_PROGRESS: readonly CorpusProgress[] = [
+  { stage: "verifying_archive", archive: "sample.tar.gz（样例）", bytes: 4_096 },
+  { stage: "archive_verified", sha256: "0".repeat(64) },
+  { stage: "decompressing", bytes_done: 4_096, bytes_total: 4_096 },
+  { stage: "materialized", path: "内存中的样例语料", corpus_version: "sample-0.0.0" },
+  { stage: "deriving", step: "读取诗词正文", done: 4, total: 4 },
+  { stage: "deriving", step: "构建候选索引", done: 4, total: 4 },
+  { stage: "ready", path: "内存中的样例语料", corpus_version: "sample-0.0.0", derived: true },
+];
 
 const SAMPLE_CORPUS: CorpusStatus = {
   kind: "ready",
@@ -302,7 +327,11 @@ export function createSampleSettingsPorts(): SettingsPorts {
     },
     corpus: {
       corpusStatus: () => Promise.resolve(corpus),
-      fetchCorpus: () => {
+      fetchCorpus: (onEvent) => {
+        for (const stage of SAMPLE_CORPUS_PROGRESS) {
+          onEvent({ type: "progress", payload: stage });
+        }
+        onEvent({ type: "done" });
         corpus = SAMPLE_CORPUS;
         return Promise.resolve(corpus);
       },

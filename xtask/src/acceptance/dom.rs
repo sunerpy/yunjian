@@ -229,7 +229,7 @@ pub(crate) fn drive_first_run(
     shots: &Path,
     collector: &mut Collector,
 ) -> Result<()> {
-    let outcome = corpus_first_run(driver);
+    let outcome = corpus_first_run(driver, shots);
     // 语料那条的判词在设置弹窗里的折叠线以下。聚焦到语料区那三种终态各自的元素：
     // 失败时是 `corpus-error`，成功时是 `corpus-facts`，都还没出现时退回 `fetch-corpus`
     // 那个按钮。**没有 `corpus-panel` 这个 testid**——凭记忆写标识符正是本项目栽过的那一类，
@@ -387,7 +387,7 @@ fn ime_into_prefilled_box(driver: &Session) -> Outcome {
 ///
 /// 这条会话的 `HOME` 是空的，所以状态必然从 `corpus-absent` 开始——**先断言这一点**，
 /// 否则在一个语料已经在的目录里点「检查更新」也会得到 ready，而那不是首启。
-fn corpus_first_run(driver: &Session) -> Outcome {
+fn corpus_first_run(driver: &Session, shots: &Path) -> Outcome {
     let observed = (|| -> Result<FirstRun> {
         if !driver.wait_for("[data-testid='nav-settings']", MOUNT_TIMEOUT) {
             bail!("等了 {} 秒，主导航仍未挂载", MOUNT_TIMEOUT.as_secs());
@@ -426,6 +426,26 @@ fn corpus_first_run(driver: &Session) -> Outcome {
                     && !text.trim().is_empty()
                     && !progress_seen.iter().any(|seen: &String| seen == &text)
                 {
+                    // 第一条进度就截一张。收工后的整屏截图**拍不到进度**——进度块按设计
+                    // 让位给事实表，于是那张图证明的是「物化完成」而不是「显示了进度」。
+                    // 判词里的文本已经说了后者，但「数字是结论，图是证据」：一张拍到
+                    // 进度条与阶段文字的图，是这条判据唯一的图形证据。
+                    if progress_seen.is_empty() {
+                        let path = shots.join(PROGRESS_SHOT);
+                        // 与 `record_focused` 同一条退路：本机 WebKitGTK 的元素截图端点
+                        // 常返回一块纯色，「成功」了却什么都没证明。拍不到内容就退回整屏
+                        // ——进度块此刻正在设置弹窗里，整屏拍得到它。
+                        let _ = driver
+                            .screenshot_element(css, &path)
+                            .and_then(|()| {
+                                if screenshot_has_content(&path) {
+                                    Ok(())
+                                } else {
+                                    anyhow::bail!("元素截图是一块纯色，没有拍到进度")
+                                }
+                            })
+                            .or_else(|_| driver.screenshot(&path));
+                    }
                     progress_seen.push(text);
                 }
             }
@@ -462,13 +482,11 @@ fn corpus_first_run(driver: &Session) -> Outcome {
                 ))
             } else {
                 Outcome::pass(format!(
-                    "{start}，物化过程显示了进度（{}），完成后渲染出 `corpus-facts`（{}）",
-                    progress_seen
-                        .iter()
-                        .map(|text| format!("「{}」", one_line(text)))
-                        .collect::<Vec<_>>()
-                        .join("、"),
-                    one_line(&facts)
+                    "{start}，物化过程显示了 {} 条不同的进度文本（{}），完成后渲染出 `corpus-facts`（{}）。进度块按设计在收工后让位给事实表，所以那张整屏截图拍不到它；物化中途另截了一张 `{}`",
+                    progress_seen.len(),
+                    progress_samples(&progress_seen),
+                    one_line(&facts),
+                    PROGRESS_SHOT
                 ))
             }
         }
@@ -487,6 +505,34 @@ fn corpus_first_run(driver: &Session) -> Outcome {
         )),
         Err(error) => Outcome::fail(format!("驱动首启物化失败：{error}")),
     }
+}
+
+/// 物化中途那张进度截图的文件名。
+const PROGRESS_SHOT: &str = "corpus-progress.png";
+
+/// 进度文本的抽样，用于判词。
+///
+/// **不能全列**：解压按块汇报、派生按 1024 首汇报（`derive.rs` 的 `PROGRESS_STRIDE`），
+/// 唐宋规模下这是四百多条几乎一样的串，整段贴进判词会让报告里那一行长到没人读，
+/// 而「没人读的判词」与「没有判词」等价。所以列头三条与末三条，中间用条数交代。
+/// 条数本身仍是完整的——判据是「有没有进度」，那由 `progress_seen.len()` 承担。
+fn progress_samples(seen: &[String]) -> String {
+    const EDGE: usize = 3;
+    let quoted = |text: &String| format!("「{}」", one_line(text));
+    if seen.len() <= EDGE * 2 {
+        return seen.iter().map(quoted).collect::<Vec<_>>().join("、");
+    }
+    let head = seen[..EDGE]
+        .iter()
+        .map(quoted)
+        .collect::<Vec<_>>()
+        .join("、");
+    let tail = seen[seen.len() - EDGE..]
+        .iter()
+        .map(quoted)
+        .collect::<Vec<_>>()
+        .join("、");
+    format!("{head} …… 中间省略 {} 条 …… {tail}", seen.len() - EDGE * 2)
 }
 
 enum FirstRun {
@@ -1199,4 +1245,50 @@ fn screenshot_has_content(path: &Path) -> bool {
         _ => return false,
     };
     super::screenshot::Paint::measure(&rgba).painted()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PROGRESS_SHOT, progress_samples};
+
+    #[test]
+    fn progress_samples_keeps_both_ends_and_states_the_omitted_count() {
+        // 判据是「有没有进度」，抽样只影响判词的可读性，不影响裁决。所以这里钉的是
+        // 「首尾都在、省略了多少条说清楚」——一个只留头或只留尾的抽样会让读报告的人
+        // 以为进度停在了某一段。
+        let seen: Vec<String> = (1..=10).map(|n| format!("第 {n} 条")).collect();
+        let sampled = progress_samples(&seen);
+        for edge in [
+            "第 1 条",
+            "第 2 条",
+            "第 3 条",
+            "第 8 条",
+            "第 9 条",
+            "第 10 条",
+        ] {
+            assert!(sampled.contains(edge), "抽样丢了 `{edge}`：{sampled}");
+        }
+        assert!(
+            sampled.contains("中间省略 4 条"),
+            "抽样没有交代省了多少条：{sampled}"
+        );
+    }
+
+    #[test]
+    fn progress_samples_lists_everything_when_short() {
+        let seen: Vec<String> = (1..=4).map(|n| format!("第 {n} 条")).collect();
+        let sampled = progress_samples(&seen);
+        assert!(!sampled.contains("省略"), "条数够少时不该省略：{sampled}");
+        assert_eq!(sampled.matches('「').count(), 4);
+    }
+
+    /// 进度截图的文件名必须与判词里引用的那个一致。
+    ///
+    /// 报告里引用一个不存在的文件，会让读报告的人以为看过了证据——
+    /// `record_focused` 的注释记的是同一件事。
+    #[test]
+    fn progress_shot_is_a_png_name() {
+        assert!(PROGRESS_SHOT.ends_with(".png"), "截图名必须是 PNG");
+        assert!(!PROGRESS_SHOT.contains('/'), "截图名不含目录分隔符");
+    }
 }

@@ -15,12 +15,12 @@
 | 平台 | `linux` |
 | 断言集 | `desktop` |
 | 应用版本 | `0.1.0` |
-| 提交 | `a4aaba8dfd3f8b2edaa630459e761b73b1b1fc92` |
+| 提交 | `83b78a4c854d7b7aa33c95a4a69fbc4368f9f474` |
 | 操作系统构建 | `Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws` |
 | 会话 | `virtual`（`DISPLAY=:99`） |
 | 窗口管理器 | `Openbox` |
 | 非 monitor 音频输入设备 | 0 |
-| 真实采集探测 | 真实采集一秒成功：设备「default」，设备原生 16000 Hz 1 声道，归一到 16000 Hz 1 声道后 RMS=0.025991（静音阈值 1e-4），因此本会话确实能录到非静音音频 |
+| 真实采集探测 | 本次 xtask 未开 `capture` 特性，没有做真实采集探测；用 `cargo run -p xtask --features capture -- acceptance` 才会做 |
 
 > [!NOTE]
 > 会话是 **Xvfb 虚拟显示**加一个真实窗口管理器，不是物理显示器。窗口映射、
@@ -30,7 +30,7 @@
 
 ## 汇总
 
-声明 20 条 · PASS 17 · FAIL 2 · NOT EXECUTED 1
+声明 20 条 · PASS 19 · FAIL 0 · NOT EXECUTED 1
 
 ## WebDriver 握手探测
 
@@ -42,8 +42,8 @@
 
 | 断言 | 通道 | 裁决 | 依据 | 截图 |
 | --- | --- | --- | --- | --- |
-| `artifact_present`<br>构建产物存在且可执行，动态库依赖全部可解析 | 进程 | **PASS** | /config/workspace/ProdDir/AI/yj-driver/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库 | — |
-| `installer_runs`<br>安装包（.deb / NSIS / .dmg）能安装并从安装后的路径启动 | 进程 | **PASS** | 把 云笺_0.1.0_amd64.deb 解到 /config/workspace/ProdDir/AI/yj-driver/target/acceptance/install-root 后，从安装路径 /config/workspace/ProdDir/AI/yj-driver/target/acceptance/install-root/usr/bin/yunjian-desktop 启动，映射出顶层窗口且 `_NET_WM_NAME` = 「云笺」 | — |
+| `artifact_present`<br>构建产物存在且可执行，动态库依赖全部可解析 | 进程 | **PASS** | /config/workspace/ProdDir/AI/yj-corpus-progress/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库 | — |
+| `installer_runs`<br>安装包（.deb / NSIS / .dmg）能安装并从安装后的路径启动 | 进程 | **PASS** | 把 云笺_0.1.0_amd64.deb 解到 /config/workspace/ProdDir/AI/yj-corpus-progress/target/acceptance/install-root 后，从安装路径 /config/workspace/ProdDir/AI/yj-corpus-progress/target/acceptance/install-root/usr/bin/yunjian-desktop 启动，映射出顶层窗口且 `_NET_WM_NAME` = 「云笺」 | — |
 | `app_launches`<br>应用在交互式桌面会话里启动并映射出一个顶层窗口 | OS 输入 | **PASS** | 窗口 0x600003 已映射，`_NET_WM_NAME` = 「云笺」 | [`desktop-qa/app-launched.png`](desktop-qa/app-launched.png) |
 | `custom_titlebar_rendered`<br>窗口没有窗口管理器绘制的边框（decorations: false 生效），标题栏由应用自绘 | OS 输入 | **PASS** | `_NET_FRAME_EXTENTS` = [0, 0, 0, 0]，窗口管理器没有绘制边框；标题栏由应用自绘 | [`desktop-qa/custom-titlebar.png`](desktop-qa/custom-titlebar.png) |
 | `control_minimize_works`<br>点自绘标题栏的最小化按钮，窗口真的最小化 | OS 输入 | **PASS** | 点最小化按钮后 `_NET_WM_STATE` 带上了 `_NET_WM_STATE_HIDDEN` | [`desktop-qa/control-minimize.png`](desktop-qa/control-minimize.png) |
@@ -53,12 +53,12 @@
 | `double_click_maximizes_exactly_once`<br>双击标题栏恰好最大化一次（自己再挂一个双击处理器会双切换回原样） | OS 输入 | **PASS** | 双击前 maximized=false，一次双击后 maximized=true（恰好切换一次） | [`desktop-qa/double-click-maximize.png`](desktop-qa/double-click-maximize.png) |
 | `drag_from_title_text`<br>按住标题文字本身拖动，窗口位置真的改变（data-tauri-drag-region="deep"） | OS 输入 | **PASS** | 按住标题文字（窗口内 18,20）拖动后，窗口从 (200, 150) 移到 (300, 225) | [`desktop-qa/drag-from-title-text.png`](desktop-qa/drag-from-title-text.png) |
 | `taskbar_icon_correct`<br>窗口带 _NET_WM_ICON，任务栏能取到图标 | OS 输入 | **PASS** | `_NET_WM_ICON` 有 2306 个 32 位字（宽高 2 字 + 逐像素 ARGB），任务栏与 alt-tab 能取到图标 | [`desktop-qa/taskbar-icon.png`](desktop-qa/taskbar-icon.png) |
-| `tray_icon_correct`<br>托盘图标存在且背景透明 | OS 输入 | **PASS** | 托盘项已在会话总线上注册（`Status`=「Active」），运行期图标为 /run/user/1000/tray-icon/tray-icon-3924232-1-0.png（32×32），其中 46.9% 的像素 alpha 为 0，背景确为透明 | [`desktop-qa/tray-icon.png`](desktop-qa/tray-icon.png) |
+| `tray_icon_correct`<br>托盘图标存在且背景透明 | OS 输入 | **PASS** | 托盘项已在会话总线上注册（`Status`=「Active」），运行期图标为 /run/user/1000/tray-icon/tray-icon-1930018-1-0.png（32×32），其中 46.9% 的像素 alpha 为 0，背景确为透明 | [`desktop-qa/tray-icon.png`](desktop-qa/tray-icon.png) |
 | `ime_prefilled_search_box`<br>中文输入法往一个**已有内容**的检索框里输入：不冻结且字符落入框内（tauri#15436） | WebDriver | **PASS** | 检索框预填「明月」后再次聚焦并输入「千里」，`input.value` 为「明月千里」——字符全部落入框内，无吞字 | [`desktop-qa/ime-prefilled-dom.png`](desktop-qa/ime-prefilled-dom.png) |
 | `ime_prefilled_search_box_no_freeze`<br>承 tauri#15436：聚焦已有内容的检索框并输入后，界面仍然响应（OS 层可证的那一半） | OS 输入 | **PASS** | 往检索框输入中文后再次聚焦并继续输入，窗口仍响应双击最大化，未冻结 | [`desktop-qa/ime-prefilled-no-freeze.png`](desktop-qa/ime-prefilled-no-freeze.png) |
 | `two_char_search_returns_results`<br>两字检索（明月）返回结果行 | WebDriver | **PASS** | 检索「明月」后摘要为「估计命中 7291 条，本页显示 20 条」 | [`desktop-qa/two-char-search.png`](desktop-qa/two-char-search.png) |
-| `corpus_first_run_materialization`<br>首启语料物化完成并显示进度 | WebDriver | **FAIL** | 起始状态 absent=true；点「下载语料库」之后界面渲染的是错误`corpus-error`：「invalid args `onEvent` for command `fetch_corpus`: command fetch_corpus missing required key onEvent」——首启物化没有完成 | [`desktop-qa/corpus-first-run.png`](desktop-qa/corpus-first-run.png) |
-| `shipped_appreciation_without_key`<br>没有 API key 时随包赏析仍能渲染，且带「AI 赏析」标签与未审校说明 | WebDriver | **FAIL** | 未配置 API key 下打开「出塞」，赏析面板渲染的是失败态：「AI 赏析获取失败」。随包赏析在真实桌面端从未渲染过，与有没有 key 无关。同一根因还有一个症状：`corpus_first_run_materialization` 那条把 Tauri 的原话逐字带了出来——「invalid args onEvent for command fetch_corpus」。`appreciate_poem` 与 `fetch_corpus` 都声明了一个必需的 `on_event: Channel<..>` 参数，而 `tauriPorts.ts` 的 `appreciate` 与 `sampleSettingsPorts.ts` 的 `fetchCorpus` 都只传了 `request`、没有建 Channel（语音那两条端口是建了的，所以语音走得通）。本条读不到那句原话，是因为详情页的 catch 写的是 `cause instanceof Error ? cause.message : "AI 赏析获取失败"`，而 Tauri 拒绝时给的是字符串而不是 Error，于是真实原因被这句兜底文案吞掉——语料面板那侧用的是 `String(cause)`，所以它显示了原话 | [`desktop-qa/shipped-appreciation.png`](desktop-qa/shipped-appreciation.png) |
+| `corpus_first_run_materialization`<br>首启语料物化完成并显示进度 | WebDriver | **PASS** | 起始状态是 `corpus-absent`（空数据目录，确为首启），物化过程显示了 481 条不同的进度文本（「正在核对归档摘要212.8 MiB」、「正在解压语料库32.1 MiB」、「正在解压语料库64.2 MiB」 …… 中间省略 475 条 …… 「正在本机派生检索结构99%构建候选索引（471,040 / 474,043 首）」、「正在本机派生检索结构100%构建候选索引（472,064 / 474,043 首）」、「正在本机派生检索结构100%构建候选索引（473,088 / 474,043 首）」），完成后渲染出 `corpus-facts`（语料版本0.1.0收录作品474,043 首schema 版本2构建时间2026-08-10T00:00:00Z索引模式full派生索引first_launch随包范围tang-song）。进度块按设计在收工后让位给事实表，所以那张整屏截图拍不到它；物化中途另截了一张 `corpus-progress.png` | [`desktop-qa/corpus-first-run.png`](desktop-qa/corpus-first-run.png) |
+| `shipped_appreciation_without_key`<br>没有 API key 时随包赏析仍能渲染，且带「AI 赏析」标签与未审校说明 | WebDriver | **PASS** | 未配置任何 API key 下打开「出塞」，`ai-source` 为「随包预生成」（命中随包表，非现场生成），标签为「AI 赏析」，并带未审校说明「AI 生成，未经人工审校」；正文首段为「<<未生成：本条不是模型输出，需开放权重模型推理>>」。**正文当前是随包数据集里的未生成标记**，即本条证明的是渲染与标注链路成立，不是生成能力成立 | [`desktop-qa/shipped-appreciation.png`](desktop-qa/shipped-appreciation.png) |
 | `voice_round_succeeds_end_to_end`<br>语音背诵一轮端到端成功：采集 -> ASR -> 无偏置评分这条链跑通 | WebDriver | **NOT EXECUTED** | 被测产物未编译 `voice` 特性，语音在可用性探测这一步就降级为「本版本未编译语音」，采集与 ASR 都不存在，这一轮无从判定成功；降级本身由 `voice_degradation_states_reason` 单独判定。判词：「本版本未编译语音 —— 本版本未编译语音能力，已切换到打字练习。打字练习的评分与语音练习共用同一个内核，功能完整。」<br>**可执行条件**：用 `--features custom-protocol,voice` 构建被测产物（该特性同时是许可边界，见 `docs/VOICE-BUILD.zh.md`），并提供一个非 monitor 的可采集输入设备 | [`desktop-qa/voice-round.png`](desktop-qa/voice-round.png) |
 | `voice_degradation_states_reason`<br>失败路径单独验证：语音不可用时切到打字模式并显示具体原因 | WebDriver | **PASS** | 把模型目录指空之后语音降级，界面报出的具体原因是「本版本未编译语音」（在契约定义的十个原因码内），完整判词「本版本未编译语音 —— 本版本未编译语音能力，已切换到打字练习。打字练习的评分与语音练习共用同一个内核，功能完整。」，并已切到打字练习（`voice-typed-handoff` 与 `recite-answer` 都在） | [`desktop-qa/voice-degradation.png`](desktop-qa/voice-degradation.png) |
 | `app_exits_cleanly`<br>从托盘菜单选择「退出」后，应用以退出码 0 正常结束且不留孤儿进程 | 进程 | **PASS** | 从托盘菜单点「退出」（菜单项 id 5，实际菜单为 显示/隐藏主窗、今日复习、设置、退出）后，应用以退出码 0 结束，且没有留下同名孤儿进程 | — |

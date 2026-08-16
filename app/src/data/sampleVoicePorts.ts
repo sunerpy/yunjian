@@ -18,7 +18,7 @@
  * 一张 dev 截图会被当成产品行为，而样例里的每个数字都是我写死的。
  */
 
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import type {
   FootMark,
   ModelFetchEvent,
@@ -30,6 +30,7 @@ import type {
   VoiceSessionEvent,
 } from "../contracts/voice";
 import { VOICE_NO_MACHINE_SCORE_NOTE } from "../contracts/voice";
+import { progressChannel } from "./progressChannel";
 import type { VoiceFetchModelRequest, VoicePort } from "./voicePorts";
 
 /**
@@ -62,25 +63,20 @@ export function createTauriVoicePort(): VoicePort | null {
       invoke<VoiceDemonstration>(VOICE_IPC_COMMANDS.demonstrate, {
         request: { poem_id: poemId },
       }),
-    startSession: (request, onEvent) => {
-      // Channel 必须作为一个**命令参数**传过去，参数名要与 Rust 侧的形参名逐字一致
-      // （`on_event`）。漏传它不是「没有进度」而是整条命令失败：Tauri 从请求里反序列化
-      // `Channel`，缺参数就报 invalid args，而那条错误看起来像「会话开不起来」。
-      const channel = new Channel<VoiceSessionEvent>();
-      channel.onmessage = onEvent;
-      return invoke<VoiceOutcome>(VOICE_IPC_COMMANDS.startSession, {
+    // Channel 必须作为一个**命令参数**传过去，参数名要与 Rust 侧的形参名逐字一致
+    // （`on_event`）。漏传它不是「没有进度」而是整条命令失败：Tauri 从请求里反序列化
+    // `Channel`，缺参数就报 invalid args，而那条错误看起来像「会话开不起来」。
+    // 建通道与订阅它由 `progressChannel` 一起做完，见那个模块。
+    startSession: (request, onEvent) =>
+      invoke<VoiceOutcome>(VOICE_IPC_COMMANDS.startSession, {
         request,
-        onEvent: channel,
-      });
-    },
-    fetchModel: (request, onEvent) => {
-      const channel = new Channel<ModelFetchEvent>();
-      channel.onmessage = onEvent;
-      return invoke<VoiceModelOutcome>(VOICE_IPC_COMMANDS.fetchModel, {
+        onEvent: progressChannel<VoiceSessionEvent>(onEvent),
+      }),
+    fetchModel: (request, onEvent) =>
+      invoke<VoiceModelOutcome>(VOICE_IPC_COMMANDS.fetchModel, {
         request,
-        onEvent: channel,
-      });
-    },
+        onEvent: progressChannel<ModelFetchEvent>(onEvent),
+      }),
     cancel: (operationId) => invoke<boolean>(VOICE_IPC_COMMANDS.cancel, { operationId }),
   };
 }

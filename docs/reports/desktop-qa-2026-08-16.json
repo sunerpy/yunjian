@@ -4,7 +4,7 @@
   "set": "desktop",
   "date": "2026-08-16",
   "app_version": "0.1.0",
-  "commit_sha": "a4aaba8dfd3f8b2edaa630459e761b73b1b1fc92",
+  "commit_sha": "83b78a4c854d7b7aa33c95a4a69fbc4368f9f474",
   "os_build": "Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws",
   "session": {
     "display_kind": "virtual",
@@ -16,11 +16,11 @@
       "detail": "会话建立成功，DOM 层断言由真实 WebDriver 执行。"
     },
     "audio_input_devices": 0,
-    "audio_capture": "真实采集一秒成功：设备「default」，设备原生 16000 Hz 1 声道，归一到 16000 Hz 1 声道后 RMS=0.025991（静音阈值 1e-4），因此本会话确实能录到非静音音频"
+    "audio_capture": "本次 xtask 未开 `capture` 特性，没有做真实采集探测；用 `cargo run -p xtask --features capture -- acceptance` 才会做"
   },
   "all_pass": false,
-  "executed_pass": 17,
-  "failed": 2,
+  "executed_pass": 19,
+  "failed": 0,
   "not_executed": 1,
   "platforms_not_executed": [
     {
@@ -41,7 +41,7 @@
       "channel": "process",
       "screenshot_required": false,
       "verdict": "PASS",
-      "detail": "/config/workspace/ProdDir/AI/yj-driver/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库",
+      "detail": "/config/workspace/ProdDir/AI/yj-corpus-progress/target/debug/yunjian-desktop 存在，ldd 未报缺失动态库",
       "executable_when": null,
       "screenshot": null
     },
@@ -51,7 +51,7 @@
       "channel": "process",
       "screenshot_required": false,
       "verdict": "PASS",
-      "detail": "把 云笺_0.1.0_amd64.deb 解到 /config/workspace/ProdDir/AI/yj-driver/target/acceptance/install-root 后，从安装路径 /config/workspace/ProdDir/AI/yj-driver/target/acceptance/install-root/usr/bin/yunjian-desktop 启动，映射出顶层窗口且 `_NET_WM_NAME` = 「云笺」",
+      "detail": "把 云笺_0.1.0_amd64.deb 解到 /config/workspace/ProdDir/AI/yj-corpus-progress/target/acceptance/install-root 后，从安装路径 /config/workspace/ProdDir/AI/yj-corpus-progress/target/acceptance/install-root/usr/bin/yunjian-desktop 启动，映射出顶层窗口且 `_NET_WM_NAME` = 「云笺」",
       "executable_when": null,
       "screenshot": null
     },
@@ -151,7 +151,7 @@
       "channel": "os_harness",
       "screenshot_required": true,
       "verdict": "PASS",
-      "detail": "托盘项已在会话总线上注册（`Status`=「Active」），运行期图标为 /run/user/1000/tray-icon/tray-icon-3924232-1-0.png（32×32），其中 46.9% 的像素 alpha 为 0，背景确为透明",
+      "detail": "托盘项已在会话总线上注册（`Status`=「Active」），运行期图标为 /run/user/1000/tray-icon/tray-icon-1930018-1-0.png（32×32），其中 46.9% 的像素 alpha 为 0，背景确为透明",
       "executable_when": null,
       "screenshot": "desktop-qa/tray-icon.png"
     },
@@ -190,8 +190,8 @@
       "what": "首启语料物化完成并显示进度",
       "channel": "web_driver",
       "screenshot_required": true,
-      "verdict": "FAIL",
-      "detail": "起始状态 absent=true；点「下载语料库」之后界面渲染的是错误`corpus-error`：「invalid args `onEvent` for command `fetch_corpus`: command fetch_corpus missing required key onEvent」——首启物化没有完成",
+      "verdict": "PASS",
+      "detail": "起始状态是 `corpus-absent`（空数据目录，确为首启），物化过程显示了 481 条不同的进度文本（「正在核对归档摘要212.8 MiB」、「正在解压语料库32.1 MiB」、「正在解压语料库64.2 MiB」 …… 中间省略 475 条 …… 「正在本机派生检索结构99%构建候选索引（471,040 / 474,043 首）」、「正在本机派生检索结构100%构建候选索引（472,064 / 474,043 首）」、「正在本机派生检索结构100%构建候选索引（473,088 / 474,043 首）」），完成后渲染出 `corpus-facts`（语料版本0.1.0收录作品474,043 首schema 版本2构建时间2026-08-10T00:00:00Z索引模式full派生索引first_launch随包范围tang-song）。进度块按设计在收工后让位给事实表，所以那张整屏截图拍不到它；物化中途另截了一张 `corpus-progress.png`",
       "executable_when": null,
       "screenshot": "desktop-qa/corpus-first-run.png"
     },
@@ -200,8 +200,8 @@
       "what": "没有 API key 时随包赏析仍能渲染，且带「AI 赏析」标签与未审校说明",
       "channel": "web_driver",
       "screenshot_required": true,
-      "verdict": "FAIL",
-      "detail": "未配置 API key 下打开「出塞」，赏析面板渲染的是失败态：「AI 赏析获取失败」。随包赏析在真实桌面端从未渲染过，与有没有 key 无关。同一根因还有一个症状：`corpus_first_run_materialization` 那条把 Tauri 的原话逐字带了出来——「invalid args onEvent for command fetch_corpus」。`appreciate_poem` 与 `fetch_corpus` 都声明了一个必需的 `on_event: Channel<..>` 参数，而 `tauriPorts.ts` 的 `appreciate` 与 `sampleSettingsPorts.ts` 的 `fetchCorpus` 都只传了 `request`、没有建 Channel（语音那两条端口是建了的，所以语音走得通）。本条读不到那句原话，是因为详情页的 catch 写的是 `cause instanceof Error ? cause.message : \"AI 赏析获取失败\"`，而 Tauri 拒绝时给的是字符串而不是 Error，于是真实原因被这句兜底文案吞掉——语料面板那侧用的是 `String(cause)`，所以它显示了原话",
+      "verdict": "PASS",
+      "detail": "未配置任何 API key 下打开「出塞」，`ai-source` 为「随包预生成」（命中随包表，非现场生成），标签为「AI 赏析」，并带未审校说明「AI 生成，未经人工审校」；正文首段为「<<未生成：本条不是模型输出，需开放权重模型推理>>」。**正文当前是随包数据集里的未生成标记**，即本条证明的是渲染与标注链路成立，不是生成能力成立",
       "executable_when": null,
       "screenshot": "desktop-qa/shipped-appreciation.png"
     },

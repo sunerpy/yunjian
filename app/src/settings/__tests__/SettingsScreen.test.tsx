@@ -25,7 +25,7 @@ import type {
   ModelStatus,
   StorageReport,
 } from "../../contracts/settings";
-import type { SettingsPorts } from "../../data/settingsPorts";
+import type { CorpusPort, SettingsPorts } from "../../data/settingsPorts";
 import SettingsScreen from "../SettingsScreen";
 
 const SECRET = "sk-TESTKEY123-must-never-be-echoed";
@@ -97,6 +97,8 @@ interface Overrides {
   corpus?: CorpusStatus;
   cache?: CacheStatus;
   aiSettings?: Partial<AiSettings>;
+  /** 换掉取用动作本身，用来观察它跑到一半时界面在说什么。 */
+  corpusFetch?: CorpusPort["fetchCorpus"];
 }
 
 /** 端口替身。`setKey` 记录收到的密钥，供「写入方向仍然通」的断言使用。 */
@@ -150,7 +152,7 @@ function createPorts(overrides: Overrides = {}): {
     },
     corpus: {
       corpusStatus: () => Promise.resolve(overrides.corpus ?? CORPUS_READY),
-      fetchCorpus: () => Promise.resolve(CORPUS_READY),
+      fetchCorpus: overrides.corpusFetch ?? (() => Promise.resolve(CORPUS_READY)),
     },
     models: {
       listModels: () => Promise.resolve(models()),
@@ -450,6 +452,10 @@ describe("语料状态面板", () => {
     });
     expect(screen.queryByTestId("corpus-error")).toBeNull();
     expect(screen.getByTestId("fetch-corpus").textContent).toContain("下载语料库");
+    // 体积与时长在**按下之前**就说清楚：这是一个十分钟的动作。
+    const cost = screen.getByTestId("corpus-cost").textContent ?? "";
+    expect(cost).toContain("211 MiB");
+    expect(cost).toContain("十分钟");
   });
 
   it("取用动作把状态换成已就绪", async () => {
@@ -461,6 +467,183 @@ describe("语料状态面板", () => {
     await waitFor(() => {
       expect(screen.getByTestId("corpus-version").textContent).toContain("tang-song-2026.08");
     });
+  });
+});
+
+/**
+ * 物化进度必须**显示出来**。
+ *
+ * 首启物化在唐宋规模上实测 571.8 s。后端一直在逐步上报，而前端曾经建了 Channel 却不订阅
+ * `onmessage`，于是那十分钟里界面一个字都没有——桌面真机验收的
+ * `corpus_first_run_materialization` 就是因此判 FAIL 的（判词：「物化完成……但整个过程
+ * 没有任何进度显示」）。下面几条把那条判据搬进单元测试，于是它不必等到真机才被发现。
+ */
+describe("语料物化进度", () => {
+  /** 一个能停在中途的取用动作：拿到进度汇之后交还给测试，由测试决定何时收工。 */
+  function pausedFetch(): {
+    fetchCorpus: CorpusPort["fetchCorpus"];
+    emit: (event: Parameters<Parameters<CorpusPort["fetchCorpus"]>[0]>[0]) => void;
+    finish: () => void;
+  } {
+    let sink: Parameters<CorpusPort["fetchCorpus"]>[0] = () => undefined;
+    let release: () => void = () => undefined;
+    return {
+      fetchCorpus: (onEvent) => {
+        sink = onEvent;
+        return new Promise<CorpusStatus>((resolve) => {
+          release = () => {
+            resolve(CORPUS_READY);
+          };
+        });
+      },
+      emit: (event) => {
+        sink(event);
+      },
+      finish: () => {
+        release();
+      },
+    };
+  }
+
+  async function clickFetch(fetchCorpus: CorpusPort["fetchCorpus"]) {
+    render(
+      <SettingsScreen
+        ports={createPorts({ corpus: { kind: "absent" }, corpusFetch: fetchCorpus }).ports}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("fetch-corpus")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("fetch-corpus"));
+  }
+
+  it("取用期间不再说「尚未下载语料库」", async () => {
+    // 那句话挨着「正在解压语料库」一起显示会自相矛盾。取用期间由进度块独占发言权。
+    const paused = pausedFetch();
+    await clickFetch(paused.fetchCorpus);
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("corpus-absent")).toBeNull();
+    expect(screen.queryByTestId("corpus-cost")).toBeNull();
+  });
+
+  it("按下之后立刻有话说，不等第一条事件到达", async () => {
+    // 已禁用的按钮加一言不发的面板，与「点了没反应」不可区分。
+    const paused = pausedFetch();
+    await clickFetch(paused.fetchCorpus);
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress")).toBeTruthy();
+    });
+    expect(screen.getByTestId("corpus-progress-stage").textContent).toContain("正在准备");
+  });
+
+  it("解压那一段显示百分比与已完成字节", async () => {
+    const paused = pausedFetch();
+    await clickFetch(paused.fetchCorpus);
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress")).toBeTruthy();
+    });
+
+    paused.emit({
+      type: "progress",
+      payload: { stage: "decompressing", bytes_done: 110_100_480, bytes_total: 220_200_960 },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress-stage").textContent).toContain("正在解压");
+    });
+    expect(screen.getByTestId("corpus-progress-percent").textContent).toContain("50%");
+    // 211 MiB 这个量级用字节数读不出来，所以换成 MiB。
+    expect(screen.getByTestId("corpus-progress-detail").textContent).toContain("105.0 / 210.0 MiB");
+    // 比例照原样进 `aria-valuenow`（`valuemax` 是 1，不是 100），
+    // 另附 `aria-valuetext` 让读屏器读出人话。
+    const bar = screen.getByRole("progressbar");
+    expect(bar.getAttribute("aria-valuenow")).toBe("0.5");
+    expect(bar.getAttribute("aria-valuemax")).toBe("1");
+    expect(bar.getAttribute("aria-valuetext")).toBe("50%");
+  });
+
+  it("派生那一段报出内核给的步骤名与首数", async () => {
+    const paused = pausedFetch();
+    await clickFetch(paused.fetchCorpus);
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress")).toBeTruthy();
+    });
+
+    // 步骤名不在前端写死：它由 `DeriveStep::display_name` 随事件送来，前端原样显示。
+    paused.emit({
+      type: "progress",
+      payload: { stage: "deriving", step: "构建候选索引", done: 118_512, total: 474_043 },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress-detail").textContent).toContain("构建候选索引");
+    });
+    expect(screen.getByTestId("corpus-progress-detail").textContent).toContain(
+      "118,512 / 474,043 首",
+    );
+    expect(screen.getByTestId("corpus-progress-percent").textContent).toContain("25%");
+  });
+
+  it("总量未知时不报 0%，进度条也不给 aria-valuenow", async () => {
+    // 内核明写「`total == 0` 表示该步的总量未知，UI 应当显示不确定进度而不是 0%」，
+    // 而派生第一步 `Scan` 发出来的正是 `total: 0`。报 0% 会让它看起来卡住了。
+    const paused = pausedFetch();
+    await clickFetch(paused.fetchCorpus);
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress")).toBeTruthy();
+    });
+
+    paused.emit({
+      type: "progress",
+      payload: { stage: "deriving", step: "读取诗词正文", done: 0, total: 0 },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress-detail").textContent).toContain("读取诗词正文");
+    });
+    expect(screen.queryByTestId("corpus-progress-percent")).toBeNull();
+    expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
+  });
+
+  it("派生失败不渲染成错误：语料仍可用", async () => {
+    const paused = pausedFetch();
+    await clickFetch(paused.fetchCorpus);
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress")).toBeTruthy();
+    });
+
+    paused.emit({
+      type: "progress",
+      payload: { stage: "derive_failed", reason: "磁盘空间不足" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress-detail").textContent).toContain("磁盘空间不足");
+    });
+    expect(screen.getByTestId("corpus-progress-detail").textContent).toContain("语料库仍可用");
+    expect(screen.queryByTestId("corpus-error")).toBeNull();
+  });
+
+  it("收工后进度块让位给事实表", async () => {
+    const paused = pausedFetch();
+    await clickFetch(paused.fetchCorpus);
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-progress")).toBeTruthy();
+    });
+
+    paused.emit({
+      type: "progress",
+      payload: { stage: "materialized", path: "/x", corpus_version: "v" },
+    });
+    paused.finish();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("corpus-facts")).toBeTruthy();
+    });
+    // 留着「语料库已落地」挨着已经渲染出来的事实表，读起来像还没跑完。
+    expect(screen.queryByTestId("corpus-progress")).toBeNull();
   });
 });
 

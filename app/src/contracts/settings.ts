@@ -20,6 +20,8 @@
  * 读回方向根本没有对应的方法。
  */
 
+import type { Event } from "./operation";
+
 /* ────────────────────────── 密钥存储 ────────────────────────── */
 
 /**
@@ -271,6 +273,60 @@ export interface CorpusMeta {
  * 不是错误。把它做成错误态会让首启用户看到一条红色报错。
  */
 export type CorpusStatus = { kind: "ready"; meta: CorpusMeta } | { kind: "absent" };
+
+/**
+ * 语料物化的八段进度。
+ *
+ * 逐一对应 `crates/yunjian-app/src/ipc.rs:782-812` 的 `CorpusProgress`，它带
+ * `#[serde(tag = "stage", rename_all = "snake_case")]`——**内部标签**，于是各段自己的字段
+ * 与 `stage` 平级。这与外层 [`Event`] 的**邻接标签**（载荷在 `payload` 下）正好相反，
+ * 两者混起来判别式会读到 `undefined`。所以整条线上形状是
+ * `{ type: "progress", payload: { stage: "decompressing", bytes_done, bytes_total } }`。
+ *
+ * 字段名逐字抄自那份枚举，一个都不是发明的：`bytes_done` / `bytes_total`（不是
+ * `done` / `total`）、`sha256`、`corpus_version`、`derived`。猜错一个词，界面会显示
+ * `undefined`——那正是本项目已经栽过六次的那类错。
+ *
+ * # 为什么 `derive_failed` 不是错误态
+ *
+ * Rust 侧派生失败之后仍然会走到 `Ready`（`corpus.rs` 的 `open_with_progress` 把派生当作
+ * 可降级的一步），因此这一段是**告知**而不是终止：语料库能用，只是检索结构没派生出来。
+ * 把它渲染成红字会让用户以为下载白费了。
+ */
+export type CorpusProgress =
+  | { stage: "already_present"; path: string }
+  | { stage: "verifying_archive"; archive: string; bytes: number }
+  | { stage: "archive_verified"; sha256: string }
+  | { stage: "decompressing"; bytes_done: number; bytes_total: number }
+  | { stage: "materialized"; path: string; corpus_version: string }
+  | { stage: "deriving"; step: string; done: number; total: number }
+  | { stage: "derive_failed"; reason: string }
+  | { stage: "ready"; path: string; corpus_version: string; derived: boolean };
+
+/**
+ * 八段进度的中文说法。
+ *
+ * 与 `contracts/voice.ts` 的 `MODEL_FETCH_LABEL` 同一路：`Record<…["stage"], string>`
+ * 让「新增一段而忘了配文案」变成一个**编译错误**，而不是界面上一句空白。
+ */
+export const CORPUS_PROGRESS_LABEL: Record<CorpusProgress["stage"], string> = {
+  already_present: "语料库已就位",
+  verifying_archive: "正在核对归档摘要",
+  archive_verified: "归档摘要已核对",
+  decompressing: "正在解压语料库",
+  materialized: "语料库已落地",
+  deriving: "正在本机派生检索结构",
+  derive_failed: "检索结构未能派生",
+  ready: "语料库就绪",
+};
+
+/**
+ * 语料物化的事件流。
+ *
+ * Rust 侧是 `Event<CorpusProgress, Value>`（`crates/yunjian-app/src/ipc.rs:865`）。
+ * 增量项那一路当前不发送，所以这里取 `unknown` 而**不是**编一个 item 形状出来。
+ */
+export type CorpusProgressEvent = Event<CorpusProgress, unknown>;
 
 /* ────────────────────────── 语音模型 ────────────────────────── */
 
