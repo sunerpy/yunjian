@@ -415,7 +415,16 @@ jobs:
               cp "${found[@]}" "$stage/"
             done
           fi
-          ls -la "$stage"
+
+          # 许可文本必须随产物走。CLI 用 `--features voice,mcp` 构建，产物里静态含
+          # GPL-3.0 的 espeak-ng（见 `LICENSES.md`「两种分发产物，两种许可」），
+          # 因此归档整体按 GPL-3.0 提供，而 GPL-3.0 要求随分发物保留许可与版权声明。
+          # **musl 那条腿同样需要**：它是静态链接，espeak-ng 进到了可执行文件本身，
+          # 义务不因为少了几个 .so 而消失。
+          # 载荷内容由 `cargo test -p yunjian-cli --test distribution_licenses` 保证完整，
+          # 这里只负责整目录拷进去；落点 `licenses/` 是下面打包校验那步的判据。
+          cp -R packaging/licenses "$stage/licenses"
+          ls -la "$stage" "$stage/licenses"
 
       - name: 打包 CLI（tar.gz）
         if: matrix.archive == 'tar.gz'
@@ -439,6 +448,26 @@ jobs:
           file "$extracted/${BINARY_NAME}" | tee "${RUNNER_TEMP}/cli-file.txt"
           grep -Fqi '${{ matrix.expected_arch }}' "${RUNNER_TEMP}/cli-file.txt"
 
+          # 许可文本进没进归档，只有解开看字节才算数——期望值现取自 `packaging/licenses/`
+          # 本身，所以往那里加一份文件就自动成为必需项，不需要回来改这里的清单。
+          # `-printf` 是 GNU 扩展，macOS 的 BSD find 没有，因此用 `-print` 加剥前缀。
+          checked=0
+          while IFS= read -r relative; do
+            relative="${relative#./}"
+            if [ ! -s "$extracted/licenses/$relative" ]; then
+              echo "::error::归档缺少许可文本 licenses/${relative}；带 voice 的产物是 GPL-3.0 结合作品，不得裸分发"
+              find "$extracted" -type f -print
+              exit 1
+            fi
+            checked=$((checked + 1))
+          done < <(cd packaging/licenses && find . -type f -print)
+          # 载荷目录被清空时上面的循环一次都不会跑，那是一次静默通过。
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::packaging/licenses 下没有任何文件；许可校验退化成空转"
+            exit 1
+          fi
+          echo "已核对 ${checked} 份随包许可文本"
+
       - name: 打包 CLI（zip）
         if: matrix.archive == 'zip'
         shell: pwsh
@@ -456,6 +485,23 @@ jobs:
           if (-not (Test-Path $cli)) { throw 'CLI zip 缺少 yunjian.exe' }
           if (-not (Get-ChildItem $verify -Filter '*onnxruntime*.dll')) { throw 'CLI zip 缺少 onnxruntime DLL' }
           if (-not (Get-ChildItem $verify -Filter '*sherpa-onnx-c-api*.dll')) { throw 'CLI zip 缺少 sherpa C API DLL' }
+
+          # 与 tar.gz 那条同一判据，独立实现一次：期望值现取自 `packaging/licenses/`，
+          # 加一份文件自动成为必需项。少了这段，Windows 用户拿到的归档不受任何约束。
+          $payload = Join-Path $env:GITHUB_WORKSPACE 'packaging/licenses'
+          $expected = Get-ChildItem -Path $payload -File -Recurse
+          if ($expected.Count -eq 0) {
+            throw 'packaging/licenses 下没有任何文件；许可校验退化成空转'
+          }
+          foreach ($item in $expected) {
+            $relative = $item.FullName.Substring($payload.Length).TrimStart('\', '/')
+            $target = Join-Path (Join-Path $verify 'licenses') $relative
+            if (-not (Test-Path $target) -or (Get-Item $target).Length -eq 0) {
+              Get-ChildItem $verify -Recurse | Select-Object FullName
+              throw "CLI zip 缺少许可文本 licenses/$relative；带 voice 的产物是 GPL-3.0 结合作品，不得裸分发"
+            }
+          }
+          Write-Host "已核对 $($expected.Count) 份随包许可文本"
           $bytes = [IO.File]::ReadAllBytes($cli)
           $offset = [BitConverter]::ToInt32($bytes, 0x3c)
           $machine = [BitConverter]::ToUInt16($bytes, $offset + 4)

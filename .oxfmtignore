@@ -28,6 +28,11 @@ models/licenses/
 licenses/*.LICENSE
 licenses/*.CARD.md
 
+# 随分发件的许可原文：`LICENSE-GPL-3.0.txt` 的字节由摘要断言钉住，改一个字节即变红。
+# 当前 oxfmt 不认识 `.txt`，因此这条是纵深防御，与 `corpus/licenses/` 同理。
+# **只挡许可原文，不挡 NOTICE.md**——那份是人工维护的声明文档，仍受格式化管辖。
+packaging/licenses/*.txt
+
 # ---- 生成物与本地状态 ----
 # 语料构建产物由 xtask 从公共领域源重新生成，不属于人工维护的文本。
 corpus/build/

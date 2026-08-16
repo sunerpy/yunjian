@@ -40,6 +40,12 @@
       "icons/icon.ico"
     ],
     "publisher": "sunerpy",
+    "copyright": "Copyright (c) 2026 sunerpy",
+    "license": "MIT",
+    "licenseFile": "../../LICENSE",
+    "resources": {
+      "../../LICENSE": "LICENSE"
+    },
     "homepage": "https://github.com/sunerpy/yunjian",
     "shortDescription": "云笺：古典诗词检索与背诵",
     "longDescription": "云笺是一款离线优先的古典诗词工具，提供检索、阅读、背诵与 AI 赏析。"

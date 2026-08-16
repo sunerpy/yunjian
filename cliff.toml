@@ -35,6 +35,15 @@ body = """
 
 footer = """
 ---
+### 许可
+
+- **命令行归档**（`yunjian-*.tar.gz` / `.zip`）按 **GPL-3.0** 提供：它以 `--features voice,mcp`
+  构建，产物内静态包含 GPL-3.0 的 [espeak-ng](https://github.com/csukuangfj/espeak-ng)。
+  许可原文与署名在归档内 `licenses/`。
+- **桌面安装包**（`.deb` / `.AppImage` / `.dmg` / `.msi` / `.exe`）不编译 `voice` 特性，
+  按 **MIT** 提供。
+- 逐条第三方清单见 [`LICENSES.md`](https://github.com/sunerpy/yunjian/blob/main/LICENSES.md)。
+
 由 [git-cliff](https://github.com/orhun/git-cliff) 生成。
 """
 
