@@ -137,16 +137,6 @@ pub(crate) const DECLARED: &[DeclaredCriterion] = &[
 /// 而这里写别的，结果会是一个读不出原因的 FAIL。
 const PERMISSION_PATH_READY: &str = "record_audio_granted+modify_audio_settings_granted";
 
-/// 顶层裁决的语义说明，写进报告。
-///
-/// 判据④（iOS TestFlight）**用户已决定不做**：它既不是 FAIL 也不是 PASS。方案的机械规则是
-/// 「四条全 PASS 才选 `tauri_mobile`，任一 FAIL 选 `uniffi_native`」，而一条在范围外的判据
-/// 两个条件都不满足，所以顶层停在 `undetermined`。
-///
-/// 这不是含糊其辞，恰恰是三态存在的理由：把 `NOT EXECUTED` 当 FAIL 会让 `uniffi_native`
-/// 被一个从未测过的结论选中，而把它当 PASS 会让 `tauri_mobile` 建立在一次没做过的上传上。
-/// 要真正结束 `undetermined`，需要用户在两条路里选一条：把判据④正式移出门禁（于是三条
-/// 判据的结果直接决定选型），或者恢复 iOS 提交并把它测出来。
 /// 预声明阈值的修订记录。门禁的价值取决于阈值不能事后被谈掉，因此任何一次修订都必须
 /// 留在报告里，而不是只留在提交记录里。
 const AMENDMENTS: &[&str] = &[
@@ -155,7 +145,29 @@ const AMENDMENTS: &[&str] = &[
     "判据③新增必需项 `edge_to_edge`：非边到边窗口里系统会替应用避让键盘，遮挡天然为 0，那样的 PASS 证明不了产品自己处理了 ime 插入——而判据引用的正是 edge-to-edge 与 visualViewport 两个长期缺陷。",
 ];
 
-const VERDICT_RATIONALE: &str = "判据④ iOS TestFlight 提交经用户决定不做，处于门禁范围外：它不是 FAIL（没有实测失败），也不是 PASS（没有成功上传）。机械规则要求四条全 PASS 才选 tauri_mobile、任一 FAIL 才选 uniffi_native，两者都不成立，故顶层保持 undetermined。结束它需要用户决定：正式把判据④移出门禁，或恢复 iOS 提交并实测。";
+/// 顶层裁决的语义说明，写进报告。
+///
+/// 三态各有各的话要说，所以按裁决取文案而不是写一句放之四海的套话——一份写着
+/// `uniffi_native` 却在解释 `undetermined` 为何合理的报告，比没有说明更糟。
+///
+/// 关键判断在 `Undetermined` 那一支：判据④（iOS TestFlight）**用户已决定不做**，它既不是
+/// FAIL 也不是 PASS。把 `NOT EXECUTED` 当 FAIL 会让 `uniffi_native` 被一个从未测过的结论
+/// 选中；当 PASS 会让 `tauri_mobile` 建立在一次没做过的上传上。两者都不可接受，所以在没有
+/// FAIL 时顶层只能停在 `undetermined`。
+///
+/// 反过来，**一旦出现实测 FAIL，判据④的范围问题就不再影响结论**：FAIL 在机械规则里是
+/// 决定性的，不需要知道④的结果也能定选型。
+fn verdict_rationale(verdict: SelectionVerdict) -> &'static str {
+    match verdict {
+        SelectionVerdict::UniffiNative => {
+            "存在实测 FAIL，机械规则据此选择 uniffi_native。FAIL 是决定性的：不需要知道判据④（iOS TestFlight，用户已决定不做）的结果也能定选型，因此④的范围问题不影响本次结论。要改变它只能靠让那条 FAIL 在真机上变成 PASS，而不是重新解释阈值——阈值在执行前已声明，事后放宽等于把门禁谈掉。"
+        }
+        SelectionVerdict::TauriMobile => "四条判据全部实测 PASS，机械规则据此选择 tauri_mobile。",
+        SelectionVerdict::Undetermined => {
+            "没有实测 FAIL，但存在 NOT EXECUTED，故顶层保持 undetermined。其中判据④ iOS TestFlight 提交经用户决定不做，处于门禁范围外：它不是 FAIL（没有实测失败），也不是 PASS（没有成功上传）。机械规则要求四条全 PASS 才选 tauri_mobile、任一 FAIL 才选 uniffi_native，两者都不成立。结束它需要用户决定：正式把判据④移出门禁（于是三条判据的结果直接决定选型），或恢复 iOS 提交并实测。"
+        }
+    }
+}
 
 /// 移动框架选型。第三态防止把未执行伪造成产品失败或成功。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -403,7 +415,7 @@ fn build_report(
         physical_devices,
         preflight,
         verdict,
-        verdict_rationale: VERDICT_RATIONALE,
+        verdict_rationale: verdict_rationale(verdict),
         criteria,
     }
 }
@@ -626,7 +638,7 @@ fn render_markdown(report: &MobileReport) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "> [!WARNING]\n> **verdict: `{}`。** `NOT EXECUTED` 不是产品失败，也不是通过；\n> 在四项真机判据全部得到 PASS/FAIL 之前，移动端框架选型保持 `undetermined`。\n>\n> {}",
+        "> [!WARNING]\n> **verdict: `{}`。** `NOT EXECUTED` 既不是产品失败也不是通过；只有实测 FAIL 才选 `uniffi_native`，只有四条全 PASS 才选 `tauri_mobile`。\n>\n> {}",
         report.verdict.as_str(),
         report.verdict_rationale
     );

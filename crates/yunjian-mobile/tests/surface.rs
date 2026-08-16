@@ -95,16 +95,69 @@ fn binding_branch_matches_the_recorded_three_state_verdict() {
     };
 
     assert_eq!(yunjian_mobile::BINDING_VERDICT, recorded);
-    let expected_bindings = match recorded {
-        BindingVerdict::TauriMobile => (true, false),
-        BindingVerdict::UniffiNative => (false, true),
-        BindingVerdict::Undetermined => (false, false),
-    };
-    let built_bindings = (
+
+    // 这里断言的是「已构建的 binding **不得与裁决矛盾**」，而不是「必须恰好等于裁决那一对」。
+    //
+    // 两者的差别在 2026-08-16 才第一次显现：门禁产出真裁决（`uniffi_native`）之前，
+    // 裁决是 `undetermined`，「与裁决一致」和「两个都没建」恰好同义，于是原先那条
+    // `assert_eq!(built, expected)` 看起来足够。裁决落地后出现了第三种合法状态——
+    // **已定选型、尚未落地**：裁决由 todo 68 的门禁产出，构建 binding 分支是 todo 69 的工作，
+    // 两件事之间必然有一段时间差。原断言会把这段时间判成失败，而唯一能让它变绿的做法是
+    // 把 `UNIFFI_NATIVE_BINDING` 提前写成 `true`——那是伪造一个不存在的构建产物。
+    //
+    // 守卫要拦的两件事一件没放过：**建错分支**（裁决说 uniffi 却建了 tauri，或反之）
+    // 与**无裁决就开建**。放行的只有「还没建」。
+    let (tauri_built, uniffi_built) = (
         yunjian_mobile::TAURI_MOBILE_BINDING,
         yunjian_mobile::UNIFFI_NATIVE_BINDING,
     );
-    assert_eq!(built_bindings, expected_bindings);
+    assert!(
+        !(tauri_built && uniffi_built),
+        "不得同时构建两个 binding 分支：方案要求只实现一个"
+    );
+    match recorded {
+        BindingVerdict::TauriMobile => {
+            assert!(!uniffi_built, "裁决是 tauri_mobile，却构建了 UniFFI 分支")
+        }
+        BindingVerdict::UniffiNative => assert!(
+            !tauri_built,
+            "裁决是 uniffi_native，却构建了 Tauri mobile 分支"
+        ),
+        BindingVerdict::Undetermined => assert!(
+            !tauri_built && !uniffi_built,
+            "裁决尚未产出时不得构建任何 binding 分支"
+        ),
+    }
+}
+
+/// 裁决已定而分支未建时，`Cargo.toml` 必须仍然干净。
+///
+/// 这条把「尚未落地」从一句解释变成一条可执行断言：只要两个 binding 常量都是 `false`，
+/// manifest 里就不该出现任何 binding 依赖或 feature。todo 69 落地时两处会一起变，
+/// 于是「常量说没建、manifest 里却已经有 uniffi」这种半截状态无法悄悄存在。
+#[test]
+fn a_pending_binding_branch_leaves_the_manifest_free_of_shell_dependencies() {
+    if yunjian_mobile::TAURI_MOBILE_BINDING || yunjian_mobile::UNIFFI_NATIVE_BINDING {
+        return;
+    }
+    let manifest = include_str!("../Cargo.toml");
+    let parsed: toml::Value = toml::from_str(manifest).expect("解析 mobile manifest");
+    for shell in ["uniffi", "tauri"] {
+        assert!(
+            parsed
+                .get("dependencies")
+                .and_then(toml::Value::as_table)
+                .is_none_or(|table| !table.contains_key(shell)),
+            "两个 binding 常量都是 false，manifest 却依赖 {shell}：半截落地"
+        );
+        assert!(
+            parsed
+                .get("features")
+                .and_then(toml::Value::as_table)
+                .is_none_or(|table| !table.contains_key(shell)),
+            "两个 binding 常量都是 false，manifest 却声明 {shell} feature：半截落地"
+        );
+    }
 }
 
 struct FixtureDemonstrator;

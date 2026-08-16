@@ -66,8 +66,14 @@ fn manifest_directly_depends_on_all_four_domain_crates() {
     }
 }
 
+/// 尚未构建任何 binding 分支时，manifest 里不得出现 shell 依赖或 feature。
+///
+/// 原名 `undetermined_verdict_builds_neither_binding_branch`。改名的理由是它会说谎：
+/// 2026-08-16 门禁产出了真裁决 `uniffi_native`，裁决已经不是 `undetermined`，而这条断言
+/// 依然成立且依然该成立——因为它保护的从来不是「裁决是 undetermined」，而是
+/// **「常量说没建，manifest 就必须真的没建」**。todo 69 落地 UniFFI 分支时，两处会一起变。
 #[test]
-fn undetermined_verdict_builds_neither_binding_branch() {
+fn a_repository_with_no_built_binding_declares_no_shell_dependency() {
     let manifest =
         std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
             .expect("读取 mobile manifest");
@@ -75,7 +81,7 @@ fn undetermined_verdict_builds_neither_binding_branch() {
     let features = parsed.get("features").and_then(toml::Value::as_table);
     assert!(
         features.is_none_or(|table| !table.contains_key("uniffi") && !table.contains_key("tauri")),
-        "undetermined 时不得声明任何 binding feature"
+        "尚未构建 binding 时不得声明任何 binding feature"
     );
     let dependencies = parsed
         .get("dependencies")
@@ -84,7 +90,7 @@ fn undetermined_verdict_builds_neither_binding_branch() {
     for shell in ["uniffi", "tauri"] {
         assert!(
             !dependencies.contains_key(shell),
-            "undetermined 时不得依赖 {shell}"
+            "尚未构建 binding 时不得依赖 {shell}"
         );
     }
 }

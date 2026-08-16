@@ -579,6 +579,32 @@ fn three_passes_plus_the_out_of_scope_ios_criterion_still_yields_undetermined() 
 }
 
 #[test]
+fn the_rationale_argues_the_verdict_the_report_actually_carries() {
+    // 一份写着 `uniffi_native` 却在解释 `undetermined` 为何合理的报告，比没有说明更糟：
+    // 读者会以为门禁还没有结论。所以文案必须随裁决走。
+    let failed = mobile::build_report_from_device_log(
+        Platform::Android,
+        &android_device_log(&[("corpus_materialization crashed", "true")]),
+    );
+    assert_eq!(failed.verdict, mobile::SelectionVerdict::UniffiNative);
+    assert!(
+        failed.verdict_rationale.contains("uniffi_native")
+            && !failed.verdict_rationale.contains("故顶层保持 undetermined"),
+        "FAIL 的报告不能拿 undetermined 的理由充数：{}",
+        failed.verdict_rationale
+    );
+
+    let undetermined =
+        mobile::build_report_from_device_log(Platform::Android, &android_device_log(&[]));
+    assert_eq!(undetermined.verdict, mobile::SelectionVerdict::Undetermined);
+    assert!(
+        undetermined.verdict_rationale.contains("undetermined"),
+        "undetermined 的报告必须说清它为何还没有结论：{}",
+        undetermined.verdict_rationale
+    );
+}
+
+#[test]
 fn the_targetsdk_the_build_actually_shipped_is_a_failure_not_a_relaxed_threshold() {
     let report = mobile::build_report_from_device_log(
         Platform::Android,
