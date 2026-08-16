@@ -27,7 +27,7 @@
  */
 
 import { readFileSync, readdirSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SOURCE_ROOT = resolve(process.cwd(), "src");
@@ -114,13 +114,25 @@ interface Hit {
   line: number;
 }
 
+/**
+ * 相对 `src/` 的路径，分隔符一律归一成 `/`。
+ *
+ * `relative` 在 Windows 上给的是 `data\\progressChannel.ts`，直接拿去比
+ * `data/progressChannel.ts` 永不相等——于是这条守卫在 `windows-latest` 上不是「更严格」
+ * 而是**必然误报**，把唯一那个合法构造点也当成违规。本项目在 `{:?}` 转义 Windows 路径
+ * 分隔符上已经栽过同一件事（`.omo/notepads/yunjian/issues.md`），这里预先归一。
+ */
+function posixRelative(path: string): string {
+  return relative(SOURCE_ROOT, path).split(sep).join("/");
+}
+
 function constructionSites(): Hit[] {
   const hits: Hit[] = [];
   for (const path of sourceFiles()) {
     const lines = codeOnly(readFileSync(path, "utf8")).split("\n");
     lines.forEach((text, offset) => {
       if (/\bnew\s+Channel\b/.test(text)) {
-        hits.push({ file: relative(SOURCE_ROOT, path), line: offset + 1 });
+        hits.push({ file: posixRelative(path), line: offset + 1 });
       }
     });
   }
@@ -144,6 +156,15 @@ describe("事件通道的构造点", () => {
     const factory = codeOnly(readFileSync(resolve(SOURCE_ROOT, CHANNEL_FACTORY), "utf8"));
     expect(factory).toMatch(/\bnew\s+Channel\b/);
     expect(factory, `${CHANNEL_FACTORY} 建了通道却没有订阅 onmessage`).toMatch(/\.onmessage\s*=/);
+  });
+
+  it("路径分隔符已归一，守卫在 Windows 上不会误报", () => {
+    // 归一化写错的后果不是漏报而是**误报**：唯一那个合法构造点会被当成违规，
+    // 于是 `windows-latest` 上这条守卫恒红。已实测在 CI 上发生过一次。
+    for (const hit of constructionSites()) {
+      expect(hit.file, `路径里仍有反斜杠：${hit.file}`).not.toMatch(/\\/);
+    }
+    expect(constructionSites().map((hit) => hit.file)).toEqual([CHANNEL_FACTORY]);
   });
 
   it("剔注释这一步真的在起作用", () => {
