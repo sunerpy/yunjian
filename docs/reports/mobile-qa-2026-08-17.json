@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "set": "full",
+  "generated_date": "2026-08-17",
+  "app_version": "0.1.0",
+  "commit_sha": "878391d90d1055bb9042c5cafa70a0372e9b1228",
+  "all_pass": false,
+  "platforms": [
+    {
+      "platform": "android",
+      "physical_device_used": true,
+      "device_model": "Pixel 8",
+      "os_version": "15/35",
+      "driver_probe": {
+        "command": "aws devicefarm get-device-pool --arn arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9 --region us-west-2 --output json",
+        "available": true,
+        "exit_code": 0,
+        "stdout": "{\n    \"devicePool\": {\n        \"arn\": \"arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9\",\n        \"name\": \"yunjian-probe-pixel8-a15\",\n        \"type\": \"PRIVATE\",\n        \"rules\": [\n            {\n                \"attribute\": \"ARN\",\n                \"operator\": \"IN\",\n                \"value\": \"[\\\"arn:aws:devicefarm:us-west-2::device:DE5BD47FF3BD42C3A14BF7A6EFB1BFE7\\\"]\"\n            }\n        ]\n    }\n}",
+        "stderr": ""
+      },
+      "assertions": [
+        {
+          "id": "install_and_launch",
+          "what": "安装真实移动端产物并启动到可交互首屏",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 crashed=false device_model=Google Pixel 8 fingerprint=google/shiba/shiba:15/AP3A.241005.015/12366759:u… native_binding=uniffi_native os_build=15/35 package=top.onethinker.yunjian ro_boot_qemu= ro_hardware=shiba ro_kernel_qemu= ro_product_device=shiba root_rendered=true screenshot_launch=install_and_launch-launch.png screenshot_launch_bytes=67393 supported_abis=arm64-v8a tab_clickable=true",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/install_and_launch-launch.png"
+        },
+        {
+          "id": "corpus_first_run_materialization",
+          "what": "首次运行显示语料下载、校验与原子物化进度且不崩溃",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 atomic_install=true corpus_bytes=4769849344 corpus_present=true crashed=false data_root=/data/user/0/top.onethinker.yunjian/files/yunjia… derive_awaited=false duration_seconds=976.346 facts_shown=474043 首 · 随包赏析 16 条 free_bytes=111482355712 progress_shown=true residual_temp_files=0 screenshot_materialized=corpus_first_run_materialization-materialized.pn… screenshot_materialized_bytes=59920 screenshot_progress=corpus_first_run_materialization-progress.png screenshot_progress_bytes=60016 stage_count=489 stages_seen=正在联系发布地址|正在解压语料库 · 已写出 96.3 MiB|正在解压语料库 · 已写出 30…",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/corpus_first_run_materialization-materialized.png"
+        },
+        {
+          "id": "two_char_search_returns_results",
+          "what": "输入两字查询“明月”并返回至少一条结果",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 first_hit_id=28f16b71dd668b70 hits=20 query=明月 query_char_count=2 screenshot_search=two_char_search_returns_results-search.png screenshot_search_bytes=174654",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/two_char_search_returns_results-search.png"
+        },
+        {
+          "id": "reading_view_citations_and_ai_appreciation",
+          "what": "阅读页显示带出处的集评与明确标注、未经人工审校的 AI 赏析",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 api_key_configured=false appreciation_poem_id=062f574ab2986a9b appreciation_poem_title=春夜喜雨 · 唐杜甫 appreciation_shown=true appreciation_text=<<未生成：本条不是模型输出，需开放权重模型推理>> citation_shown=true citation_text=出处：宋·魏庆之《诗人玉屑》 卷七・三　易・第 2 段；据维基文库《詩人玉屑·卷07》校录本，修… commentary_count=1 commentary_poem_id=206d45b9089865c3 commentary_poem_title=石芝 · 宋蘇軾 commentary_text=沈隱侯曰：文章當從三易，易見事，一也；易識事，二也；易讀誦，三也。邢子才曰：沈侯文章，用事不使人… disclosure_says_unreviewed=true screenshot_commentary=reading_view_citations_and_ai_appreciation-comme… screenshot_commentary_bytes=299502 screenshot_reading=reading_view_citations_and_ai_appreciation-readi… screenshot_reading_bytes=218604 unreviewed_disclosure=本段由 deepseek-r1:7b 生成，未经人工审校（来源：shipped）",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/reading_view_citations_and_ai_appreciation-commentary.png"
+        },
+        {
+          "id": "typed_recitation_scores_correctly",
+          "what": "完成一轮打字背诵并得到与输入一致的评分结果",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：设备侧逐项标注不可用（accuracy_strict=reading_body_empty）",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "voice_recitation_round_succeeds_end_to_end",
+          "what": "语音背诵从授权、采集、识别到反馈端到端成功",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 auto_graded=false model_dir=/storage/emulated/0/Android/data/top.onethinker.… model_dir_present=true model_fetch_directory=/storage/emulated/0/Android/data/top.onethinker.… model_fetch_last_stage=正在解包语音模型 model_fetch_stage_count=125 native_voice_enabled=true outcome_line=开口=true 停顿=0 时长=3000ms 单路RTF=0.23919599 pause_count=0 record_audio_declared=true record_audio_granted=true reference_poem_id=28f16b71dd668b70 screenshot_voice=voice_recitation_round_succeeds_end_to_end-voice… screenshot_voice_bytes=60106 single_rtf=0.23919599 spoke=true total_ms=3000",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/voice_recitation_round_succeeds_end_to_end-voice.png"
+        },
+        {
+          "id": "voice_permission_denied_degrades",
+          "what": "拒绝麦克风权限后降级到打字模式并显示具体原因",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 appops_state=Uid mode: RECORD_AUDIO: ignore crashed=false degraded_reason=音频采集被拒：4800 个采样全为静音，RECORD_AUDIO 权限或 appops 未真正放… fallback_to_typing_shown=true reason_names_capture_denial=true record_audio_granted=true revoke_executed=true revoke_path=cmd appops set android:record_audio deny screenshot_permission-denied=voice_permission_denied_degrades-permission-deni… screenshot_permission-denied_bytes=102757",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/voice_permission_denied_degrades-permission-denied.png"
+        },
+        {
+          "id": "chinese_ime_prefilled_field_visible",
+          "what": "中文输入法向已有内容的字段输入且键盘不遮挡输入框",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 append_preserved_existing=true default_ime=com.google.android.inputmethod.latin/com.android… display_height_px=2400 entered_text_present=true field_prefilled=true input_bottom_screen_px=1041 input_visible=true keyboard_shown=true prefilled_text=明月 runtime_locale=zh-CN screenshot_ime=chinese_ime_prefilled_field_visible-ime.png screenshot_ime_bytes=144304 text_after_input=明月几时",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/chinese_ime_prefilled_field_visible-ime.png"
+        },
+        {
+          "id": "background_return_preserves_layout",
+          "what": "应用进入后台再返回时页面不空白、视图不折叠",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 blank_screen=false facts_preserved=true layout_preserved=true root_present_after_return=true screenshot_returned=background_return_preserves_layout-returned.png screenshot_returned_bytes=48667 tab_after=search tab_before=recite tab_preserved=false tabs_present_after_return=true went_background=true",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/background_return_preserves_layout-returned.png"
+        },
+        {
+          "id": "app_exits_cleanly",
+          "what": "由自动化驱动正常退出且不崩溃、不遗留孤儿进程",
+          "screenshot_required": true,
+          "verdict": "PASS",
+          "detail": "PASS：实测 activity_destroyed=true crash_lines_after_exit=0 crash_lines_before_exit=0 crashed=false instrumentation_pid=21456 orphan_process_count=0 remaining_pid_count=1 remaining_pids=21456 screenshot_before-exit=app_exits_cleanly-before-exit.png screenshot_before-exit_bytes=60024",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": "docs/reports/mobile-qa/app_exits_cleanly-before-exit.png"
+        }
+      ]
+    },
+    {
+      "platform": "ios",
+      "physical_device_used": false,
+      "device_model": "NOT EXECUTED: 需物理设备",
+      "os_version": "NOT EXECUTED: 需物理设备",
+      "driver_probe": {
+        "command": "xcrun devicectl list devices",
+        "available": false,
+        "exit_code": null,
+        "stdout": "",
+        "stderr": "本次命令未请求该平台；需在对应宿主机另跑同一断言集"
+      },
+      "assertions": [
+        {
+          "id": "install_and_launch",
+          "what": "安装真实移动端产物并启动到可交互首屏",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "corpus_first_run_materialization",
+          "what": "首次运行显示语料下载、校验与原子物化进度且不崩溃",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "two_char_search_returns_results",
+          "what": "输入两字查询“明月”并返回至少一条结果",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "reading_view_citations_and_ai_appreciation",
+          "what": "阅读页显示带出处的集评与明确标注、未经人工审校的 AI 赏析",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "typed_recitation_scores_correctly",
+          "what": "完成一轮打字背诵并得到与输入一致的评分结果",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "voice_recitation_round_succeeds_end_to_end",
+          "what": "语音背诵从授权、采集、识别到反馈端到端成功",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "voice_permission_denied_degrades",
+          "what": "拒绝麦克风权限后降级到打字模式并显示具体原因",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "chinese_ime_prefilled_field_visible",
+          "what": "中文输入法向已有内容的字段输入且键盘不遮挡输入框",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "background_return_preserves_layout",
+          "what": "应用进入后台再返回时页面不空白、视图不折叠",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        },
+        {
+          "id": "app_exits_cleanly",
+          "what": "由自动化驱动正常退出且不崩溃、不遗留孤儿进程",
+          "screenshot_required": true,
+          "verdict": "NOT EXECUTED",
+          "detail": "NOT EXECUTED：驱动不可用：本次命令未请求该平台；需在对应宿主机另跑同一断言集；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+          "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
+          "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
+          "screenshot": null
+        }
+      ]
+    }
+  ]
+}

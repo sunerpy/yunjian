@@ -61,3 +61,14 @@ Thumbs.db
 # `docs/reports/clean-install-<date>.{md,json}`，那两个入库；过程物不入库。
 /target/clean-install-profile/
 /target/clean-install-observed/
+
+# Android 产品工程的构建产物。四个 ABI 的 `.so` 合计数百 MiB，加上 AGP 的中间件
+# 与 Gradle 自己的缓存，签入它们会让仓库无法克隆。生成方式在 `mobile/android/README.md`。
+/mobile/android/build/
+/mobile/android/app/build/
+/mobile/android/.gradle/
+/mobile/android/local.properties
+
+# 语音权重的本地缓存。真实内容由 `cargo run -p xtask -- fetch-models` 下载并逐字节
+# 校验；仓库里只有 `models/licenses/` 与 `models/DENYLIST.md` 这类身份与许可记录。
+/models/cache

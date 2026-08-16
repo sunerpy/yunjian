@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 一枚简笔卷轴。自适应图标的前景须留出 18dp 安全边距，故内容集中在中央 72x72。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#F2E8DC"
+        android:pathData="M32,30 h44 a4,4 0 0 1 4,4 v40 a4,4 0 0 1 -4,4 h-44 a4,4 0 0 1 -4,-4 v-40 a4,4 0 0 1 4,-4 z" />
+    <path
+        android:fillColor="#1B2A41"
+        android:pathData="M40,42 h28 v3 h-28 z M40,52 h28 v3 h-28 z M40,62 h18 v3 h-18 z" />
+</vector>

@@ -549,11 +549,6 @@ public protocol NativeAsrOperationProtocol: AnyObject, Sendable {
     func cancel() 
     
     /**
-     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
-     */
-    func close() 
-    
-    /**
      * 标记 PCM 输入结束；识别器会刷新最终 partial 与 outcome。
      */
     func finishInput() 
@@ -567,6 +562,14 @@ public protocol NativeAsrOperationProtocol: AnyObject, Sendable {
      * 以有界背压队列送入一帧单声道 `f32` PCM；输入结束后不可再送。
      */
     func pushPcm(samples: [Float]) throws 
+    
+    /**
+     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
+     *
+     * 命名理由同 [`NativeOperation::shutdown`]：`close` 会与生成的 Kotlin
+     * `AutoCloseable.close()` 撞成 `Conflicting overloads`。
+     */
+    func shutdown() 
     
     /**
      * 在后台线程按序回调 ASR 事件。
@@ -636,16 +639,6 @@ open func cancel()  {try! rustCall() {
 }
     
     /**
-     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
-     */
-open func close()  {try! rustCall() {
-    uniffi_yunjian_mobile_fn_method_nativeasroperation_close(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-    
-    /**
      * 标记 PCM 输入结束；识别器会刷新最终 partial 与 outcome。
      */
 open func finishInput()  {try! rustCall() {
@@ -674,6 +667,19 @@ open func pushPcm(samples: [Float])throws   {try rustCallWithError(FfiConverterT
     uniffi_yunjian_mobile_fn_method_nativeasroperation_push_pcm(
             self.uniffiCloneHandle(),
         FfiConverterSequenceFloat.lower(samples),$0
+    )
+}
+}
+    
+    /**
+     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
+     *
+     * 命名理由同 [`NativeOperation::shutdown`]：`close` 会与生成的 Kotlin
+     * `AutoCloseable.close()` 撞成 `Conflicting overloads`。
+     */
+open func shutdown()  {try! rustCall() {
+    uniffi_yunjian_mobile_fn_method_nativeasroperation_shutdown(
+            self.uniffiCloneHandle(),$0
     )
 }
 }
@@ -800,6 +806,21 @@ public protocol NativeFacadeProtocol: AnyObject, Sendable {
     func searchText(requestJson: String) throws  -> String
     
     /**
+     * 读取随包赏析；命中时**不需要也不触碰** API key。
+     *
+     * # 为什么必须与 [`Self::appreciate`] 分开
+     *
+     * 随包赏析是一份已经随发布物交付的数据，取它只需要读本地 `appreciation.db`。
+     * 把它藏在生成路径后面会让「没配 key 就看不到随包赏析」成为事实——桌面端一度
+     * 如此，靠 `prepare_appreciation` 把 `AppreciationCache::lookup` 提到 key 检查
+     * **之前**才修好（`crates/yunjian-app/src/ipc.rs`）。这里照同一顺序接线，并且
+     * 因为是两个独立方法，宿主不可能"顺手"要求一个 key。
+     *
+     * 返回 `None` 表示这首诗没有随包赏析，不是错误。
+     */
+    func shippedAppreciation(poemId: String, model: String) throws  -> String?
+    
+    /**
      * 启动真实 sherpa 双路 ASR；原生采集层随后用 [`NativeAsrOperation::push_pcm`]
      * 逐帧送入单声道 `f32` PCM。
      */
@@ -851,7 +872,7 @@ open class NativeFacade: NativeFacadeProtocol, @unchecked Sendable {
     /**
      * 打开语料、复习库与系统钥匙串并构造共享门面。
      *
-     * Android 宿主必须先调用 [`initialize_android_context`]；该检查发生在
+     * Android 宿主必须先调用 Kotlin 的 `YunjianAndroid.initialize(context)`；该检查发生在
      * [`KeyStore::open`] 之前，避免底层 store 以未初始化的全局 context 进入 JNI。
      */
 public convenience init(configJson: String)throws  {
@@ -1007,6 +1028,29 @@ open func searchText(requestJson: String)throws  -> String  {
 }
     
     /**
+     * 读取随包赏析；命中时**不需要也不触碰** API key。
+     *
+     * # 为什么必须与 [`Self::appreciate`] 分开
+     *
+     * 随包赏析是一份已经随发布物交付的数据，取它只需要读本地 `appreciation.db`。
+     * 把它藏在生成路径后面会让「没配 key 就看不到随包赏析」成为事实——桌面端一度
+     * 如此，靠 `prepare_appreciation` 把 `AppreciationCache::lookup` 提到 key 检查
+     * **之前**才修好（`crates/yunjian-app/src/ipc.rs`）。这里照同一顺序接线，并且
+     * 因为是两个独立方法，宿主不可能"顺手"要求一个 key。
+     *
+     * 返回 `None` 表示这首诗没有随包赏析，不是错误。
+     */
+open func shippedAppreciation(poemId: String, model: String)throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeNativeError_lift) {
+    uniffi_yunjian_mobile_fn_method_nativefacade_shipped_appreciation(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(poemId),
+        FfiConverterString.lower(model),$0
+    )
+})
+}
+    
+    /**
      * 启动真实 sherpa 双路 ASR；原生采集层随后用 [`NativeAsrOperation::push_pcm`]
      * 逐帧送入单声道 `f32` PCM。
      */
@@ -1083,14 +1127,24 @@ public protocol NativeOperationProtocol: AnyObject, Sendable {
     func cancel() 
     
     /**
-     * 幂等地关闭句柄并释放尚未消费的事件。
-     */
-    func close() 
-    
-    /**
      * 在超时内拉取下一事件；超时或终态已消费后返回 `None`。
      */
     func nextEvent(timeoutMs: UInt64)  -> String?
+    
+    /**
+     * 幂等地关闭句柄并释放尚未消费的事件。
+     *
+     * # 为什么不叫 `close`
+     *
+     * UniFFI 生成的 Kotlin 对象已经实现 `AutoCloseable`，其 `close()` 负责释放
+     * **Rust 侧的对象句柄**。再导出一个自己的 `close` 会在同一个类里产生两个
+     * `override fun close()`，Kotlin 编译器报 `Conflicting overloads`。
+     *
+     * 这个冲突只有在真正用 Kotlin 编译器编译生成物时才会暴露——`tests/architecture.rs`
+     * 做的是文本断言（`contains("open class NativeFacade")`），编译不到这一层。
+     * 本次把绑定接进 Gradle 才发现它。
+     */
+    func shutdown() 
     
     /**
      * 在后台线程持续拉取事件并回调，直到收到唯一终态或句柄关闭。
@@ -1163,16 +1217,6 @@ open func cancel()  {try! rustCall() {
 }
     
     /**
-     * 幂等地关闭句柄并释放尚未消费的事件。
-     */
-open func close()  {try! rustCall() {
-    uniffi_yunjian_mobile_fn_method_nativeoperation_close(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-    
-    /**
      * 在超时内拉取下一事件；超时或终态已消费后返回 `None`。
      */
 open func nextEvent(timeoutMs: UInt64) -> String?  {
@@ -1182,6 +1226,26 @@ open func nextEvent(timeoutMs: UInt64) -> String?  {
         FfiConverterUInt64.lower(timeoutMs),$0
     )
 })
+}
+    
+    /**
+     * 幂等地关闭句柄并释放尚未消费的事件。
+     *
+     * # 为什么不叫 `close`
+     *
+     * UniFFI 生成的 Kotlin 对象已经实现 `AutoCloseable`，其 `close()` 负责释放
+     * **Rust 侧的对象句柄**。再导出一个自己的 `close` 会在同一个类里产生两个
+     * `override fun close()`，Kotlin 编译器报 `Conflicting overloads`。
+     *
+     * 这个冲突只有在真正用 Kotlin 编译器编译生成物时才会暴露——`tests/architecture.rs`
+     * 做的是文本断言（`contains("open class NativeFacade")`），编译不到这一层。
+     * 本次把绑定接进 Gradle 才发现它。
+     */
+open func shutdown()  {try! rustCall() {
+    uniffi_yunjian_mobile_fn_method_nativeoperation_shutdown(
+            self.uniffiCloneHandle(),$0
+    )
+}
 }
     
     /**
@@ -1503,6 +1567,49 @@ fileprivate struct FfiConverterSequenceFloat: FfiConverterRustBuffer {
         return seq
     }
 }
+/**
+ * 按需下载并校验一个语音模型，返回它在设备上的目录。
+ *
+ * # 为什么必须由 Rust 侧下载，而不是由外部工具把权重塞进来
+ *
+ * 权重是**按需下载**的（安装包不含任何权重，见 `LICENSES.md`），下载后要逐字节校验
+ * SHA-256 才算就位。真机上试过让 `adb push` 直接放进应用的外部私有目录：文件属主是
+ * `shell`，应用（另一个 uid）读不到，`isDirectory` 报 `false`，看起来像「权重没推上去」，
+ * 实际是推上去了但读不了。走产品自己这条路径既没有属主问题，也顺带证明了按需下载可用。
+ *
+ * `cache_root` 由 `YUNJIAN_MODEL_DIR` 决定，而 Android 上那个默认值指向编译期的仓库
+ * 路径、在设备上不存在，所以根目录必须由宿主显式给出。
+ *
+ * 与 [`materialize_assets`] 同样返回可拉进度的句柄：whisper tiny 116 MiB、
+ * streaming zipformer 531 MiB，都不是能让界面干等的量级。
+ */
+public func fetchVoiceModel(cacheRoot: String, modelName: String)throws  -> NativeOperation  {
+    return try  FfiConverterTypeNativeOperation_lift(try rustCallWithError(FfiConverterTypeNativeError_lift) {
+    uniffi_yunjian_mobile_fn_func_fetch_voice_model(
+        FfiConverterString.lower(cacheRoot),
+        FfiConverterString.lower(modelName),$0
+    )
+})
+}
+/**
+ * 走生产路径下载、校验并原子物化语料与随包赏析种子，返回可拉取进度的句柄。
+ *
+ * # 为什么是顶层函数而不是 [`NativeFacade`] 的方法
+ *
+ * [`NativeFacade::new`] 要打开语料才能构造；首启时语料还不存在，于是「先构造门面再让它
+ * 去取语料」在时序上不成立。宿主的正确顺序是：`materialize_assets` -> 等到 `Done` ->
+ * 再构造门面。
+ *
+ * 调用方仍需先完成 `YunjianAndroid.initialize(context)`：赏析种子要写进
+ * `appreciation.db`，而那条路径与钥匙串同处一个应用私有目录。
+ */
+public func materializeAssets(configJson: String)throws  -> NativeOperation  {
+    return try  FfiConverterTypeNativeOperation_lift(try rustCallWithError(FfiConverterTypeNativeError_lift) {
+    uniffi_yunjian_mobile_fn_func_materialize_assets(
+        FfiConverterString.lower(configJson),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -1519,10 +1626,13 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_yunjian_mobile_checksum_method_nativeasroperation_cancel() != 2397) {
+    if (uniffi_yunjian_mobile_checksum_func_fetch_voice_model() != 41793) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_yunjian_mobile_checksum_method_nativeasroperation_close() != 61601) {
+    if (uniffi_yunjian_mobile_checksum_func_materialize_assets() != 64942) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yunjian_mobile_checksum_method_nativeasroperation_cancel() != 2397) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yunjian_mobile_checksum_method_nativeasroperation_finish_input() != 31563) {
@@ -1532,6 +1642,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yunjian_mobile_checksum_method_nativeasroperation_push_pcm() != 23722) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yunjian_mobile_checksum_method_nativeasroperation_shutdown() != 8241) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yunjian_mobile_checksum_method_nativeasroperation_subscribe() != 59335) {
@@ -1570,22 +1683,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_yunjian_mobile_checksum_method_nativefacade_search_text() != 63599) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yunjian_mobile_checksum_method_nativefacade_shipped_appreciation() != 31572) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yunjian_mobile_checksum_method_nativefacade_start_asr() != 4560) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yunjian_mobile_checksum_method_nativeoperation_cancel() != 29308) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_yunjian_mobile_checksum_method_nativeoperation_close() != 53760) {
+    if (uniffi_yunjian_mobile_checksum_method_nativeoperation_next_event() != 49438) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_yunjian_mobile_checksum_method_nativeoperation_next_event() != 49438) {
+    if (uniffi_yunjian_mobile_checksum_method_nativeoperation_shutdown() != 54234) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yunjian_mobile_checksum_method_nativeoperation_subscribe() != 42528) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_yunjian_mobile_checksum_constructor_nativefacade_new() != 36919) {
+    if (uniffi_yunjian_mobile_checksum_constructor_nativefacade_new() != 13795) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yunjian_mobile_checksum_method_nativeeventsink_on_event() != 6619) {

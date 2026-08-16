@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  云笺 Android 应用 manifest。
+
+  `RECORD_AUDIO` 必须声明在**应用**包里而不是 androidTest 包：instrumentation 跑在应用
+  进程、用应用的 UID，权限集取自应用 manifest。声明在测试包里不会让 `checkSelfPermission`
+  变成已授予，只会让读者以为已经处理过了（spike 的 androidTest manifest 把这条写成了注释）。
+
+  `android:windowSoftInputMode` **刻意不设**。边到边窗口里 `adjustResize` 已被系统忽略，
+  应用必须自己消费 ime 插入值——那正是「键盘不遮挡输入框」这条断言要检验的产品责任。
+  写上它只会让读者以为遮挡是由系统避让解决的。
+
+  `INTERNET` 是首启物化必需的：语料归档与赏析种子都从发布地址下载。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <application
+        android:name=".YunjianApplication"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.Yunjian">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Yunjian">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

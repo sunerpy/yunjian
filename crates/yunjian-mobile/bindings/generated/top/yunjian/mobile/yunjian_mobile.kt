@@ -658,15 +658,19 @@ internal object IntegrityCheckingUniffiLib {
         uniffiCheckContractApiVersion(this)
         uniffiCheckApiChecksums(this)
     }
-    external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_cancel(
+    external fun uniffi_yunjian_mobile_checksum_func_fetch_voice_model(
     ): Short
-    external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_close(
+    external fun uniffi_yunjian_mobile_checksum_func_materialize_assets(
+    ): Short
+    external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_cancel(
     ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_finish_input(
     ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_next_event(
     ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_push_pcm(
+    ): Short
+    external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_shutdown(
     ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativeasroperation_subscribe(
     ): Short
@@ -692,13 +696,15 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativefacade_search_text(
     ): Short
+    external fun uniffi_yunjian_mobile_checksum_method_nativefacade_shipped_appreciation(
+    ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativefacade_start_asr(
     ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativeoperation_cancel(
     ): Short
-    external fun uniffi_yunjian_mobile_checksum_method_nativeoperation_close(
-    ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativeoperation_next_event(
+    ): Short
+    external fun uniffi_yunjian_mobile_checksum_method_nativeoperation_shutdown(
     ): Short
     external fun uniffi_yunjian_mobile_checksum_method_nativeoperation_subscribe(
     ): Short
@@ -731,13 +737,13 @@ external fun uniffi_yunjian_mobile_fn_free_nativeasroperation(`handle`: Long,uni
 ): Unit
 external fun uniffi_yunjian_mobile_fn_method_nativeasroperation_cancel(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_yunjian_mobile_fn_method_nativeasroperation_close(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
 external fun uniffi_yunjian_mobile_fn_method_nativeasroperation_finish_input(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_yunjian_mobile_fn_method_nativeasroperation_next_event(`ptr`: Long,`timeoutMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun uniffi_yunjian_mobile_fn_method_nativeasroperation_push_pcm(`ptr`: Long,`samples`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+external fun uniffi_yunjian_mobile_fn_method_nativeasroperation_shutdown(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_yunjian_mobile_fn_method_nativeasroperation_subscribe(`ptr`: Long,`sink`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -769,6 +775,8 @@ external fun uniffi_yunjian_mobile_fn_method_nativefacade_recite_submit(`ptr`: L
 ): RustBuffer.ByValue
 external fun uniffi_yunjian_mobile_fn_method_nativefacade_search_text(`ptr`: Long,`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_yunjian_mobile_fn_method_nativefacade_shipped_appreciation(`ptr`: Long,`poemId`: RustBuffer.ByValue,`model`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 external fun uniffi_yunjian_mobile_fn_method_nativefacade_start_asr(`ptr`: Long,`modelDir`: RustBuffer.ByValue,`int8`: Byte,`reference`: RustBuffer.ByValue,`sampleRate`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 external fun uniffi_yunjian_mobile_fn_clone_nativeoperation(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -777,14 +785,18 @@ external fun uniffi_yunjian_mobile_fn_free_nativeoperation(`handle`: Long,uniffi
 ): Unit
 external fun uniffi_yunjian_mobile_fn_method_nativeoperation_cancel(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-external fun uniffi_yunjian_mobile_fn_method_nativeoperation_close(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
 external fun uniffi_yunjian_mobile_fn_method_nativeoperation_next_event(`ptr`: Long,`timeoutMs`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+external fun uniffi_yunjian_mobile_fn_method_nativeoperation_shutdown(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 external fun uniffi_yunjian_mobile_fn_method_nativeoperation_subscribe(`ptr`: Long,`sink`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 external fun uniffi_yunjian_mobile_fn_init_callback_vtable_nativeeventsink(`vtable`: UniffiVTableCallbackInterfaceNativeEventSink,
 ): Unit
+external fun uniffi_yunjian_mobile_fn_func_fetch_voice_model(`cacheRoot`: RustBuffer.ByValue,`modelName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+external fun uniffi_yunjian_mobile_fn_func_materialize_assets(`configJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 external fun ffi_yunjian_mobile_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 external fun ffi_yunjian_mobile_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -904,10 +916,13 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_yunjian_mobile_checksum_method_nativeasroperation_cancel() != 2397.toShort()) {
+    if (lib.uniffi_yunjian_mobile_checksum_func_fetch_voice_model() != 41793.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_yunjian_mobile_checksum_method_nativeasroperation_close() != 61601.toShort()) {
+    if (lib.uniffi_yunjian_mobile_checksum_func_materialize_assets() != 64942.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yunjian_mobile_checksum_method_nativeasroperation_cancel() != 2397.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yunjian_mobile_checksum_method_nativeasroperation_finish_input() != 31563.toShort()) {
@@ -917,6 +932,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yunjian_mobile_checksum_method_nativeasroperation_push_pcm() != 23722.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_yunjian_mobile_checksum_method_nativeasroperation_shutdown() != 8241.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yunjian_mobile_checksum_method_nativeasroperation_subscribe() != 59335.toShort()) {
@@ -955,22 +973,25 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_yunjian_mobile_checksum_method_nativefacade_search_text() != 63599.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_yunjian_mobile_checksum_method_nativefacade_shipped_appreciation() != 31572.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_yunjian_mobile_checksum_method_nativefacade_start_asr() != 4560.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yunjian_mobile_checksum_method_nativeoperation_cancel() != 29308.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_yunjian_mobile_checksum_method_nativeoperation_close() != 53760.toShort()) {
+    if (lib.uniffi_yunjian_mobile_checksum_method_nativeoperation_next_event() != 49438.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_yunjian_mobile_checksum_method_nativeoperation_next_event() != 49438.toShort()) {
+    if (lib.uniffi_yunjian_mobile_checksum_method_nativeoperation_shutdown() != 54234.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yunjian_mobile_checksum_method_nativeoperation_subscribe() != 42528.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_yunjian_mobile_checksum_constructor_nativefacade_new() != 36919.toShort()) {
+    if (lib.uniffi_yunjian_mobile_checksum_constructor_nativefacade_new() != 13795.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_yunjian_mobile_checksum_method_nativeeventsink_on_event() != 6619.toShort()) {
@@ -1421,11 +1442,6 @@ public interface NativeAsrOperationInterface {
     fun `cancel`()
     
     /**
-     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
-     */
-    fun `close`()
-    
-    /**
      * 标记 PCM 输入结束；识别器会刷新最终 partial 与 outcome。
      */
     fun `finishInput`()
@@ -1439,6 +1455,14 @@ public interface NativeAsrOperationInterface {
      * 以有界背压队列送入一帧单声道 `f32` PCM；输入结束后不可再送。
      */
     fun `pushPcm`(`samples`: List<kotlin.Float>)
+    
+    /**
+     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
+     *
+     * 命名理由同 [`NativeOperation::shutdown`]：`close` 会与生成的 Kotlin
+     * `AutoCloseable.close()` 撞成 `Conflicting overloads`。
+     */
+    fun `shutdown`()
     
     /**
      * 在后台线程按序回调 ASR 事件。
@@ -1564,21 +1588,6 @@ open class NativeAsrOperation: Disposable, AutoCloseable, NativeAsrOperationInte
 
     
     /**
-     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
-     */override fun `close`()
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_yunjian_mobile_fn_method_nativeasroperation_close(
-        it,
-        _status)
-}
-    }
-    
-    
-
-    
-    /**
      * 标记 PCM 输入结束；识别器会刷新最终 partial 与 outcome。
      */override fun `finishInput`()
         = 
@@ -1619,6 +1628,24 @@ open class NativeAsrOperation: Disposable, AutoCloseable, NativeAsrOperationInte
     UniffiLib.uniffi_yunjian_mobile_fn_method_nativeasroperation_push_pcm(
         it,
         FfiConverterSequenceFloat.lower(`samples`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
+     *
+     * 命名理由同 [`NativeOperation::shutdown`]：`close` 会与生成的 Kotlin
+     * `AutoCloseable.close()` 撞成 `Conflicting overloads`。
+     */override fun `shutdown`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_yunjian_mobile_fn_method_nativeasroperation_shutdown(
+        it,
+        _status)
 }
     }
     
@@ -1835,6 +1862,21 @@ public interface NativeFacadeInterface {
     fun `searchText`(`requestJson`: kotlin.String): kotlin.String
     
     /**
+     * 读取随包赏析；命中时**不需要也不触碰** API key。
+     *
+     * # 为什么必须与 [`Self::appreciate`] 分开
+     *
+     * 随包赏析是一份已经随发布物交付的数据，取它只需要读本地 `appreciation.db`。
+     * 把它藏在生成路径后面会让「没配 key 就看不到随包赏析」成为事实——桌面端一度
+     * 如此，靠 `prepare_appreciation` 把 `AppreciationCache::lookup` 提到 key 检查
+     * **之前**才修好（`crates/yunjian-app/src/ipc.rs`）。这里照同一顺序接线，并且
+     * 因为是两个独立方法，宿主不可能"顺手"要求一个 key。
+     *
+     * 返回 `None` 表示这首诗没有随包赏析，不是错误。
+     */
+    fun `shippedAppreciation`(`poemId`: kotlin.String, `model`: kotlin.String): kotlin.String?
+    
+    /**
      * 启动真实 sherpa 双路 ASR；原生采集层随后用 [`NativeAsrOperation::push_pcm`]
      * 逐帧送入单声道 `f32` PCM。
      */
@@ -1873,7 +1915,7 @@ open class NativeFacade: Disposable, AutoCloseable, NativeFacadeInterface
     /**
      * 打开语料、复习库与系统钥匙串并构造共享门面。
      *
-     * Android 宿主必须先调用 [`initialize_android_context`]；该检查发生在
+     * Android 宿主必须先调用 Kotlin 的 `YunjianAndroid.initialize(context)`；该检查发生在
      * [`KeyStore::open`] 之前，避免底层 store 以未初始化的全局 context 进入 JNI。
      */
     constructor(`configJson`: kotlin.String) :
@@ -2145,6 +2187,33 @@ open class NativeFacade: Disposable, AutoCloseable, NativeFacadeInterface
 
     
     /**
+     * 读取随包赏析；命中时**不需要也不触碰** API key。
+     *
+     * # 为什么必须与 [`Self::appreciate`] 分开
+     *
+     * 随包赏析是一份已经随发布物交付的数据，取它只需要读本地 `appreciation.db`。
+     * 把它藏在生成路径后面会让「没配 key 就看不到随包赏析」成为事实——桌面端一度
+     * 如此，靠 `prepare_appreciation` 把 `AppreciationCache::lookup` 提到 key 检查
+     * **之前**才修好（`crates/yunjian-app/src/ipc.rs`）。这里照同一顺序接线，并且
+     * 因为是两个独立方法，宿主不可能"顺手"要求一个 key。
+     *
+     * 返回 `None` 表示这首诗没有随包赏析，不是错误。
+     */
+    @Throws(NativeException::class)override fun `shippedAppreciation`(`poemId`: kotlin.String, `model`: kotlin.String): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(NativeException) { _status ->
+    UniffiLib.uniffi_yunjian_mobile_fn_method_nativefacade_shipped_appreciation(
+        it,
+        FfiConverterString.lower(`poemId`),FfiConverterString.lower(`model`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * 启动真实 sherpa 双路 ASR；原生采集层随后用 [`NativeAsrOperation::push_pcm`]
      * 逐帧送入单声道 `f32` PCM。
      */
@@ -2307,14 +2376,24 @@ public interface NativeOperationInterface {
     fun `cancel`()
     
     /**
-     * 幂等地关闭句柄并释放尚未消费的事件。
-     */
-    fun `close`()
-    
-    /**
      * 在超时内拉取下一事件；超时或终态已消费后返回 `None`。
      */
     fun `nextEvent`(`timeoutMs`: kotlin.ULong): kotlin.String?
+    
+    /**
+     * 幂等地关闭句柄并释放尚未消费的事件。
+     *
+     * # 为什么不叫 `close`
+     *
+     * UniFFI 生成的 Kotlin 对象已经实现 `AutoCloseable`，其 `close()` 负责释放
+     * **Rust 侧的对象句柄**。再导出一个自己的 `close` 会在同一个类里产生两个
+     * `override fun close()`，Kotlin 编译器报 `Conflicting overloads`。
+     *
+     * 这个冲突只有在真正用 Kotlin 编译器编译生成物时才会暴露——`tests/architecture.rs`
+     * 做的是文本断言（`contains("open class NativeFacade")`），编译不到这一层。
+     * 本次把绑定接进 Gradle 才发现它。
+     */
+    fun `shutdown`()
     
     /**
      * 在后台线程持续拉取事件并回调，直到收到唯一终态或句柄关闭。
@@ -2443,21 +2522,6 @@ open class NativeOperation: Disposable, AutoCloseable, NativeOperationInterface
 
     
     /**
-     * 幂等地关闭句柄并释放尚未消费的事件。
-     */override fun `close`()
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_yunjian_mobile_fn_method_nativeoperation_close(
-        it,
-        _status)
-}
-    }
-    
-    
-
-    
-    /**
      * 在超时内拉取下一事件；超时或终态已消费后返回 `None`。
      */override fun `nextEvent`(`timeoutMs`: kotlin.ULong): kotlin.String? {
             return FfiConverterOptionalString.lift(
@@ -2470,6 +2534,31 @@ open class NativeOperation: Disposable, AutoCloseable, NativeOperationInterface
     }
     )
     }
+    
+
+    
+    /**
+     * 幂等地关闭句柄并释放尚未消费的事件。
+     *
+     * # 为什么不叫 `close`
+     *
+     * UniFFI 生成的 Kotlin 对象已经实现 `AutoCloseable`，其 `close()` 负责释放
+     * **Rust 侧的对象句柄**。再导出一个自己的 `close` 会在同一个类里产生两个
+     * `override fun close()`，Kotlin 编译器报 `Conflicting overloads`。
+     *
+     * 这个冲突只有在真正用 Kotlin 编译器编译生成物时才会暴露——`tests/architecture.rs`
+     * 做的是文本断言（`contains("open class NativeFacade")`），编译不到这一层。
+     * 本次把绑定接进 Gradle 才发现它。
+     */override fun `shutdown`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_yunjian_mobile_fn_method_nativeoperation_shutdown(
+        it,
+        _status)
+}
+    }
+    
     
 
     
@@ -2703,4 +2792,54 @@ public object FfiConverterSequenceFloat: FfiConverterRustBuffer<List<kotlin.Floa
         }
     }
 }
+        /**
+         * 按需下载并校验一个语音模型，返回它在设备上的目录。
+         *
+         * # 为什么必须由 Rust 侧下载，而不是由外部工具把权重塞进来
+         *
+         * 权重是**按需下载**的（安装包不含任何权重，见 `LICENSES.md`），下载后要逐字节校验
+         * SHA-256 才算就位。真机上试过让 `adb push` 直接放进应用的外部私有目录：文件属主是
+         * `shell`，应用（另一个 uid）读不到，`isDirectory` 报 `false`，看起来像「权重没推上去」，
+         * 实际是推上去了但读不了。走产品自己这条路径既没有属主问题，也顺带证明了按需下载可用。
+         *
+         * `cache_root` 由 `YUNJIAN_MODEL_DIR` 决定，而 Android 上那个默认值指向编译期的仓库
+         * 路径、在设备上不存在，所以根目录必须由宿主显式给出。
+         *
+         * 与 [`materialize_assets`] 同样返回可拉进度的句柄：whisper tiny 116 MiB、
+         * streaming zipformer 531 MiB，都不是能让界面干等的量级。
+         */
+    @Throws(NativeException::class) fun `fetchVoiceModel`(`cacheRoot`: kotlin.String, `modelName`: kotlin.String): NativeOperation {
+            return FfiConverterTypeNativeOperation.lift(
+    uniffiRustCallWithError(NativeException) { _status ->
+    UniffiLib.uniffi_yunjian_mobile_fn_func_fetch_voice_model(
+    
+        FfiConverterString.lower(`cacheRoot`),FfiConverterString.lower(`modelName`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * 走生产路径下载、校验并原子物化语料与随包赏析种子，返回可拉取进度的句柄。
+         *
+         * # 为什么是顶层函数而不是 [`NativeFacade`] 的方法
+         *
+         * [`NativeFacade::new`] 要打开语料才能构造；首启时语料还不存在，于是「先构造门面再让它
+         * 去取语料」在时序上不成立。宿主的正确顺序是：`materialize_assets` -> 等到 `Done` ->
+         * 再构造门面。
+         *
+         * 调用方仍需先完成 `YunjianAndroid.initialize(context)`：赏析种子要写进
+         * `appreciation.db`，而那条路径与钥匙串同处一个应用私有目录。
+         */
+    @Throws(NativeException::class) fun `materializeAssets`(`configJson`: kotlin.String): NativeOperation {
+            return FfiConverterTypeNativeOperation.lift(
+    uniffiRustCallWithError(NativeException) { _status ->
+    UniffiLib.uniffi_yunjian_mobile_fn_func_materialize_assets(
+    
+        FfiConverterString.lower(`configJson`),_status)
+}
+    )
+    }
+    
+
 

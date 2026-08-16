@@ -24,6 +24,7 @@ mod stream;
 
 pub use assets::{
     ShippedAssets, shipped_assets_status, sync_shipped_assets, sync_shipped_assets_from,
+    sync_shipped_assets_with_progress,
 };
 pub use cache::{
     APPRECIATION_DATABASE_FILE, AppreciationCache, CacheCounts, CacheHit, CacheSource,

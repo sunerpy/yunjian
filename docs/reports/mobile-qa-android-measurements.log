@@ -1,0 +1,255 @@
+
+===== DEVICE IDENTITY =====
+model=Pixel 8 release=15 sdk=35 hardware=shiba qemu=[]
+fingerprint=google/shiba/shiba:15/AP3A.241005.015/12366759:user/release-keys
+YUNJIAN-FULL device_identity model=Pixel 8
+YUNJIAN-FULL device_identity os_build=15/35
+YUNJIAN-FULL device_identity ro_hardware=shiba
+YUNJIAN-FULL device_identity ro_kernel_qemu=unset
+YUNJIAN-FULL device_identity fingerprint=google/shiba/shiba:15/AP3A.241005.015/12366759:user/release-keys
+
+===== REPLACE THE DEVICE-FARM-RESIGNED COPY WITH OURS =====
+Success
+Success
+YUNJIAN-FULL harness app_self_installed=true
+Success
+YUNJIAN-FULL harness test_self_installed=true
+YUNJIAN-FULL harness instrumentation_registered=true
+
+===== TARGET SDK / VERSION =====
+    codePath=/data/app/~~DihzfWMc_nx43vo00Og4NA==/top.onethinker.yunjian-1wJooRYuBfaW4NqZUnQ9Xw==
+    versionCode=1 minSdk=26 targetSdk=35
+    versionName=0.1.0
+YUNJIAN-FULL harness target_sdk=35
+
+===== ASR WEIGHTS ARE FETCHED BY THE APP ITSELF =====
+权重由应用经 fetch_voice_model 下载；此处不做任何推送
+
+===== RUN THE TEN ASSERTIONS =====
+INSTRUMENTATION_STATUS: test=t05_typed_recitation_scores_correctly
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=t06_voice_recitation_round_succeeds_end_to_end
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=t06_voice_recitation_round_succeeds_end_to_end
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=t07_voice_permission_denied_degrades
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=t07_voice_permission_denied_degrades
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=8
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=t08_chinese_ime_prefilled_field_visible
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=8
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=t08_chinese_ime_prefilled_field_visible
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=9
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=t09_background_return_preserves_layout
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=9
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=t09_background_return_preserves_layout
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=10
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=t10_app_exits_cleanly
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=top.onethinker.yunjian.FullAcceptanceTest
+INSTRUMENTATION_STATUS: current=10
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=10
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=t10_app_exits_cleanly
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1,263.017
+
+OK (10 tests)
+
+
+INSTRUMENTATION_CODE: -1
+
+===== COLLECT DEVICE-SIDE MEASUREMENTS =====
+--- via run-as ---
+YUNJIAN-FULL install_and_launch device_model=Google Pixel 8
+YUNJIAN-FULL install_and_launch os_build=15/35
+YUNJIAN-FULL install_and_launch package=top.onethinker.yunjian
+YUNJIAN-FULL install_and_launch supported_abis=arm64-v8a
+YUNJIAN-FULL install_and_launch ro_hardware=shiba
+YUNJIAN-FULL install_and_launch ro_product_device=shiba
+YUNJIAN-FULL install_and_launch ro_kernel_qemu=
+YUNJIAN-FULL install_and_launch ro_boot_qemu=
+YUNJIAN-FULL install_and_launch fingerprint=google/shiba/shiba:15/AP3A.241005.015/12366759:user/release-keys
+YUNJIAN-FULL install_and_launch root_rendered=true
+YUNJIAN-FULL install_and_launch tab_clickable=true
+YUNJIAN-FULL install_and_launch crashed=false
+YUNJIAN-FULL install_and_launch native_binding=uniffi_native
+YUNJIAN-FULL install_and_launch screenshot_launch=install_and_launch-launch.png
+YUNJIAN-FULL install_and_launch screenshot_launch_bytes=67393
+YUNJIAN-FULL corpus_first_run_materialization data_root=/data/user/0/top.onethinker.yunjian/files/yunjian/corpus
+YUNJIAN-FULL corpus_first_run_materialization free_bytes=111482355712
+YUNJIAN-FULL corpus_first_run_materialization screenshot_progress=corpus_first_run_materialization-progress.png
+YUNJIAN-FULL corpus_first_run_materialization screenshot_progress_bytes=60016
+YUNJIAN-FULL corpus_first_run_materialization stage_count=489
+YUNJIAN-FULL corpus_first_run_materialization stages_seen=正在联系发布地址|正在解压语料库 · 已写出 96.3 MiB|正在解压语料库 · 已写出 304.9 MiB|正在解压语料库 · 已写出 481.4 MiB|正在解压语料库 · 已写出 602.1 MiB|读取诗词正文
+YUNJIAN-FULL corpus_first_run_materialization progress_shown=true
+YUNJIAN-FULL corpus_first_run_materialization derive_awaited=false
+YUNJIAN-FULL corpus_first_run_materialization corpus_present=true
+YUNJIAN-FULL corpus_first_run_materialization corpus_bytes=4769849344
+YUNJIAN-FULL corpus_first_run_materialization residual_temp_files=0
+YUNJIAN-FULL corpus_first_run_materialization atomic_install=true
+YUNJIAN-FULL corpus_first_run_materialization duration_seconds=976.346
+YUNJIAN-FULL corpus_first_run_materialization facts_shown=474043 首 · 随包赏析 16 条
+YUNJIAN-FULL corpus_first_run_materialization crashed=false
+YUNJIAN-FULL corpus_first_run_materialization screenshot_materialized=corpus_first_run_materialization-materialized.png
+YUNJIAN-FULL corpus_first_run_materialization screenshot_materialized_bytes=59920
+YUNJIAN-FULL two_char_search_returns_results query=明月
+YUNJIAN-FULL two_char_search_returns_results query_char_count=2
+YUNJIAN-FULL two_char_search_returns_results hits=20
+YUNJIAN-FULL two_char_search_returns_results first_hit_id=28f16b71dd668b70
+YUNJIAN-FULL two_char_search_returns_results screenshot_search=two_char_search_returns_results-search.png
+YUNJIAN-FULL two_char_search_returns_results screenshot_search_bytes=174654
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation commentary_poem_id=206d45b9089865c3
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation commentary_poem_title=石芝 · 宋蘇軾
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation commentary_count=1
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation commentary_text=沈隱侯曰：文章當從三易，易見事，一也；易識事，二也；易讀誦，三也。邢子才曰：沈侯文章，用事不使人覺，若胸臆語。祖孝徵曰：
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation citation_shown=true
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation citation_text=出处：宋·魏庆之《诗人玉屑》 卷七・三　易・第 2 段；据维基文库《詩人玉屑·卷07》校录本，修订号 1526713（成书不晚于 1244）
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation screenshot_commentary=reading_view_citations_and_ai_appreciation-commentary.png
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation screenshot_commentary_bytes=299502
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation appreciation_poem_id=062f574ab2986a9b
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation appreciation_poem_title=春夜喜雨 · 唐杜甫
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation appreciation_shown=true
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation appreciation_text=<<未生成：本条不是模型输出，需开放权重模型推理>>
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation unreviewed_disclosure=本段由 deepseek-r1:7b 生成，未经人工审校（来源：shipped）
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation disclosure_says_unreviewed=true
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation screenshot_reading=reading_view_citations_and_ai_appreciation-reading.png
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation screenshot_reading_bytes=218604
+YUNJIAN-FULL reading_view_citations_and_ai_appreciation api_key_configured=false
+YUNJIAN-FULL typed_recitation_scores_correctly accuracy_strict_unavailable=reading_body_empty
+YUNJIAN-FULL note startAsr 探测：模型文件缺失：/nonexistent-model-dir；模型按需下载由后续任务实现，当前需手动放置，详见 docs/VOICE-BUILD.zh.md
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end record_audio_declared=true
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end record_audio_granted=true
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end model_dir=/storage/emulated/0/Android/data/top.onethinker.yunjian/files/yunjian/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end model_fetch_stage_count=125
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end model_fetch_last_stage=正在解包语音模型
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end model_fetch_directory=/storage/emulated/0/Android/data/top.onethinker.yunjian/files/yunjian/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end model_dir_present=true
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end native_voice_enabled=true
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end reference_poem_id=28f16b71dd668b70
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end outcome_line=开口=true 停顿=0 时长=3000ms 单路RTF=0.23919599
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end spoke=true
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end pause_count=0
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end total_ms=3000
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end single_rtf=0.23919599
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end auto_graded=false
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end screenshot_voice=voice_recitation_round_succeeds_end_to_end-voice.png
+YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end screenshot_voice_bytes=60106
+YUNJIAN-FULL voice_permission_denied_degrades revoke_executed=true
+YUNJIAN-FULL voice_permission_denied_degrades revoke_path=cmd appops set android:record_audio deny
+YUNJIAN-FULL voice_permission_denied_degrades appops_state=Uid mode: RECORD_AUDIO: ignore
+YUNJIAN-FULL voice_permission_denied_degrades record_audio_granted=true
+YUNJIAN-FULL voice_permission_denied_degrades degraded_reason=音频采集被拒：4800 个采样全为静音，RECORD_AUDIO 权限或 appops 未真正放开；已切到打字背诵
+YUNJIAN-FULL voice_permission_denied_degrades reason_names_capture_denial=true
+YUNJIAN-FULL voice_permission_denied_degrades fallback_to_typing_shown=true
+YUNJIAN-FULL voice_permission_denied_degrades crashed=false
+YUNJIAN-FULL voice_permission_denied_degrades screenshot_permission-denied=voice_permission_denied_degrades-permission-denied.png
+YUNJIAN-FULL voice_permission_denied_degrades screenshot_permission-denied_bytes=102757
+YUNJIAN-FULL chinese_ime_prefilled_field_visible default_ime=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
+YUNJIAN-FULL chinese_ime_prefilled_field_visible runtime_locale=zh-CN
+YUNJIAN-FULL chinese_ime_prefilled_field_visible display_height_px=2400
+YUNJIAN-FULL chinese_ime_prefilled_field_visible prefilled_text=明月
+YUNJIAN-FULL chinese_ime_prefilled_field_visible field_prefilled=true
+YUNJIAN-FULL chinese_ime_prefilled_field_visible keyboard_shown=true
+YUNJIAN-FULL chinese_ime_prefilled_field_visible input_bottom_screen_px=1041
+YUNJIAN-FULL chinese_ime_prefilled_field_visible text_after_input=明月几时
+YUNJIAN-FULL chinese_ime_prefilled_field_visible append_preserved_existing=true
+YUNJIAN-FULL chinese_ime_prefilled_field_visible entered_text_present=true
+YUNJIAN-FULL chinese_ime_prefilled_field_visible input_visible=true
+YUNJIAN-FULL chinese_ime_prefilled_field_visible screenshot_ime=chinese_ime_prefilled_field_visible-ime.png
+YUNJIAN-FULL chinese_ime_prefilled_field_visible screenshot_ime_bytes=144304
+YUNJIAN-FULL background_return_preserves_layout tab_before=recite
+YUNJIAN-FULL background_return_preserves_layout went_background=true
+YUNJIAN-FULL background_return_preserves_layout root_present_after_return=true
+YUNJIAN-FULL background_return_preserves_layout tabs_present_after_return=true
+YUNJIAN-FULL background_return_preserves_layout tab_after=search
+YUNJIAN-FULL background_return_preserves_layout tab_preserved=false
+YUNJIAN-FULL background_return_preserves_layout facts_preserved=true
+YUNJIAN-FULL background_return_preserves_layout layout_preserved=true
+YUNJIAN-FULL background_return_preserves_layout blank_screen=false
+YUNJIAN-FULL background_return_preserves_layout screenshot_returned=background_return_preserves_layout-returned.png
+YUNJIAN-FULL background_return_preserves_layout screenshot_returned_bytes=48667
+YUNJIAN-FULL app_exits_cleanly screenshot_before-exit=app_exits_cleanly-before-exit.png
+YUNJIAN-FULL app_exits_cleanly screenshot_before-exit_bytes=60024
+YUNJIAN-FULL app_exits_cleanly crash_lines_before_exit=0
+YUNJIAN-FULL app_exits_cleanly instrumentation_pid=21456
+YUNJIAN-FULL app_exits_cleanly remaining_pids=21456
+YUNJIAN-FULL app_exits_cleanly remaining_pid_count=1
+YUNJIAN-FULL app_exits_cleanly orphan_process_count=0
+YUNJIAN-FULL app_exits_cleanly activity_destroyed=true
+YUNJIAN-FULL app_exits_cleanly crash_lines_after_exit=0
+YUNJIAN-FULL app_exits_cleanly crashed=false
+
+===== PULL SCREENSHOTS =====
+/sdcard/Android/data/top.onethinker.yunjian/cache/app_exits_cleanly-before-exit.png: 1 file pulled. 8.1 MB/s (60024 bytes in 0.007s)
+YUNJIAN-FULL screenshots app_exits_cleanly-before-exit.png=60024
+/sdcard/Android/data/top.onethinker.yunjian/cache/background_return_preserves_layout-returned.png: 1 file pulled. 10.9 MB/s (48667 bytes in 0.004s)
+YUNJIAN-FULL screenshots background_return_preserves_layout-returned.png=48667
+/sdcard/Android/data/top.onethinker.yunjian/cache/chinese_ime_prefilled_field_visible-ime.png: 1 file pulled. 3.1 MB/s (144304 bytes in 0.045s)
+YUNJIAN-FULL screenshots chinese_ime_prefilled_field_visible-ime.png=144304
+/sdcard/Android/data/top.onethinker.yunjian/cache/corpus_first_run_materialization-materialized.png: 1 file pulled. 9.2 MB/s (59920 bytes in 0.006s)
+YUNJIAN-FULL screenshots corpus_first_run_materialization-materialized.png=59920
+/sdcard/Android/data/top.onethinker.yunjian/cache/corpus_first_run_materialization-progress.png: 1 file pulled. 6.6 MB/s (60016 bytes in 0.009s)
+YUNJIAN-FULL screenshots corpus_first_run_materialization-progress.png=60016
+/sdcard/Android/data/top.onethinker.yunjian/cache/install_and_launch-launch.png: 1 file pulled. 7.7 MB/s (67393 bytes in 0.008s)
+YUNJIAN-FULL screenshots install_and_launch-launch.png=67393
+/sdcard/Android/data/top.onethinker.yunjian/cache/reading_view_citations_and_ai_appreciation-commentary.png: 1 file pulled. 5.4 MB/s (299502 bytes in 0.052s)
+YUNJIAN-FULL screenshots reading_view_citations_and_ai_appreciation-commentary.png=299502
+/sdcard/Android/data/top.onethinker.yunjian/cache/reading_view_citations_and_ai_appreciation-reading.png: 1 file pulled. 20.7 MB/s (218604 bytes in 0.010s)
+YUNJIAN-FULL screenshots reading_view_citations_and_ai_appreciation-reading.png=218604
+/sdcard/Android/data/top.onethinker.yunjian/cache/two_char_search_returns_results-search.png: 1 file pulled. 19.0 MB/s (174654 bytes in 0.009s)
+YUNJIAN-FULL screenshots two_char_search_returns_results-search.png=174654
+/sdcard/Android/data/top.onethinker.yunjian/cache/voice_permission_denied_degrades-permission-denied.png: 1 file pulled. 14.3 MB/s (102757 bytes in 0.007s)
+YUNJIAN-FULL screenshots voice_permission_denied_degrades-permission-denied.png=102757
+/sdcard/Android/data/top.onethinker.yunjian/cache/voice_recitation_round_succeeds_end_to_end-voice.png: 1 file pulled. 6.1 MB/s (60106 bytes in 0.009s)
+YUNJIAN-FULL screenshots voice_recitation_round_succeeds_end_to_end-voice.png=60106
+
+===== CRASH LOG =====

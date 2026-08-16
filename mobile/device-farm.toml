@@ -15,7 +15,9 @@ region = "us-west-2"
 project_arn = "arn:aws:devicefarm:us-west-2:891377171033:project:9b17cc74-307c-4fdb-b97c-90dc308a8a62"
 billing_method = "METERED"
 locale = "zh_CN"
-job_timeout_minutes = 30
+# 首启物化在 Pixel 8 上实测 868~873 秒（212 MiB 下载 + 4.44 GiB 解压），之后还有九条
+# 断言。30 分钟会在 t02 之后被截断——真机实测第五轮正是如此。这里给 150（账号上限）。
+job_timeout_minutes = 150
 
 [android]
 enabled = true
@@ -28,6 +30,36 @@ test_spec = ".aws/devicefarm/spike-android.yml"
 test_type = "APPIUM_NODE"
 build_command = "aws codebuild start-build --project-name yunjian-android-spike --region us-east-2"
 blocked_reason = ""
+
+# todo 71 真机验收（`xtask acceptance --set full`）的产物与 testspec。
+#
+# 与 `[android]` / `[ios]` **刻意分开**：spike 跑的是三个不依赖主界面的类，用来决定
+# binding 分支；full 跑的是 `FullAcceptanceTest`，它必须拉起真界面。两者的 APK、
+# 测试包与 testspec 都不同。共用一个段会让「跑 full 却上传了 spike 的 APK」成为一次
+# 静默的错误——run 会 PASSED，而十条测量值一条也不会回来（PR #102 的教训形态）。
+[android_full]
+enabled = true
+device_pool_arn = "arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9"
+app_artifact = "target/mobile/yunjian.apk"
+app_upload_type = "ANDROID_APP"
+test_package_artifact = "target/mobile/full-tests.zip"
+test_package_upload_type = "APPIUM_NODE_TEST_PACKAGE"
+test_spec = ".aws/devicefarm/full-android.yml"
+test_type = "APPIUM_NODE"
+build_command = "cd mobile/android && gradle :app:assembleDebug :app:assembleDebugAndroidTest && cargo run -p xtask -- mobile-package"
+blocked_reason = ""
+
+[ios_full]
+enabled = false
+device_pool_arn = "arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74-307c-4fdb-b97c-90dc308a8a62/7c385981-1356-4e2f-a3c6-ff2a406c4ea9"
+app_artifact = "target/mobile/yunjian.ipa"
+app_upload_type = "IOS_APP"
+test_package_artifact = "target/mobile/full-xcuitest.zip"
+test_package_upload_type = "XCTEST_UI_TEST_PACKAGE"
+test_spec = ".aws/devicefarm/full-ios.yml"
+test_type = "XCTEST_UI"
+build_command = "xcodebuild build-for-testing -scheme Yunjian -destination 'generic/platform=iOS'"
+blocked_reason = "构建 .ipa 与 XCUITest bundle 需要 macOS 与 Xcode 26；本机是 Linux，且 Device Farm 的 macOS 构建环境不在本项目已开通的资源内。UniFFI 的 Swift 生成物（YunjianMobile.swift + YunjianMobileFFI.h + modulemap）已在仓库里，缺的只有 macOS 宿主"
 
 [ios]
 enabled = false

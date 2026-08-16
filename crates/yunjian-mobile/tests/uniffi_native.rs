@@ -31,7 +31,7 @@ impl ConformanceAdapter for UniffiAdapter {
     }
 
     fn close(&self, handle: &Self::Handle) {
-        handle.close();
+        handle.shutdown();
     }
 }
 

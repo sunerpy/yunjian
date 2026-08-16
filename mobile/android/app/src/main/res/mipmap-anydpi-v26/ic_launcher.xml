@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用模块自带的自适应图标。
+
+  刻意用 vector 而不是引用 `packaging/` 下的位图资产：那批图标由 todo 65 独立负责，
+  在那条线收口之前从这里引用它等于把两件事绑在一起，而绑在一起的表现是本工程因
+  一次图标改动而构建失败。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
