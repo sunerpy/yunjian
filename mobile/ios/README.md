@@ -17,6 +17,9 @@ binding verdict 是 **`uniffi_native`**（`crates/yunjian-mobile/src/lib.rs` 的
 | 十条判据的每个 required 键 iOS 侧都报得出来 | **已验证**（扫 harness 源码里的键字面量，缺一个即红）               |
 | 十个 XCUITest 方法带 `test` 前缀            | **已验证**（缺前缀时一个测试都不会跑而 run 显示成功，这条专门守它） |
 | 调用的绑定符号在生成的 Swift 里真的存在     | **已验证**（逐个在 `YunjianMobile.swift` 里核对，不凭记忆写名字）   |
+| 采集结束停用 `AVAudioSession`               | **已验证**（激活与 `defer` 停用配对计数，删掉或挪出 `defer` 即红）  |
+| 一轮时长按采样率换算且与 Android 相同       | **已验证**（帧数不许写字面量；两侧毫秒数比对，差过 1 ms 即红）      |
+| 用到的 AVFoundation API 名与签名            | **已核对**（逐个查 Apple 官方文档，非编译验证）                     |
 | **Swift 能否编译通过**                      | **未验证** —— 无 Swift 编译器                                       |
 | **`xcodegen generate` 能否产出可用工程**    | **未验证** —— 无 xcodegen 与 Xcode                                  |
 | **`build-xcframework.sh` 能否跑到底**       | **未验证** —— 它第一步就要求 macOS（`uname -s != Darwin` 即退 2）   |

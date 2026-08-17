@@ -15,17 +15,48 @@ import Foundation
 /// 采样全零。所以这里保留 Android 那条判据：**这一小段里有没有任何非零采样**。
 /// 用能量阈值反而会把安静房间里的真采集误判成被拒。
 ///
+/// # 时长按采样率换算，不按回调次数
+///
+/// iOS 的 tap 按**设备**输入格式交付，而 `installTap` 的 `bufferSize` 在 Apple 文档里只是建议值
+/// （“The size of the incoming buffers. The implementation may choose another size.”）。所以
+/// 「读了 N 次回调」与「过了多少毫秒」之间没有固定换算：在常见的 44.1/48 kHz 设备上按 16 kHz
+/// 的帧长数 30 次回调，实际只有约 1 秒。本文件里凡是「一轮多长」「探测多长」都以**秒**声明，
+/// 帧数由采样率算出来；重采样只改采样率不改源时长，补不回缺掉的两秒。
+///
+/// # AVAudioSession 在所有出口停用
+///
+/// 激活与停用严格配对，停用一律写在 `defer` 里——降级路径全是提前 `return`，写在函数末尾时
+/// 它们会把录音 session 留在激活状态，而后果落在**别的应用**上，本应用自己的验收永远量不到。
+/// 停用排在停 engine 之后（`defer` 后进先出）：对还有音频对象在跑的 session 调停用会拿到
+/// `isBusy`。两条都由 `xtask` 的 `verify_voice_capture_contract` 守住。
+///
 /// # 尚未由 Xcode 编译验证
 ///
-/// 本文件没有经过 Swift 编译器与真机运行（本机无 macOS）。见 `mobile/ios/README.md`。
+/// 本文件没有经过 Swift 编译器与真机运行（本机无 macOS）。用到的 AVFoundation API 名与签名逐个
+/// 核对过 Apple 官方文档，但**编译与真机行为未验证**。见 `mobile/ios/README.md`。
 enum VoiceCapture {
     static let sampleRate: Double = 16_000
     /// 每帧 1600 采样 = 100 ms @ 16 kHz。与 Android 的 `FRAME_SAMPLES` 相同。
+    ///
+    /// 这个等式成立的前提是**帧在重采样之后按这个长度切分**（见 `FrameQueue`），而不是把 tap
+    /// 一次回调交付的缓冲当成一帧。
     static let frameSamples: Int = 1_600
-    /// 一轮推送多少帧。30 帧 ≈ 3 秒，与 Android 的 `FRAMES_PER_ROUND` 相同。
-    static let framesPerRound: Int = 30
-    /// 静音探测读几帧。3 帧 ≈ 300 ms，足够区分全零流与真采集（与 Android 相同）。
-    static let silenceProbeFrames: Int = 3
+    /// 一轮采集的目标时长。与 Android 的 `FRAMES_PER_ROUND × FRAME_SAMPLES ÷ SAMPLE_RATE`
+    /// 是同一个 3.0 秒，由 `xtask` 的 `verify_round_duration_parity` 逐条比对。
+    static let roundSeconds: Double = 3
+    /// 一轮推多少帧 = 目标时长 × 采样率 ÷ 每帧采样数。
+    ///
+    /// **刻意不写成字面量 30**：那个数字只在 16 kHz、每帧 1600 采样这一种组合下等于 3 秒。
+    static var framesPerRound: Int { Int((roundSeconds * sampleRate).rounded()) / frameSamples }
+    /// 一轮的墙钟上限：目标时长再加启动与调度余量。到点仍不足帧数时按实际推送数返回。
+    static var roundDeadlineSeconds: Double { roundSeconds + 12 }
+    /// 静音探测读多长。300 ms 足够区分全零流与真采集（与 Android 的 3 帧 × 100 ms 相同）。
+    ///
+    /// 按**时长**而不是回调次数记：tap 的 `bufferSize` 在 Apple 文档里只是建议值
+    /// （“The implementation may choose another size.”），回调次数与时长没有固定换算。
+    static let silenceProbeSeconds: Double = 0.3
+    /// 等静音探测读满的墙钟上限。超时不是「被拒」而是「读不到任何采样」。
+    static let probeTimeoutSeconds: Double = 2
 
     /// 当前的录音授权状态。
     ///
@@ -45,18 +76,19 @@ enum VoiceCapture {
     static func probeSilentCapture() -> String? {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.record, mode: .measurement, options: [])
-            try session.setActive(true, options: [])
+            try activateRecordingSession()
         } catch {
             return "音频采集不可用：AVAudioSession 无法激活（\(error.localizedDescription)）；已切到打字背诵"
         }
+        // 停用必须在 `defer` 里：下面每一条降级 `return` 都是提前出口，写在函数末尾时它们
+        // 会把已激活的录音 session 留在系统里。
+        defer { deactivateRecordingSession() }
+
         guard !session.availableInputs.isNullOrEmpty else {
             return "音频采集不可用：当前没有可用输入设备；已切到打字背诵"
         }
 
         let engine = AVAudioEngine()
-        var read = 0
-        var nonZero = 0
         let gate = DispatchSemaphore(value: 0)
         let counter = SampleCounter()
 
@@ -65,9 +97,12 @@ enum VoiceCapture {
         guard format.sampleRate > 0 else {
             return "音频采集不可用：输入格式采样率为 0，说明未取得输入路由；已切到打字背诵"
         }
+        // 探测读满多少采样按**设备**采样率算：tap 交付的是设备格式，用 16 kHz 下的数字会在
+        // 48 kHz 设备上只读到三分之一的时长。
+        let probeSamples = Int((silenceProbeSeconds * format.sampleRate).rounded())
         input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(frameSamples), format: format) { buffer, _ in
             let (frames, nonZeroFrames) = Self.inspect(buffer)
-            if counter.add(read: frames, nonZero: nonZeroFrames) >= silenceProbeFrames {
+            if counter.add(read: frames, nonZero: nonZeroFrames).read >= probeSamples {
                 gate.signal()
             }
         }
@@ -81,10 +116,10 @@ enum VoiceCapture {
             return "音频采集被拒：AVAudioEngine 启动失败（\(error.localizedDescription)）；已切到打字背诵"
         }
         // 等一小段。超时不是「被拒」而是「读不到任何采样」，两者的原因文字必须不同。
-        _ = gate.wait(timeout: .now() + 2)
+        _ = gate.wait(timeout: .now() + probeTimeoutSeconds)
         let snapshot = counter.snapshot()
-        read = snapshot.read
-        nonZero = snapshot.nonZero
+        let read = snapshot.read
+        let nonZero = snapshot.nonZero
 
         if read == 0 {
             return "音频采集被拒：读不到任何采样（麦克风可能被其他应用占用或无输入路由）；已切到打字背诵"
@@ -99,9 +134,19 @@ enum VoiceCapture {
     ///
     /// 返回实际推送的帧数。**不在这里做任何判定**：帧数是测量值，够不够由上层与宿主侧判据说。
     static func pushRound(push: ([Float]) throws -> Void) throws -> Int {
+        try activateRecordingSession()
+        // 注册顺序即执行顺序的反序：这条先注册所以**最后**执行，于是 session 在 engine 停下
+        // 之后才停用。反过来的话，对还有音频对象在跑的 session 调停用会拿到
+        // `AVAudioSession.ErrorCode.isBusy`（Apple 文档 `setActive(_:options:)` 明载），
+        // session 反而留在激活状态。
+        defer { deactivateRecordingSession() }
+
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0 else {
+            throw VoiceCaptureError.noInputRoute
+        }
         guard let target = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
@@ -114,7 +159,11 @@ enum VoiceCapture {
             throw VoiceCaptureError.unsupportedFormat
         }
 
-        let queue = FrameQueue()
+        // 队列按 16 kHz 下的 `frameSamples` 切分**重采样之后**的流，所以一帧恒等于 100 ms。
+        // 旧写法把 tap 的一次回调当成一帧，而 tap 按设备采样率交付、`bufferSize` 在 Apple
+        // 文档里只是建议值（“The implementation may choose another size.”），于是 48 kHz 上
+        // 一帧只有约 33 ms，一轮 30 帧约等于 1 秒——「30 帧 ≈ 3 秒」在真机上根本不成立。
+        let queue = FrameQueue(frameSamples: frameSamples)
         input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(frameSamples), format: inputFormat) { buffer, _ in
             // 重采样到 16 kHz 单声道：设备输入常见 44.1/48 kHz，直接把原始采样送进 ASR
             // 会让识别在时间轴上整体拉伸，而报错形态是「识别结果对不上」——那不指向真因。
@@ -128,8 +177,9 @@ enum VoiceCapture {
         try engine.start()
 
         var pushed = 0
-        let deadline = Date().addingTimeInterval(15)
-        while pushed < framesPerRound, Date() < deadline {
+        let targetFrames = framesPerRound
+        let deadline = Date().addingTimeInterval(roundDeadlineSeconds)
+        while pushed < targetFrames, Date() < deadline {
             guard let frame = queue.take() else {
                 Thread.sleep(forTimeInterval: 0.02)
                 continue
@@ -138,6 +188,23 @@ enum VoiceCapture {
             pushed += 1
         }
         return pushed
+    }
+
+    /// 激活录音 session。**与 `deactivateRecordingSession` 严格配对**，由 `xtask` 的
+    /// `verify_session_is_deactivated` 按调用点计数守住。
+    private static func activateRecordingSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.record, mode: .measurement, options: [])
+        try session.setActive(true, options: [])
+    }
+
+    /// 停用录音 session，并通知被打断的其他应用可以恢复。
+    ///
+    /// 不 `throws`：它只在 `defer` 里被调用，而从 `defer` 里抛错会盖掉真正的失败原因。
+    /// 停用失败本身不是产品缺陷（最常见的是 `isBusy`），但漏掉停用是——那会让别的应用
+    /// 在本应用录完一轮之后拿不回音频。
+    private static func deactivateRecordingSession() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
     private static func convert(
@@ -178,8 +245,23 @@ enum VoiceCapture {
     }
 }
 
-enum VoiceCaptureError: Error {
+/// 采集失败的原因。
+///
+/// conform `LocalizedError` 是必需的：`MainViewModel` 把 `describe(error)` 的结果直接贴到
+/// 降级文案里，而裸 `Error` 的 `localizedDescription` 会给出
+/// 「The operation couldn't be completed. (VoiceCaptureError error 0.)」——那不指向真因。
+enum VoiceCaptureError: LocalizedError {
     case unsupportedFormat
+    case noInputRoute
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedFormat:
+            return "音频采集不可用：无法建立 16 kHz 单声道重采样通路"
+        case .noInputRoute:
+            return "音频采集不可用：输入格式采样率为 0，说明未取得输入路由"
+        }
+    }
 }
 
 /// tap 回调在音频线程上跑，计数必须加锁。
@@ -187,16 +269,17 @@ private final class SampleCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var read = 0
     private var nonZero = 0
-    private var frames = 0
 
-    /// 累加并返回已收到的**回调次数**（不是采样数）。
-    func add(read newRead: Int, nonZero newNonZero: Int) -> Int {
+    /// 累加并返回累计**采样数**。
+    ///
+    /// 刻意不返回回调次数：tap 的 `bufferSize` 只是建议值，回调次数与时长没有固定换算，
+    /// 按次数判「读够了」会随设备采样率漂移。
+    func add(read newRead: Int, nonZero newNonZero: Int) -> (read: Int, nonZero: Int) {
         lock.lock()
         defer { lock.unlock() }
         read += newRead
         nonZero += newNonZero
-        frames += 1
-        return frames
+        return (read, nonZero)
     }
 
     func snapshot() -> (read: Int, nonZero: Int) {
@@ -206,16 +289,30 @@ private final class SampleCounter: @unchecked Sendable {
     }
 }
 
-/// 音频线程与推送线程之间的帧队列。
+/// 音频线程与推送线程之间的帧队列，按 `frameSamples` **重新切分**输入。
+///
+/// 切分是这个类存在的理由。tap 交付的缓冲长度由系统决定（`bufferSize` 只是建议值），重采样
+/// 之后长度还会再变；直接把每次交付当成一帧会让「一帧 = 100 ms」这个换算失效，而失效的表现
+/// 是一轮的真实时长只有声称的三分之一——`total_ms` 与「停顿」读数全都跟着偏，却没有任何报错。
 private final class FrameQueue: @unchecked Sendable {
     private let lock = NSLock()
+    private let frameSamples: Int
+    private var pending: [Float] = []
     private var frames: [[Float]] = []
 
-    func append(_ frame: [Float]) {
-        guard !frame.isEmpty else { return }
+    init(frameSamples: Int) {
+        self.frameSamples = frameSamples
+    }
+
+    func append(_ samples: [Float]) {
+        guard !samples.isEmpty else { return }
         lock.lock()
-        frames.append(frame)
-        lock.unlock()
+        defer { lock.unlock() }
+        pending.append(contentsOf: samples)
+        while pending.count >= frameSamples {
+            frames.append(Array(pending.prefix(frameSamples)))
+            pending.removeFirst(frameSamples)
+        }
     }
 
     func take() -> [Float]? {
