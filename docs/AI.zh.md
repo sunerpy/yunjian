@@ -16,7 +16,7 @@ AI 赏析在云笺里**不是锦上添花，而是填一个洞**：凡带现代�
 - [供应商边界与无密钥运行](#供应商边界与无密钥运行)
 - [流式与真正的取消](#流式与真正的取消)
 - [预生成策略](#预生成策略)
-- [预生成的当前状态：未生成（如实记录）](#预生成的当前状态未生成如实记录)
+- [预生成的当前状态：已生成（如实记录）](#预生成的当前状态已生成如实记录)
 - [标注义务与准确性免责](#标注义务与准确性免责)
 - [尚未具备的部分（如实记录）](#尚未具备的部分如实记录)
 
@@ -224,44 +224,46 @@ fn id(&self) -> ProviderId;
 清单（`DatasetManifest`）的关键字段：`template_version`、`coverage_selector`、
 `generation_executed`、`not_executed_reason`、`corpus_version`。
 
-## 预生成的当前状态：未生成（如实记录）
+## 预生成的当前状态：已生成（如实记录）
 
-**当前检出里没有生成好的赏析数据集。** 这一节记录真实状态，不是目标状态。
+**当前检出里有一份 16 条的赏析数据集，每条正文都是开放权重模型的真实输出。**
+这一节记录真实状态，不是目标状态。
 
-**一、本机没有可达的开放权重推理运行时**（无 ollama / vllm / llama-cli、无 GPU、可用内存约
-3 GiB），因此真实推理 **NOT EXECUTED**。降级是**结构性防伪**的，不是一句声明：
+**一、推理已执行**（2026-08-17，本机 Ollama 0.32.14 加载 `deepseek-r1:7b`，CPU 推理约
+40 秒/条，16 条约 11 分钟）。实测事实：
 
-- 每条正文写的是显式标记
-  `NOT_GENERATED_MARKER = "<<未生成：本条不是模型输出，需开放权重模型推理>>"`；
-- 清单写 `generation_executed = false`，并带 `not_executed_reason`（当前值是「未提供
-  `--endpoint`：本机没有可达的开放权重推理运行时，故只跑管道与门禁」）；
-- 终端末行打印「NOT EXECUTED：真实推理未执行，本产物不是模型输出，不得当成赏析发布」；
-- **反向也拦**：`PregeneratedDataset::push` 双向强制——声明 `generation_executed = true` 却带未生成
-  标记会被拒，未执行推理却不是标记同样被拒。所以「看起来像真跑过」在结构上蒙不过去，
-  这比单向校验强。
+| 事实                  | 值                                        |
+| --------------------- | ----------------------------------------- |
+| `generation_executed` | `true`（`not_executed_reason` 为 `null`） |
+| 模型 / 许可 / 运行时  | `deepseek-r1:7b` / `MIT` / `ollama`       |
+| 记录数                | 16，未生成标记 0 条                       |
+| 正文长度              | 187 – 506 字                              |
+| `coverage_selector`   | `poem_tag`（首选路径，非回退）            |
+| 模板版本              | `1.0.0`                                   |
 
-给 `--endpoint` 指向一个本地开放权重运行时即可真跑。
+`--endpoint` 的 URL **必须带尾斜杠**（`http://127.0.0.1:11434/`）。不带会报网络请求失败，
+`/v1` 与 `/v1/` 都报 HTTP 404 —— 三种错误读起来都像运行时没起来，实际是路径拼接问题。
 
-**二、`dataset/appreciations.json` 及其摘要、清单、`.work/` 全部在 `.gitignore` 里**
+**二、防伪门禁仍在，且两个方向都拦。** 未执行推理时每条正文写显式标记
+`NOT_GENERATED_MARKER = "<<未生成：本条不是模型输出，需开放权重模型推理>>"`，清单标
+`generation_executed = false` 并带原因，终端末行打印 NOT EXECUTED 通告；反过来，
+`PregeneratedDataset::push` 也拒绝「声明已执行却带未生成标记」的记录。所以
+「看起来像真跑过」在结构上蒙不过去 —— 这套机制不因本次已真跑而失效，它守的是下一次。
+
+**三、推理型权重的思维块残留由生成入口收敛。** `deepseek-r1` 一类权重的思维块被运行时
+摘掉后会留下前导空行，实测 16/16 条都以 `\n\n` 开头。`Generator::appreciate` 因此 `trim`
+后再收下：判据与它自己的空正文检查一致 —— 既然「trim 后为空」算没有内容，trim 掉的那部分
+就不是内容。不收敛的话，随包表里每条正文前都会带一段空白，在详情页赏析面板顶上可见。
+
+**四、`dataset/appreciations.json` 及其摘要、清单、`.work/` 全部在 `.gitignore` 里**
 （`/dataset/appreciations.json` 等规则），只有人工维护的
-[`dataset/README.md`](../dataset/README.md) 入库。**这个取舍是刻意的**：把每条正文都是占位标记的
-文件提交进去，会让它看起来像一份真数据集。
+[`dataset/README.md`](../dataset/README.md) 入库。**这个取舍与数据集是否已生成无关**：
+它是两件独立发布工件的版本策略 —— 数据集随 `corpus-v*` Release 分发，不随源码走。
 
-**三、覆盖集只筛出 10 首，而目标是「唐诗三百首 + 宋词三百首 + 选本标签，约数千首」。
-原因已查明且与代码无关：**
-
-| 事实                                           | 值               |
-| ---------------------------------------------- | ---------------- |
-| 本机 `corpus/build/release/corpus.db` 构建时间 | 2026-08-11 07:52 |
-| 打标管线落地时间                               | 2026-08-11 20:43 |
-| 该库的 `poem_tag` / `tag` 行数                 | 0 / 0            |
-
-本机那份语料工件比打标管线早约 13 小时，所以选本标签一行都没有，首选路径
-`select_by_poem_tag` 落空，退到评审名单命中 10 首，`coverage_selector` 如实记为
-`reviewed_roster`。**代码侧没有缺口**：首选路径已实现且排第一顺位。
-
-**要得到完整覆盖集，必须先重跑 `cargo run -p xtask -- corpus-build`**（唐宋规模约 50 分钟）
-让 `poem_tag` 落进工件，然后重跑 pregenerate；那时首选路径会自动接管，**无需改任何代码**。
+**五、覆盖集 16 首。** 首选路径 `select_by_poem_tag` 在当前 `corpus/build/release/corpus.db`
+上命中，`coverage_selector` 记为 `poem_tag`。目标是「唐诗三百首 + 宋词三百首 + 选本标签，
+约数千首」，当前工件的 `poem_tag` 只覆盖到这 16 首；扩大覆盖集要重跑
+`cargo run -p xtask -- corpus-build`（唐宋规模约 50 分钟）让更多标签落进工件，**无需改代码**。
 
 ## 标注义务与准确性免责
 
@@ -288,12 +290,15 @@ fn id(&self) -> ProviderId;
 
 ## 尚未具备的部分（如实记录）
 
-- **随包赏析数据集当前是未生成状态**（上节）：本机无开放权重推理条件，每条正文是显式未生成标记，
-  清单 `generation_executed = false`。
-- **覆盖集只有 10 首**，因为本机 `corpus.db` 工件早于打标管线；需重跑 `corpus-build` 再跑
-  pregenerate 才能拿到目标覆盖集。
-- **随包种子的导入路径尚不存在。** 没有代码把数据集导入 `appreciation_shipped`，也没有
-  `assets_manifest.json` 的消费者。见计划的 todo 76。
+- **覆盖集只有 16 首**，目标是数千首。当前语料工件的 `poem_tag` 只覆盖到这些；需重跑
+  `corpus-build` 再跑 pregenerate 才能拿到目标覆盖集（上节第五条）。
+- **移动端真机上的随包赏析仍是占位标记。** 不是代码缺口：移动端首启从
+  `releases/latest/download/assets_manifest.json` 取种子，而线上 `corpus-v0.1.0` 的
+  `appreciations.json` 仍是 2026-08-15 那份 16 条占位版（实测下载后核对：16 条全占位）。
+  桌面端把 `YUNJIAN_ASSETS_MANIFEST` 指向本地新种子后渲染的是真赏析（真机验收
+  `shipped_appreciation_without_key` 已 PASS，正文 242 字），因此**缺的是一次带新种子的
+  Release，不是一行代码**。移动端判据已补上「正文不含未生成标记」，所以这条缺口在真机报告里
+  是一条可见的 FAIL 而不是一条静默的 PASS。
 - **淘汰是 FIFO 而非 LRU**，索引名 `appreciation_cache_lru` 与行为不符（上节）。
 - **闭源供应商的输出条款两家未核实**：OpenAI 部分未核实（403），DeepSeek 完全未核实。
   **当前不阻塞任何事**——随包数据集只用开放权重，用户密钥的输出永不发布——但改变这个姿态之前

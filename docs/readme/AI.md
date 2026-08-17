@@ -18,7 +18,7 @@ pre-generation works, **and how pre-generation's current state differs from its 
 - [Provider boundary and no-key operation](#provider-boundary-and-no-key-operation)
 - [Streaming and real cancellation](#streaming-and-real-cancellation)
 - [Pre-generation policy](#pre-generation-policy)
-- [Pre-generation's current state: not generated (recorded honestly)](#pre-generations-current-state-not-generated-recorded-honestly)
+- [Pre-generation's current state: generated (recorded honestly)](#pre-generations-current-state-generated-recorded-honestly)
 - [Labelling duty and the accuracy disclaimer](#labelling-duty-and-the-accuracy-disclaimer)
 - [What does not exist yet (recorded honestly)](#what-does-not-exist-yet-recorded-honestly)
 
@@ -263,51 +263,54 @@ table.
 Key `DatasetManifest` fields: `template_version`, `coverage_selector`, `generation_executed`,
 `not_executed_reason`, `corpus_version`.
 
-## Pre-generation's current state: not generated (recorded honestly)
+## Pre-generation's current state: generated (recorded honestly)
 
-**The current checkout contains no generated appreciation dataset.** This section records the real
-state, not the target state.
+**The current checkout contains a 16-record appreciation dataset whose every body is genuine
+open-weight model output.** This section records the real state, not the target state.
 
-**One: this machine has no reachable open-weight inference runtime** (no ollama, vllm or llama-cli, no
-GPU, roughly 3 GiB of usable memory), so real inference is **NOT EXECUTED**. The degradation is
-**structurally tamper-evident**, not merely declared:
+**One: inference has been executed** (2026-08-17, local Ollama 0.32.14 loading `deepseek-r1:7b`,
+roughly 40 seconds per record on CPU, about 11 minutes for 16). Measured facts:
 
-- every body carries the explicit marker
-  `NOT_GENERATED_MARKER = "<<未生成：本条不是模型输出，需开放权重模型推理>>"`;
-- the manifest records `generation_executed = false` together with a `not_executed_reason` (currently:
-  no `--endpoint` was provided, this machine has no reachable open-weight inference runtime, so only
-  the pipeline and gates were exercised);
-- the final terminal line prints a NOT EXECUTED notice stating that real inference did not run, that
-  the artifact is not model output, and that it must not be published as appreciation;
-- **the reverse is blocked too**: `PregeneratedDataset::push` enforces both directions — declaring
-  `generation_executed = true` while carrying the not-generated marker is rejected, and so is a body
-  that is not the marker when inference did not run. So "looking as though it really ran" cannot get
-  through structurally, which is stronger than a one-way check.
+| Fact                      | Value                                             |
+| ------------------------- | ------------------------------------------------- |
+| `generation_executed`     | `true` (`not_executed_reason` is `null`)          |
+| Model / licence / runtime | `deepseek-r1:7b` / `MIT` / `ollama`               |
+| Records                   | 16, with 0 not-generated markers                  |
+| Body length               | 187 – 506 characters                              |
+| `coverage_selector`       | `poem_tag` (the preferred path, not the fallback) |
+| Template version          | `1.0.0`                                           |
 
-Pointing `--endpoint` at a local open-weight runtime is all that is needed to run it for real.
+The `--endpoint` URL **must carry a trailing slash** (`http://127.0.0.1:11434/`). Without it the
+request fails at the network layer, and both `/v1` and `/v1/` return HTTP 404 — all three read like a
+runtime that never started, when the actual cause is path joining.
 
-**Two: `dataset/appreciations.json` together with its digest, manifest and `.work/` are all in
+**Two: the tamper-evidence gates remain, and they block both directions.** When inference does not
+run, every body carries the explicit marker
+`NOT_GENERATED_MARKER = "<<未生成：本条不是模型输出，需开放权重模型推理>>"`, the manifest records
+`generation_executed = false` with a reason, and the final terminal line prints a NOT EXECUTED notice.
+Conversely, `PregeneratedDataset::push` also rejects a record that declares execution while carrying
+the marker. So "looking as though it really ran" cannot get through structurally — and this machinery
+does not lapse now that a real run has happened; it guards the next one.
+
+**Three: the thinking-block residue of reasoning weights is absorbed at the generation entry point.**
+After the runtime strips the thinking block of a `deepseek-r1`-class model, a leading blank line is
+left behind; measured, 16 of 16 bodies began with `\n\n`. `Generator::appreciate` therefore trims
+before accepting: the criterion matches its own empty-body check — if "empty after trimming" counts as
+having no content, then what trimming removes is not content. Without this, every shipped row would
+carry leading whitespace, visible at the top of the appreciation panel on the detail page.
+
+**Four: `dataset/appreciations.json` together with its digest, manifest and `.work/` are all in
 `.gitignore`** (rules including `/dataset/appreciations.json`); only the hand-maintained
-[`dataset/README.md`](../../dataset/README.md) is tracked. **This trade-off is deliberate**: committing
-a file whose every body is a placeholder marker would make it look like a real dataset.
+[`dataset/README.md`](../../dataset/README.md) is tracked. **This trade-off is unrelated to whether the
+dataset has been generated**: it is the versioning policy for two independent release artifacts — the
+dataset ships with a `corpus-v*` release, not with the source tree.
 
-**Three: coverage selected only 10 poems, against a target of the two standard 300-poem anthologies
-plus anthology tags — roughly a few thousand. The cause is established and unrelated to the code:**
-
-| Fact                                                     | Value            |
-| -------------------------------------------------------- | ---------------- |
-| Build time of the local `corpus/build/release/corpus.db` | 2026-08-11 07:52 |
-| When the tagging pipeline landed                         | 2026-08-11 20:43 |
-| That database's `poem_tag` / `tag` row counts            | 0 / 0            |
-
-The local corpus artifact predates the tagging pipeline by roughly 13 hours, so it contains not one
-anthology tag; the preferred path `select_by_poem_tag` finds nothing and falls back to the reviewed
-roster, matching 10 poems, with `coverage_selector` honestly recorded as `reviewed_roster`. **There is
-no gap on the code side**: the preferred path is implemented and is first in order.
-
-**To obtain the full coverage set, `cargo run -p xtask -- corpus-build` must be re-run first**
-(roughly 50 minutes at Tang–Song scale) so that `poem_tag` lands in the artifact, and then pregenerate
-re-run; the preferred path then takes over automatically, **with no code change**.
+**Five: coverage is 16 poems.** The preferred path `select_by_poem_tag` matches on the current
+`corpus/build/release/corpus.db`, so `coverage_selector` is recorded as `poem_tag`. The target is the
+two standard 300-poem anthologies plus anthology tags — roughly a few thousand; the present artifact's
+`poem_tag` only reaches these 16. Widening coverage requires re-running
+`cargo run -p xtask -- corpus-build` (roughly 50 minutes at Tang–Song scale) so more tags land in the
+artifact, **with no code change**.
 
 ## Labelling duty and the accuracy disclaimer
 
@@ -339,13 +342,19 @@ labelled as AI output and never enters the corpus tables.
 
 ## What does not exist yet (recorded honestly)
 
-- **The shipped appreciation dataset is currently in a not-generated state** (previous section): this
-  machine has no open-weight inference capability, every body is an explicit not-generated marker, and
-  the manifest records `generation_executed = false`.
-- **Coverage is only 10 poems**, because the local `corpus.db` artifact predates the tagging pipeline;
-  reaching the target coverage requires re-running `corpus-build` and then pregenerate.
-- **The import path for the shipped seed does not exist.** No code imports the dataset into
-  `appreciation_shipped`, and nothing consumes an `assets_manifest.json`.
+- **Coverage is only 16 poems** against a target of a few thousand. The present corpus artifact's
+  `poem_tag` only reaches these; the target coverage requires re-running `corpus-build` and then
+  pregenerate (previous section, item five).
+- **On a physical mobile device the shipped appreciation is still the placeholder marker.** This is not
+  a code gap: mobile first run fetches the seed from
+  `releases/latest/download/assets_manifest.json`, and the `appreciations.json` on the live
+  `corpus-v0.1.0` release is still the 16-record placeholder build of 2026-08-15 (verified by
+  downloading it: 16 of 16 are placeholders). With `YUNJIAN_ASSETS_MANIFEST` pointed at the new local
+  seed, the desktop renders the real appreciation (the on-device assertion
+  `shipped_appreciation_without_key` passes, with a 242-character body), so **what is missing is one
+  release carrying the new seed, not a line of code**. The mobile criterion now also requires that the
+  body exclude the not-generated marker, so this gap shows up in the device report as a visible FAIL
+  rather than a silent PASS.
 - **Eviction is FIFO rather than LRU**, and the index name `appreciation_cache_lru` disagrees with the
   behaviour (previous section).
 - **Two closed providers' output terms are unverified**: OpenAI's partially (403), DeepSeek's entirely.
