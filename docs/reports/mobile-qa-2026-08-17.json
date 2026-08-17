@@ -3,7 +3,7 @@
   "set": "full",
   "generated_date": "2026-08-17",
   "app_version": "0.1.0",
-  "commit_sha": "8a589760263cf7edf13dca3a91d7f3baed7e270b",
+  "commit_sha": "a9ca77e44161da3c0506d1befef7850e1c72da57",
   "tested_sources": [
     {
       "path": "mobile/android/app/src/main",
@@ -68,7 +68,7 @@
     {
       "path": "Cargo.lock",
       "files": 1,
-      "digest": "7a38be77026fd79227eed4afb5590a064ffc6ab46f513f9e83b4d5868acbbc79",
+      "digest": "5d2021a877f98ff64a328d7effa6164e1ee01998ebc541949046c3951bfc2983",
       "freshness_enforced": false
     }
   ],
@@ -121,8 +121,8 @@
           "id": "reading_view_citations_and_ai_appreciation",
           "what": "阅读页显示带出处的集评与明确标注、未经人工审校的 AI 赏析",
           "screenshot_required": true,
-          "verdict": "PASS",
-          "detail": "PASS：实测 api_key_configured=false appreciation_poem_id=062f574ab2986a9b appreciation_poem_title=春夜喜雨 · 唐杜甫 appreciation_shown=true appreciation_text=<<未生成：本条不是模型输出，需开放权重模型推理>> citation_shown=true citation_text=出处：宋·魏庆之《诗人玉屑》 卷七・三　易・第 2 段；据维基文库《詩人玉屑·卷07》校录本，修… commentary_count=1 commentary_poem_id=206d45b9089865c3 commentary_poem_title=石芝 · 宋蘇軾 commentary_text=沈隱侯曰：文章當從三易，易見事，一也；易識事，二也；易讀誦，三也。邢子才曰：沈侯文章，用事不使人… disclosure_says_unreviewed=true screenshot_commentary=reading_view_citations_and_ai_appreciation-comme… screenshot_commentary_bytes=278374 screenshot_reading=reading_view_citations_and_ai_appreciation-readi… screenshot_reading_bytes=139086 unreviewed_disclosure=本段由 deepseek-r1:7b 生成，未经人工审校（来源：shipped）",
+          "verdict": "FAIL",
+          "detail": "FAIL：appreciation_text=<<未生成：本条不是模型输出，需开放权重模型推理>> 不满足 不含 `<<未生成：本条不是模型输出，需开放权重模型推理>>`；实测 api_key_configured=false appreciation_poem_id=062f574ab2986a9b appreciation_poem_title=春夜喜雨 · 唐杜甫 appreciation_shown=true appreciation_text=<<未生成：本条不是模型输出，需开放权重模型推理>> citation_shown=true citation_text=出处：宋·魏庆之《诗人玉屑》 卷七・三　易・第 2 段；据维基文库《詩人玉屑·卷07》校录本，修… commentary_count=1 commentary_poem_id=206d45b9089865c3 commentary_poem_title=石芝 · 宋蘇軾 commentary_text=沈隱侯曰：文章當從三易，易見事，一也；易識事，二也；易讀誦，三也。邢子才曰：沈侯文章，用事不使人… disclosure_says_unreviewed=true screenshot_commentary=reading_view_citations_and_ai_appreciation-comme… screenshot_commentary_bytes=278374 screenshot_reading=reading_view_citations_and_ai_appreciation-readi… screenshot_reading_bytes=139086 unreviewed_disclosure=本段由 deepseek-r1:7b 生成，未经人工审校（来源：shipped）",
           "executable_when": "已授权 USB 调试的物理 Android 与已注册到签名身份的物理 iOS；已选定 binding 并构建 instrumented test APK/XCUITest bundle；Android SDK/NDK、adb、macOS、Xcode 26、iOS 26 SDK、签名与麦克风权限齐全",
           "exact_command": "Android: adb -s <ANDROID_SERIAL> shell am instrument -w -r -e class top.onethinker.yunjian.FullAcceptanceTest top.onethinker.yunjian.test/androidx.test.runner.AndroidJUnitRunner；iOS: xcodebuild test-without-building -xctestrun <YUNJIAN_XCTESTRUN> -destination 'platform=iOS,id=<IOS_UDID>' -resultBundlePath <YUNJIAN_RESULT_BUNDLE>",
           "screenshot": "docs/reports/mobile-qa/reading_view_citations_and_ai_appreciation-commentary.png"
