@@ -128,6 +128,12 @@ jobs:
       - name: 前端测试
         run: make frontend-test
 
+      # PR 标题校验器的自检。它在 GATE 里，所以这里必须也跑一步，否则 `make ci` 与 CI
+      # 就成了两套标准——本文件开头那段注释说的正是这件事。
+      # 判这个 PR 的标题本身是另一回事，在 `pr-title.yml` 里（本地拿不到 PR 标题）。
+      - name: PR 标题校验器自检
+        run: make pr-title-check
+
       # `build` 刻意不在 `make ci` 里（耗时且不是正确性门禁），所以在 CI 里单列一步。
       - name: 发布构建
         run: make build
