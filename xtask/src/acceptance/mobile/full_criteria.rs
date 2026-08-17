@@ -22,6 +22,8 @@
 
 use std::collections::BTreeMap;
 
+use yunjian_ai::pregenerate::NOT_GENERATED_MARKER;
+
 use super::super::Verdict;
 
 /// 一条断言的必需测量键与判据。
@@ -57,6 +59,12 @@ pub(crate) enum Rule {
     GreaterThan(f64),
     /// 字符串必须包含。
     Contains(&'static str),
+    /// 字符串必须**不**包含。
+    ///
+    /// 与 [`Self::Contains`] 不是对称的糖：它要判的是「回传值里不该出现某个哨兵」，
+    /// 而哨兵的特征恰恰是它本身是一个**合法非空字符串**——`IsTrue` 之类的存在性判据
+    /// 一律会放它过去。随包赏析的未生成标记正是这种哨兵。
+    Excludes(&'static str),
 }
 
 impl Rule {
@@ -70,6 +78,7 @@ impl Rule {
             Self::AtLeast(bound) => raw.parse::<f64>().is_ok_and(|value| value >= bound),
             Self::GreaterThan(bound) => raw.parse::<f64>().is_ok_and(|value| value > bound),
             Self::Contains(needle) => raw.contains(needle),
+            Self::Excludes(needle) => !raw.contains(needle),
         }
     }
 
@@ -81,6 +90,7 @@ impl Rule {
             Self::AtLeast(value) => format!(">= {value}"),
             Self::GreaterThan(value) => format!("> {value}"),
             Self::Contains(needle) => format!("包含 `{needle}`"),
+            Self::Excludes(needle) => format!("不含 `{needle}`"),
         }
     }
 }
@@ -142,6 +152,7 @@ pub(crate) const CRITERIA: &[Criterion] = &[
             "citation_shown",
             "appreciation_poem_id",
             "appreciation_shown",
+            "appreciation_text",
             "disclosure_says_unreviewed",
             "api_key_configured",
         ],
@@ -149,6 +160,14 @@ pub(crate) const CRITERIA: &[Criterion] = &[
             check("commentary_count", Rule::AtLeast(1.0)),
             check("citation_shown", Rule::IsTrue),
             check("appreciation_shown", Rule::IsTrue),
+            // `appreciation_shown` 只说明那个节点存在，说不出节点里是什么。未生成标记是
+            // 一个**合法非空字符串**，所以它会让上面那条为真——2026-08-17 之前的真机报告
+            // 正是这样：`appreciation_shown=true` 而 `appreciation_text` 是
+            // `<<未生成：…>>`。「显示了 AI 赏析」与「显示的是赏析」由此分成两条。
+            //
+            // 设备侧早就把正文回传了（`appreciation_text`，取前 60 字），缺的只是宿主侧
+            // 这一条判据——判据在宿主侧而不是设备侧，所以补它不需要改被测物。
+            check("appreciation_text", Rule::Excludes(NOT_GENERATED_MARKER)),
             // 「明确标注、未经人工审校」——标注必须真的说出那句话。
             check("disclosure_says_unreviewed", Rule::IsTrue),
             // 随包赏析不得依赖 API key。桌面端 `shipped_appreciation_without_key`
