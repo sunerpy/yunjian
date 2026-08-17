@@ -1,0 +1,155 @@
+# fix/app-rpath-and-xtask-command — F3 复核两条缺口的修复实录
+
+分支 `fix/app-rpath-and-xtask-command`，基线 `main = a9ca77e`。
+
+## 磁盘纪律（照交接执行）
+
+所有构建留在 `/config` 下的既有 `target/`（62% 用量，534 GiB 可用），未在 `/tmp`（95% 用量，
+仅 16 GiB 可用）建任何 worktree 或 target。也因此未新建 worktree：改动只涉及 3 个文件，
+在原树上分支即可，省掉一份 92 GiB `target/` 的重建。
+
+## 缺口一：桌面 app 包未发 voice rpath
+
+### 复现（修改前）
+
+`crates/yunjian-app/build.rs` 全文只有 `tauri_build::build()`。
+
+```
+$ cargo build -p yunjian-app --bin yunjian-desktop --features custom-protocol,voice
+    Finished `dev` profile ...
+$ readelf -d target/debug/yunjian-desktop | grep -E 'RUNPATH|RPATH'
+（无输出）
+```
+
+### 修法
+
+照 `crates/yunjian-cli/build.rs` 逐条对齐，四个要点都补上：
+`CARGO_FEATURE_VOICE` 未设即 return；按 `CARGO_CFG_TARGET_OS` 分流
+（`linux|android` → `$ORIGIN`，`macos|ios` → `@loader_path`）；Windows 不设等价项
+（exe 同目录搜 DLL）；`cargo:rerun-if-changed=build.rs`。
+
+关于「build script 刻意不做别的事」那条原则：文件头新增一节说明 rpath 为什么不属于它拒绝的
+那一类——链接参数只能由 build script 经 `cargo:rustc-link-arg-*` 发，且必须由二进制所属的
+包发（`cargo:rustc-link-arg` 不从 rlib 依赖传递），没有「用一条断言替代」的选项；且这段代码
+只读两个环境变量再打印一行，不存在会难读的失败诊断。
+
+### 修改后实测
+
+```
+$ readelf -d target/debug/yunjian-desktop | head -5
+ 0x000000000000001d (RUNPATH)            Library runpath: [$ORIGIN]
+ 0x0000000000000001 (NEEDED)             Shared library: [libsherpa-onnx-c-api.so]
+ ...
+```
+
+产物能否启动，在一个**与 target/ 无关的全新目录**里验（避免 target/ 里恰好有别的搜索路径）：
+
+```
+$ mkdir /config/tmp-rpath-check
+$ cp target/debug/yunjian-desktop target/debug/libsherpa-onnx-c-api.so \
+     target/debug/libonnxruntime.so /config/tmp-rpath-check/
+$ cd /config/tmp-rpath-check
+$ env -u LD_LIBRARY_PATH ldd ./yunjian-desktop | grep sherpa
+	libsherpa-onnx-c-api.so => /config/tmp-rpath-check/./libsherpa-onnx-c-api.so
+$ env -u LD_LIBRARY_PATH -u DISPLAY ./yunjian-desktop
+  INFO yunjian_core::logger: 日志已初始化 ...
+  INFO yunjian_app: 云笺桌面端启动 app="yunjian" version="0.1.0"
+  INFO yunjian_ai::keystore: 凭据 store 不可用，继续走降级链 ...
+  （随后 panic 在 gtk init：容器无 X/GTK，与动态库解析无关）
+```
+
+顺带测得一件交接里没写的事：`libonnxruntime.so` 也必须同目录。`libsherpa-onnx-c-api.so`
+自己带 `RPATH=$ORIGIN`（预编译产物自带），所以只需与它同目录即可被解析；漏拷时的报错是
+`libonnxruntime.so: cannot open shared object file`，与缺 rpath 的报错同形但主体不同。
+
+## 缺口二：`device-farm.toml` 引用不存在的子命令 —— 已在 a9ca77e 修好
+
+**F3 命中的是解释这次修复的注释，不是活的配置行。**
+
+```
+$ git show 36f3181 -- mobile/device-farm.toml | grep build_command
++build_command = "... && cargo run -p xtask -- mobile-package"      ← PR #110 引入
+$ git show a9ca77e -- mobile/device-farm.toml | grep -E '^[+-].*build_command'
+-build_command = "... && cargo run -p xtask -- mobile-package"      ← PR #114 删除
++build_command = "cd mobile/android && gradle :app:assembleDebug ... && zip -q full-tests.zip ..."
+```
+
+现存唯一文本命中在第 50 行，是刻意留下的历史记录：
+`# ... 此前这里写的是 cargo run -p xtask -- mobile-package，而 xtask 的 Commands 枚举里
+从来没有这个子命令 ...`。
+
+所以处置是**不实现子命令、不改配置**——PR #114 已按「run full-acceptance-29 逐条实测过的
+打包序列」把它改成了真实可跑的 gradle + cp + zip 命令。要补的只有断言。
+
+## 两条断言
+
+### 一、rpath 契约（`xtask/tests/workspace_contract.rs`，3 条）
+
+- `every_voice_capable_binary_crate_is_either_required_to_emit_rpath_or_excused`：
+  从 `[workspace].members` 逐个读 manifest，筛出「有 bin 且某个 feature 值含
+  `yunjian-voice/voice`」的包，要求这个集合**恰好等于**「必需集 ∪ 免除集」。
+  必需 = `yunjian-cli` / `yunjian-app`；免除 = `xtask`（只在 cargo 下跑）、
+  `yunjian-mobile`（唯一 bin 是 `uniffi-bindgen`，移动端加载的是 cdylib，不经 rpath）。
+  新增一个能开 voice 的二进制包时它两边都不在，断言变红并逼人做决定。
+- `every_distributed_voice_binary_emits_an_equivalent_rpath`：对必需集的每份 build.rs，
+  **剔掉行注释之后**要求同时出现 `$ORIGIN` 与 `@loader_path` 两条 `-bins` 形式的 link-arg，
+  且要求按 `CARGO_FEATURE_VOICE` 分流，且禁止非 `-bins` 形式（`-bin=<name>` 只作用于点名的
+  那一个，改名或加 bin 时会静默漏掉）。
+- `the_comment_stripper_does_not_let_prose_impersonate_an_emission`：证明剔注释这一步是
+  load-bearing 的反例测试。
+
+### 二、配置里的 xtask 子命令引用（`xtask/src/main.rs` 的 tests，3 条）
+
+- `every_xtask_subcommand_referenced_by_a_config_or_build_entrypoint_really_exists`：
+  扫 `*.toml` / `Makefile` / `*.yml|yaml`（跳过 target/node_modules/.git/dist/build），
+  剔 `#` 注释（引号内的 `#` 不算）、接续行，按 token 状态机抽出被调用的子命令名，逐个要求
+  **clap 认得**。子命令名问 `Cli::command()` 而不是解析 `Commands` 源码文本：用户敲的那个名字
+  由 clap 的改名规则决定，问 clap 等于问真相。带零命中守卫。
+- `the_reference_extractor_reads_every_spelling_and_ignores_test_filters`：四种写法都认
+  （`cargo` / `$(CARGO)` / `--release` 夹在中间 / `--package`），且
+  `cargo test -p xtask <过滤器>` **不**算调用（要求 `run` 出现过），`-- --help` 不算引用。
+- `the_comment_stripper_keeps_history_from_impersonating_a_live_invocation`：
+  用第 50 行那条注释的形状证明历史记录不会被判成活的调用。
+
+实测扫描面：**18 处调用、12 个不同子命令**，分布在 `Makefile`(9)、
+`corpus-release.yml`(5)、`mobile.yml`(3)、`corpus.yml`(1)。全部有效。
+
+## 注入验证（六次，全部变红）
+
+| # | 注入 | 结果 |
+|---|---|---|
+| A | `device-farm.toml` 的 build_command 末尾加 `&& cargo run -p xtask -- mobile-package` | 红，点名文件与 `mobile-package` |
+| B | `Makefile` 里 `corpus-quality` → `corpus-qualityy` | 红，点名 Makefile |
+| C | 去掉 `strip_hash_comments`（改扫原文） | 红——**且这正是 F3 的假红**：第 50 行的历史注释被当成活调用 |
+| D | 删掉 `yunjian-app/build.rs` 的 `$ORIGIN` 那行（保留文件头注释） | 断言红且判词点明「判的是剔注释之后的代码」；重建产物 `readelf -d` 无 RUNPATH；`.so` 就在同目录仍报 `libsherpa-onnx-c-api.so: cannot open shared object file` |
+| E | （含于 D）删发射但留注释 | 红——证明 rpath 断言的剔注释是 load-bearing |
+| F | `RPATH_REQUIRED_MEMBERS` 去掉 `crates/yunjian-app` | 红，集合不等 |
+
+D 的产物级证据是这次修复的核心：**`.so` 与二进制同目录，缺 rpath 仍然起不来**。
+
+## 门禁与全量
+
+```
+$ make fmt      # cargo fmt --all + oxfmt 276 文件
+$ make ci
+门禁通过：fmt-check lint test mcp-conformance frontend-test pr-title-check
+（前端 36 文件 428 测试全过；PR 标题校验器自检：真实历史 113 条 + 合成 25 条）
+
+$ cargo test --workspace --all-features --no-fail-fast
+TOTAL passed=1324 failed=0 ignored=9
+```
+
+**基线核对**：交接说 1317，我用同一段聚合脚本在 stash 掉本次改动后重测 `main` 得
+`passed=1318 failed=0 ignored=9`。1318 + 6 条新测试 = 1324，算术闭合。交接那个 1317
+与我的计数方法差 1，不影响结论（failed 恒为 0）。**没有采信交接的数字，重测了。**
+
+环境前提照交接执行：清空代理、`YUNJIAN_MODEL_DIR` 指向 `models/cache`、
+`app/dist` 已存在（`generate_context!` 依赖）、pactl 正弦源 + monitor 输入。
+
+## 未做（按交接的「不许做」）
+
+- **没有给桌面发布产物加 `voice` 特性**。补 rpath 只让「若有人开 voice 构建」能跑起来，
+  发布形态不变（2026-08-10 裁决：`voice` 开关即许可边界）。
+- 没碰 `PROTECTED_DIGESTS` 自锁的三处、`mobile/ios/`、`docs/reports/`、
+  `packaging/licenses/`、`.omo/evidence/F*.md`、`data/citune_rhythm.tsv`。
+- 没推 main、没 force-push、没 `--no-verify`、没触发发版。
