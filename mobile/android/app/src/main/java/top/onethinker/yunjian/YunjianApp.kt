@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
@@ -134,8 +134,31 @@ private fun CorpusBanner(corpus: CorpusState) {
     }
 }
 
+/**
+ * 检索与阅读。
+ *
+ * # 阅读页独占一屏，不与结果列表挤同一片空间
+ *
+ * 两者同屏时阅读页一展开就把列表推出可视区，用户想点的「阅读」「背诵」按钮跑到屏幕外，
+ * `performClick` 静默落空（真机第十九、二十轮实测）；把阅读页挪到列表尾部也不行，
+ * 它自己变成屏幕外的那一个（第二十一轮实测，图证：列表完整可见、无正文卡片）。
+ *
+ * 靠滚动去凑是把布局问题推给调用方。让它独占一屏之后，「屏幕上现在是哪一页」只有两种
+ * 答案，两边都不需要滚动才能被看到。返回按钮是真实需要的产品功能，不是为测试开的门。
+ */
 @Composable
 private fun SearchAndReading(state: UiState, viewModel: MainViewModel) {
+    state.reading?.let { reading ->
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = viewModel::closeReading,
+                modifier = Modifier.testTag(TestTags.READING_BACK),
+            ) { Text("返回检索") }
+            ReadingView(reading)
+        }
+        return
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -182,8 +205,10 @@ private fun SearchAndReading(state: UiState, viewModel: MainViewModel) {
             ) { Text("打开") }
         }
 
-        state.reading?.let { reading -> ReadingView(reading) }
-
+        // **阅读页渲染在结果列表之后**。放在之前时它一展开就把列表挤出可视区，用户想点的
+        // 「阅读」「背诵」按钮跑到屏幕外，而 `performScrollToNode` 只滚 LazyColumn 内部、
+        // 滚不出被父级 Column 挤掉的部分（真机实测点击静默落空）。放在之后，列表位置不受
+        // 阅读页影响，正文靠 LazyColumn 自己的滚动就能看到。
         LazyColumn(
             modifier = Modifier.fillMaxWidth().testTag(TestTags.SEARCH_RESULTS),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -218,7 +243,12 @@ private fun SearchAndReading(state: UiState, viewModel: MainViewModel) {
 
 @Composable
 private fun ReadingView(reading: PoemReading) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    // tag 带 poem_id：让「屏幕上这一页是不是我要的那一页」可直接判定，见 TestTags 那条注释。
+    Card(modifier = Modifier.fillMaxWidth().testTag("${TestTags.READING_POEM_PREFIX}${reading.poemId}")) {
+        // 阅读页独占一屏，所以这里由它自己滚（长诗加集评会超过一屏）。
+        // 曾经把本卡片放进 LazyColumn 的一个 item，那时**不能**有这一层——LazyColumn 给子项
+        // 无限高约束，嵌套竖向滚动会以
+        // `Vertically scrollable component was measured with an infinity maximum height` 崩掉。
         Column(
             modifier = Modifier
                 .padding(8.dp)
@@ -262,10 +292,19 @@ private fun ReadingView(reading: PoemReading) {
 
 @Composable
 private fun RecitePane(state: UiState, viewModel: MainViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // **必须可滚动。** 题目九行加 128 字默写框已经超过一屏，普通 `Column` 会把「提交」
+    // 按钮与评分挤出布局——真机实测它们的 `boundsInWindow` 是 `0,0,0,0`（压根没被摆放），
+    // 于是点击落空、评分永不出现。真人遇到的是同一件事：看得到默写框，却找不到提交按钮。
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         val session = state.reciteSession
         if (session == null) {
-            Text("先在检索页选一首作品并点「背诵」")
+            Text(
+                text = "先在检索页选一首作品并点「背诵」",
+                modifier = Modifier.testTag(TestTags.RECITE_EMPTY),
+            )
             return@Column
         }
         Text(text = session.prompt, modifier = Modifier.testTag(TestTags.RECITE_PROMPT))

@@ -101,6 +101,7 @@ data class ReciteScore(
 class YunjianRepository(private val context: Context) {
     private val paths = YunjianPaths(context)
     private var facade: NativeFacade? = null
+    private val materialization = Materialization()
 
     val corpusPresent: Boolean
         get() = paths.corpusPresent
@@ -120,11 +121,17 @@ class YunjianRepository(private val context: Context) {
      *
      * 进度以回调逐条送出；调用方**必须**持续拉取直到 `Done` 或 `Failed`。
      * 把一次轮询超时当成终态会让首启在解压中途被误判为完成。
+     *
+     * **进程内至多一次真的在跑**（见 [`Materialization`]）。重复调用只会登记为订阅者并
+     * 收到已知状态的回放——两次并发物化会在 corpus.db 上撞成 `database is locked`。
      */
     fun materialize(
         onStage: (MaterializationStage) -> Unit,
         onDone: (String?) -> Unit,
     ) {
+        if (!materialization.claim(onStage, onDone)) {
+            return
+        }
         paths.ensure()
         val operation = materializeAssets(configJson())
         operation.subscribe(
@@ -132,20 +139,20 @@ class YunjianRepository(private val context: Context) {
                 override fun onEvent(eventJson: String) {
                     val event = JSONObject(eventJson)
                     when (event.optString("type")) {
-                        "progress" -> onStage(readStage(event.getJSONObject("payload")))
-                        "item" -> onStage(readSummary(event.getJSONObject("payload")))
-                        "done" -> onDone(null)
+                        "progress" -> materialization.publishStage(readStage(event.getJSONObject("payload")))
+                        "item" -> materialization.publishStage(readSummary(event.getJSONObject("payload")))
+                        "done" -> materialization.publishDone(null)
                         // `Event` 是**邻接标签**（`#[serde(tag="type", content="payload")]`），
                         // 所以 `Failed { message }` 的 message 在 `payload` 里，不在顶层。
                         // 读顶层拿到空串，于是真因被兜底文案「语料物化失败」顶掉——真机上
                         // 界面只显示那句话，排查无从下手。桌面在 PR #108 记过同一层标签陷阱。
                         "failed" ->
-                            onDone(
+                            materialization.publishDone(
                                 event.optJSONObject("payload")?.optString("message")
                                     ?.takeIf { it.isNotBlank() }
                                     ?: "语料物化失败（后端未给出原因）",
                             )
-                        "cancelled" -> onDone("语料物化已取消")
+                        "cancelled" -> materialization.publishDone("语料物化已取消")
                     }
                 }
             },
@@ -385,6 +392,87 @@ class YunjianRepository(private val context: Context) {
 
     fun close() {
         facade = null
+    }
+
+    /**
+     * 首启物化在**进程内**的唯一状态。
+     *
+     * # 为什么守卫不能挂在 ViewModel 上
+     *
+     * `MainViewModel` 属于 Activity：每次 `onCreate` 都拿到一个状态回到 `Idle` 的新实例
+     * （instrumentation 逐条测试各建一次界面、旋屏、进程回收后返回都会这样）。于是
+     * 「已经在跑」这件事在下一个 ViewModel 眼里不存在，第二次物化启动，与上一次仍在写
+     * corpus.db 的 Rust 线程撞成 **`database is locked`**。
+     *
+     * 真机实测这是一个**竞态**：第十六轮 t01→t02 侥幸没撞上（t02 拿到 489 段进度），
+     * 第十七、十八轮撞上了，十条里六条被连带拖成 NOT EXECUTED，而报错文字完全不提
+     * 「有两次物化」。所以状态必须活在进程里，与 Activity 生命周期解耦。
+     *
+     * **同时要回放。** 只是「第二次直接返回」会让重建后的界面停在「尚未下载语料库」，
+     * 而后台其实正在解压——那句陈旧的话比空白更糟。新订阅者进来时先收到已知的最新阶段，
+     * 已终结时立刻收到终态。
+     */
+    private class Materialization {
+        private val lock = Any()
+        private var started = false
+        private var finished = false
+        private var failure: String? = null
+        private var lastStage: MaterializationStage? = null
+        private val listeners = mutableListOf<Listener>()
+
+        private data class Listener(
+            val onStage: (MaterializationStage) -> Unit,
+            val onDone: (String?) -> Unit,
+        )
+
+        /** 登记订阅者并回放已知状态；返回 `true` 表示**本次调用**要真的去跑。 */
+        fun claim(onStage: (MaterializationStage) -> Unit, onDone: (String?) -> Unit): Boolean {
+            val replayStage: MaterializationStage?
+            val replayTerminal: Boolean
+            val replayFailure: String?
+            val shouldRun: Boolean
+            synchronized(lock) {
+                if (!finished) {
+                    listeners += Listener(onStage, onDone)
+                }
+                replayStage = lastStage
+                replayTerminal = finished
+                replayFailure = failure
+                shouldRun = !started
+                started = true
+            }
+            // 回调在锁外调用：订阅者可能同步回读状态，持锁调用会自锁。
+            replayStage?.let(onStage)
+            if (replayTerminal) {
+                onDone(replayFailure)
+            }
+            return shouldRun
+        }
+
+        fun publishStage(stage: MaterializationStage) {
+            val snapshot = synchronized(lock) {
+                lastStage = stage
+                listeners.toList()
+            }
+            snapshot.forEach { it.onStage(stage) }
+        }
+
+        fun publishDone(reason: String?) {
+            val snapshot = synchronized(lock) {
+                finished = true
+                failure = reason
+                val current = listeners.toList()
+                listeners.clear()
+                current
+            }
+            snapshot.forEach { it.onDone(reason) }
+        }
+
+        // **失败在本进程内是终态，刻意不自动重试。**
+        // 自动重试会让「每次 Activity 重建都再试一次」，而上一次可能仍在跑——那正是本类
+        // 要消除的并发。一次网络抖动导致后续断言报「语料不可用」是**如实上报**，
+        // 不是需要被掩盖的东西（第十四轮 `Peer disconnected` 就是这样，判读正确）。
+        // 要重试就重启进程，那也是用户真实的处置方式。
     }
 
     companion object {

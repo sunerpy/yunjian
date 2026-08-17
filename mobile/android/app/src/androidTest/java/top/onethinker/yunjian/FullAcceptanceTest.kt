@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -277,33 +278,59 @@ class FullAcceptanceTest {
     fun t05_typed_recitation_scores_correctly() {
         val assertion = "typed_recitation_scores_correctly"
         if (!awaitCorpus(assertion, "accuracy_strict")) return
-        val poemId = searchAndOpenFirst(assertion) ?: return
-
-        val body = compose.textOrNull(TestTags.READING_BODY)
-        if (body.isNullOrBlank()) {
-            AcceptanceReport.unavailable(assertion, "accuracy_strict", "reading_body_empty")
-            return
-        }
+        // 正文由 `searchAndOpenFirst` 交出：它等到正文有字才返回，超时会自己记下带证据的
+        // 原因并返回 null。这里**不再重读一次**——那一步正是上一版把超时误报成
+        // `reading_body_empty` 的地方。
+        val opened = searchAndOpenFirst(assertion, "accuracy_strict") ?: return
+        val poemId = opened.poemId
+        val body = opened.body
+        AcceptanceReport.measure(assertion, "reference_poem_id", poemId)
+        AcceptanceReport.measure(assertion, "reference_char_count", body.length)
         // 从检索页的「背诵」按钮进入：那条路径与用户实际走的一致。
         //
-        // **先重新检索一次把阅读页收掉。** 阅读页展开后占掉大半屏幕，命中卡片被挤到
-        // 列表下方；即使先 `performScrollToNode` 再点，第十二、十三两轮真机上仍等不到
-        // 背诵输入框（60 秒超时，读起来像「背诵页打不开」）。t08 走同一入口却成功，
-        // 差别正是它没先打开阅读页。所以这里重跑一次检索，让界面回到 t08 那个状态。
-        compose.onNodeWithTag(TestTags.TAB_SEARCH).performClick()
-        compose.onNodeWithTag(TestTags.SEARCH_FIELD).performTextClearance()
-        compose.onNodeWithTag(TestTags.SEARCH_FIELD).performTextInput(TWO_CHAR_QUERY)
-        compose.onNodeWithTag(TestTags.SEARCH_SUBMIT).performClick()
-        compose.waitUntilNodeExists(TestTags.SEARCH_RESULT_COUNT, timeoutMs = 120_000)
-        compose.waitForIdle()
-        compose.onNodeWithTag(TestTags.SEARCH_RESULTS)
-            .performScrollToNode(hasTestTag("${TestTags.SEARCH_HIT_RECITE_PREFIX}$poemId"))
+        // 阅读页独占一屏（见 `SearchAndReading` 的注释），所以先按「返回检索」把它收掉，
+        // 结果列表随即回到可视区。此前两版靠「重新检索」与「滚到目标」都不行：前者的清空
+        // 是异步的、而等待条件在上一轮的计数节点上就已满足；后者滚不出被父级布局挤掉的部分。
+        compose.onNodeWithTag(TestTags.READING_BACK).performClick()
+        val backToSearch = runCatching {
+            compose.waitUntil(timeoutMillis = 30_000) {
+                compose.exists("${TestTags.SEARCH_HIT_RECITE_PREFIX}$poemId")
+            }
+        }.isSuccess
+        AcceptanceReport.measure(assertion, "back_to_search_list", backToSearch)
+        if (!backToSearch) {
+            AcceptanceReport.unavailable(assertion, "accuracy_strict", "search_list_never_returned")
+            screenshot(assertion, "list-missing")
+            return
+        }
+        // 点击前把语义树的说法记下来：`performClick` 对屏幕外节点静默落空，事后只能看到
+        // 「背诵页没出现」，看不出是点没点到。
+        AcceptanceReport.measure(
+            assertion,
+            "recite_button_bounds",
+            runCatching {
+                compose.onNodeWithTag("${TestTags.SEARCH_HIT_RECITE_PREFIX}$poemId")
+                    .fetchSemanticsNode().boundsInWindow.let { "${it.left.toInt()},${it.top.toInt()},${it.right.toInt()},${it.bottom.toInt()}" }
+            }.getOrDefault("节点不存在"),
+        )
         compose.onNodeWithTag("${TestTags.SEARCH_HIT_RECITE_PREFIX}$poemId").performClick()
-        compose.waitForIdle()
-        compose.onNodeWithTag(TestTags.TAB_RECITE).performClick()
+        // **切页签之前先等题目就绪。** `startRecite` 异步取详情再回主线程；立刻切过去时
+        // `session` 可能仍为 null，背诵页渲染成空态，而此后 60 秒内没有任何事件驱动重组，
+        // 于是等输入框必然超时。第二十四轮真机实测正是如此（同一按钮坐标
+        // `274,965,474,1070`，上一轮 PASS 而这一轮超时——间歇性竞态）。
+        //
+        // 先在检索页等到 `reciteSession` 非空（用 TAB_RECITE 之外的可观测量：切过去之前
+        // 唯一能看到的就是它还没就绪），再切。轮询而不是 `waitForIdle`：取详情期间界面在动。
+        val sessionReady = runCatching {
+            compose.waitUntil(timeoutMillis = 60_000) {
+                compose.onNodeWithTag(TestTags.TAB_RECITE).performClick()
+                compose.exists(TestTags.RECITE_ANSWER_FIELD)
+            }
+        }.isSuccess
+        AcceptanceReport.measure(assertion, "recite_session_ready", sessionReady)
         // 等不到输入框时**把界面正在说的话报出来**再退出，而不是让 60 秒超时把原因带走。
         // 第十三轮真机上这里超时，而报告里只有一句「等待超时」——那等于没有线索。
-        if (!runCatching { compose.waitUntilNodeExists(TestTags.RECITE_ANSWER_FIELD, 60_000) }.isSuccess) {
+        if (!sessionReady) {
             AcceptanceReport.unavailable(
                 assertion,
                 "accuracy_strict",
@@ -313,8 +340,9 @@ class FullAcceptanceTest {
                 assertion,
                 "recite_pane_text",
                 compose.textOrNull(TestTags.RECITE_PROMPT)
+                    ?: compose.textOrNull(TestTags.RECITE_EMPTY)
                     ?: compose.textOrNull(TestTags.ERROR_BANNER)
-                    ?: "背诵页与错误横幅都没有文本",
+                    ?: "背诵页、空态提示与错误横幅都没有文本",
             )
             screenshot(assertion, "recite-missing")
             return
@@ -323,12 +351,45 @@ class FullAcceptanceTest {
         // 提交与原文逐字相同的答案：评分因此是确定性的，可与预期精确比对。
         compose.onNodeWithTag(TestTags.RECITE_ANSWER_FIELD).performTextClearance()
         compose.onNodeWithTag(TestTags.RECITE_ANSWER_FIELD).performTextInput(body)
+        // 输入是否真的进去了：128 个汉字逐字送 IME 有可能被截断，而截断后提交出来的分数
+        // 会低于满分——那会变成一次**假 FAIL**。先记下实际长度，判词里能直接对上。
+        val typed = compose.textOrNull(TestTags.RECITE_ANSWER_FIELD).orEmpty()
+        AcceptanceReport.measure(assertion, "typed_char_count", typed.length)
+        AcceptanceReport.measure(assertion, "typed_equals_reference", typed == body)
+        // **先收键盘再提交。** 输入 128 字后 Gboard 占满下半屏，「提交」按钮落在键盘之下，
+        // `performClick` 静默落空——第二十六轮真机图证：题目、默写框（128 字完整）、键盘
+        // 三者占满一屏，而评分永远不出现。判词当时只能说「评分没渲染」，看不出是没点到。
+        device.pressBack()
+        compose.waitForIdle()
+        // 背诵页现在可滚动，所以先滚到提交按钮再点：`performClick` 不为不可见节点滚动。
+        runCatching {
+            compose.onNodeWithTag(TestTags.RECITE_SUBMIT).performScrollTo()
+        }
+        AcceptanceReport.measure(
+            assertion,
+            "submit_button_bounds",
+            runCatching {
+                compose.onNodeWithTag(TestTags.RECITE_SUBMIT)
+                    .fetchSemanticsNode().boundsInWindow.let { "${it.left.toInt()},${it.top.toInt()},${it.right.toInt()},${it.bottom.toInt()}" }
+            }.getOrDefault("节点不存在"),
+        )
         compose.onNodeWithTag(TestTags.RECITE_SUBMIT).performClick()
-        compose.waitUntilNodeExists(TestTags.RECITE_SCORE, timeoutMs = 60_000)
-
+        // 评分是异步的（归一化 + 对齐 + FSRS 落库都在 IO 线程）。等不到就带证据退出，
+        // 而不是让超时把原因带走：第二十五轮真机上正是停在这一步。
+        val scored = runCatching {
+            compose.waitUntil(timeoutMillis = 120_000) { compose.exists(TestTags.RECITE_SCORE) }
+        }.isSuccess
         val score = compose.textOrNull(TestTags.RECITE_SCORE)
-        if (score == null) {
-            AcceptanceReport.unavailable(assertion, "accuracy_strict", "score_node_absent")
+        if (!scored || score == null) {
+            AcceptanceReport.unavailable(assertion, "accuracy_strict", "score_never_rendered_within_120s")
+            AcceptanceReport.measure(
+                assertion,
+                "recite_pane_after_submit",
+                compose.textOrNull(TestTags.ERROR_BANNER)
+                    ?: compose.textOrNull(TestTags.RECITE_PROMPT)
+                    ?: "错误横幅与题目都没有文本",
+            )
+            screenshot(assertion, "score-missing")
             return
         }
         AcceptanceReport.measure(assertion, "answer_equals_reference", true)
@@ -408,7 +469,7 @@ class FullAcceptanceTest {
         }
 
         if (!awaitCorpus(assertion, "spoke")) return
-        val poemId = searchAndOpenFirst(assertion) ?: return
+        val poemId = searchAndOpenFirst(assertion, "spoke")?.poemId ?: return
         AcceptanceReport.measure(assertion, "reference_poem_id", poemId)
         compose.onNodeWithTag(TestTags.TAB_VOICE).performClick()
         compose.onNodeWithTag(TestTags.VOICE_START).performClick()
@@ -673,41 +734,86 @@ class FullAcceptanceTest {
      */
     private fun openById(poemId: String): Boolean {
         compose.onNodeWithTag(TestTags.TAB_SEARCH).performClick()
+        // 阅读页独占一屏，所以直达输入框只在检索态可见；上一首还开着时先返回。
+        if (compose.exists(TestTags.READING_BACK)) {
+            compose.onNodeWithTag(TestTags.READING_BACK).performClick()
+            runCatching {
+                compose.waitUntil(timeoutMillis = 30_000) { compose.exists(TestTags.DIRECT_ID_FIELD) }
+            }
+        }
         compose.onNodeWithTag(TestTags.DIRECT_ID_FIELD).performTextClearance()
         compose.onNodeWithTag(TestTags.DIRECT_ID_FIELD).performTextInput(poemId)
         compose.onNodeWithTag(TestTags.DIRECT_ID_OPEN).performClick()
-        // **等标题真的换成这一首**，不能只等 `READING_BODY` 存在：上一首的阅读页还在
-        // 屏幕上，那个节点从一开始就在，于是 `waitUntilNodeExists` 立刻返回，后面读到的
-        // 全是上一首的内容。真机实测：第二次 openById 之后 `appreciation_poem_title`
-        // 仍是第一首的《石芝》，于是赏析那半被判成「这首没有随包赏析」。
-        //
-        // 判据是标题里含这一首的 id 吗？不行——标题里没有 id。改为先记下当前标题，
-        // 再等它**变化**；两首标题恰好相同的概率可以忽略，而这两个 id 是常量、已知不同。
-        val before = compose.textOrNull(TestTags.READING_TITLE)
+        // 判据是**身份**：屏幕上这一页的 poem_id 就是我要的那一个，且正文已有字。
+        // 早先用「等标题变化」，那在重开同一首时必然超时；而只等 `READING_BODY` 存在
+        // 又会在上一首还开着时立刻返回并读到上一首的内容（真机实测：第二次 openById 后
+        // `appreciation_poem_title` 仍是《石芝》，赏析那半被误判成「这首没有随包赏析」）。
         return runCatching {
             compose.waitUntil(timeoutMillis = 60_000) {
-                val now = compose.textOrNull(TestTags.READING_TITLE)
-                now != null && now != before
+                compose.exists("${TestTags.READING_POEM_PREFIX}$poemId") &&
+                    !compose.textOrNull(TestTags.READING_BODY).isNullOrBlank()
             }
         }.isSuccess
     }
 
+    /** 一次成功打开的阅读页：作品标识与**当时读到的**正文。 */
+    private data class OpenedReading(val poemId: String, val body: String)
+
     /**
-     * 检索并按「阅读」进入阅读页。点的是按钮而不是卡片——卡片没有点击处理器。
+     * 检索并按「阅读」进入阅读页，返回作品标识与正文。
      *
-     * **要等正文真的有字**，不能只 `waitForIdle`：`openReading` 是异步的（IO 线程取
-     * 详情再回主线程），`waitForIdle` 只保证这一帧画完，那时正文节点还不存在。
-     * 第十六轮真机实测 t05 因此报 `reading_body_empty`——那是「读早了」，不是产品缺陷。
+     * **要等正文真的有字**，不能只 `waitForIdle`：`openReading` 是异步的（IO 线程取详情
+     * 再回主线程），`waitForIdle` 只保证这一帧画完，那时正文节点还不存在。
+     *
+     * # 超时必须可观测，且正文由本函数交出
+     *
+     * 上一版把 `waitUntil` 包在 `runCatching` 里**却不看结果**，于是超时被吞掉、函数照常
+     * 返回 poemId，调用方再读一次拿到空，只能猜一个 `reading_body_empty`。那个码把
+     * 「harness 等超时了」说成「设备侧没有正文」——**两件事的处置完全不同**，前者要改
+     * 等待、后者要查产品。
+     *
+     * 现在超时返回 `null` 并**在这里**记下带证据的原因（界面当时在说什么 + 一张截图），
+     * 而正文由本函数从判定谓词里原样捎出——调用方拿不到「等到了但读到空」这种中间态，
+     * 那个 bug 类别在类型上消失。
      */
-    private fun searchAndOpenFirst(assertion: String): String? {
+    private fun searchAndOpenFirst(assertion: String, primaryKey: String): OpenedReading? {
         val poemId = firstHitAfterSearch(assertion) ?: return null
         compose.onNodeWithTag("${TestTags.SEARCH_HIT_READ_PREFIX}$poemId").performClick()
-        runCatching {
+        // 判据是**身份**：屏幕上这一页的 poem_id 就是我要的那一个，且正文已有字。
+        //
+        // 只等「正文非空」不行——上一首的阅读页可能还开着（t04 走完留下《春夜喜雨》），
+        // 那会立刻交出上一首的正文，t05 照它默写必然不匹配，一次装置问题被记成产品 FAIL。
+        // 等「标题变化」也不行——t06 在 t05 之后重开同一首，标题压根不会变，必然超时。
+        //
+        // 谓词看到的那一份就是交出去的那一份：先记下再判定，杜绝「判定通过后再读一次」
+        // 之间的空窗。
+        var seen: String? = null
+        val opened = runCatching {
             compose.waitUntil(timeoutMillis = 60_000) {
-                !compose.textOrNull(TestTags.READING_BODY).isNullOrBlank()
+                seen = compose.textOrNull(TestTags.READING_BODY)
+                compose.exists("${TestTags.READING_POEM_PREFIX}$poemId") && !seen.isNullOrBlank()
             }
+        }.isSuccess
+        val body = seen
+        if (!opened || body.isNullOrBlank()) {
+            AcceptanceReport.unavailable(
+                assertion,
+                primaryKey,
+                "reading_body_never_rendered_within_60s_for_$poemId",
+            )
+            AcceptanceReport.measure(assertion, "opened_poem_id", poemId)
+            AcceptanceReport.measure(
+                assertion,
+                "reading_pane_text",
+                compose.textOrNull(TestTags.READING_TITLE)
+                    ?: compose.textOrNull(TestTags.ERROR_BANNER)
+                    ?: compose.textOrNull(TestTags.CORPUS_PROGRESS)
+                    ?: "阅读页标题、错误横幅与语料横幅都没有文本",
+            )
+            screenshot(assertion, "reading-missing")
+            return null
         }
-        return poemId
+        return OpenedReading(poemId, body)
     }
 
     /** 检索并按「背诵」开一轮打字背诵。 */
@@ -883,7 +989,14 @@ class FullAcceptanceTest {
     private companion object {
         const val TWO_CHAR_QUERY = "明月"
         const val APPEND_TEXT = "几时"
-        const val POLL_MS = 500L
+        /**
+         * 轮询间隔。
+         *
+         * 2 秒而不是 500 毫秒：物化要十几分钟，每次读语义树都可能撞上重组中的布局
+         * （`readNodes` 已容错，但少读三倍就少三倍机会）。判词要的是「阶段变过几次」，
+         * 2 秒的粒度足够——实测一轮仍能记到 480~530 段。
+         */
+        const val POLL_MS = 2_000L
 
         /**
          * 集评覆盖集里的一首。苏轼《石芝》，随包语料实测有 1 条带出处的集评。

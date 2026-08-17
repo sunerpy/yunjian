@@ -119,13 +119,27 @@ class MainViewModel(private val repository: YunjianRepository) : ViewModel() {
         _state.update { it.copy(directId = value) }
     }
 
+    /**
+     * 发起一次检索。
+     *
+     * **新的检索会收掉上一首的阅读页。** 阅读页渲染在结果列表**之前**，展开后把列表挤出
+     * 可视区；不收掉它，用户重新检索后看到的是上一首的正文压在新结果上面，而想点的
+     * 「阅读」「背诵」按钮在屏幕外——`performClick` 在真机上因此静默落空（第十九轮实测：
+     * 背诵页停在「先在检索页选一首作品并点『背诵』」，即回调压根没跑）。
+     *
+     * 这是产品缺陷而不是断言问题：真人也会遇到同一件事，只是他会自己往下滑。
+     */
     fun search() {
         val query = _state.value.query.trim()
         if (query.isEmpty()) return
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { repository.searchText(query) } }
             result
-                .onSuccess { hits -> _state.update { it.copy(hits = hits, searched = true, error = null) } }
+                .onSuccess { hits ->
+                    _state.update {
+                        it.copy(hits = hits, searched = true, error = null, reading = null)
+                    }
+                }
                 .onFailure { error -> _state.update { it.copy(error = error.message, searched = true) } }
         }
     }
@@ -137,6 +151,11 @@ class MainViewModel(private val repository: YunjianRepository) : ViewModel() {
                 .onSuccess { reading -> _state.update { it.copy(reading = reading, error = null) } }
                 .onFailure { error -> _state.update { it.copy(error = error.message) } }
         }
+    }
+
+    /** 关掉阅读页回到检索。阅读页独占一屏，这是唯一的出口。 */
+    fun closeReading() {
+        _state.update { it.copy(reading = null) }
     }
 
     fun startRecite(poemId: String) {
