@@ -1,12 +1,15 @@
+[workspace]
+resolver = "3"
+
 [package]
 name = "yunjian-spike"
 description = "云笺 Android 冒烟判据②的生产路径桥：把 yunjian-core 的语料获取路径暴露给 instrumented 测试"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
-repository.workspace = true
-authors.workspace = true
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/sunerpy/yunjian"
+authors = ["sunerpy <nkuzhangshn@gmail.com>"]
 
 # 这个 crate **只服务 todo 68 的判据②**，不进任何分发物。
 #
@@ -32,9 +35,9 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-serde = { workspace = true }
-serde_json = { workspace = true }
-sha2 = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
 yunjian-core = { path = "../yunjian-core" }
 
 # JNI 只在 Android 上编译。宿主构建里没有 `jni`，因此 `cargo test --workspace` 不会
@@ -42,5 +45,10 @@ yunjian-core = { path = "../yunjian-core" }
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "=0.21.1"
 
-[lints]
-workspace = true
+[lints.clippy]
+print_stdout = "deny"
+dbg_macro = "deny"
+print_stderr = "warn"
+
+[lints.rust]
+unsafe_code = "warn"

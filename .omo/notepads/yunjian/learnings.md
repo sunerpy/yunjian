@@ -126,3 +126,6 @@ Android SDK/NDK/cargo-ndk/debug keystore 全在位。于是「Android 无法在�
 **注入验证里我自己又栽一次边界错**：解析 `PREBUILT_TARGETS` 时先 `split_once(']')`，
 而第一个 `]` 落在类型标注 `&[&str]` 上，于是解析出空清单——**空清单里当然没有 i686，
 这条测试会永远绿**。一条假门禁比没有门禁更糟。先切 `= &[` 才对。
+- 2026-08-17：一次性 Android JNI spike 可保留在仓库但通过自己的 `[workspace]` 与 `Cargo.lock` 脱离产品 workspace；CodeBuild 必须用 `--locked --manifest-path`，并显式 `--target-dir` 回到根 `target/`，才能同时守住 10 成员契约与既有 APK 注入路径。
+- 2026-08-17：workspace 成员门禁应解析根 `Cargo.toml` 的 `[workspace].members` 并逐项比较冻结清单；临时注入第 11 项可证明守卫真会变红，避免注释文本或模糊计数造成假绿。
+- 2026-08-17：隔离 worktree 的 `--all-features` 语音实测要显式把 `YUNJIAN_MODEL_DIR` 指向已有缓存根；未设置时 5 个 streaming 测试因模型缺失失败不代表代码回归，设置后必须重跑并达到 0 failed。

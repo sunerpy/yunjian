@@ -6,12 +6,11 @@ members = [
   "crates/yunjian-ai",
   "crates/yunjian-recite",
   "crates/yunjian-voice",
-  "crates/yunjian-mobile",
-  "crates/yunjian-spike",
   "crates/yunjian-mcp",
   "crates/yunjian-cli",
-  "crates/yunjian-app",
   "xtask",
+  "crates/yunjian-app",
+  "crates/yunjian-mobile",
 ]
 
 [workspace.package]
