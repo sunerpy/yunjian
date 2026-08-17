@@ -30,6 +30,7 @@ mod prerequisite;
 mod provider_calls;
 mod verify_icons;
 mod verify_models;
+mod verify_seed;
 mod verify_sources;
 
 #[derive(Debug, Parser)]
@@ -205,6 +206,38 @@ enum Commands {
         /// 本地开放权重运行时的 base URL。给了才真的调模型；不给则如实标未执行。
         #[arg(long, value_name = "URL")]
         endpoint: Option<String>,
+        /// 打算承载这份种子的 `appreciation-seed-v*` Release tag。给了才写出种子锁，
+        /// 也就是说**只有真跑出来的产物才可能进入发布链路**：未执行推理时给它会中止。
+        #[arg(long, value_name = "TAG")]
+        seed_tag: Option<String>,
+    },
+
+    /// 发布链路的赏析种子门禁：按 `dataset/appreciations.lock.toml` 校验一份已下载的种子，
+    /// 并拿**本次待发布语料**重算覆盖集与每首的事实块摘要。
+    ///
+    /// 占位种子（`generation_executed=false`）在这里是硬失败——生成期允许如实降级，
+    /// 发布期不允许把降级产物发给用户。夹带未生成标记、正文短于下界、多条正文逐字相同、
+    /// 缺权重摘要、覆盖不全或事实块重算不上，同样中止。
+    VerifySeed {
+        /// 种子锁。发布链路唯一认得的指针。
+        #[arg(long, default_value = "dataset/appreciations.lock.toml")]
+        lock: std::path::PathBuf,
+        /// 已下载的种子 JSON。
+        #[arg(long, default_value = "dataset/appreciations.json")]
+        seed: std::path::PathBuf,
+        /// 已下载的种子清单。
+        #[arg(long, default_value = "dataset/appreciations.manifest.json")]
+        seed_manifest: std::path::PathBuf,
+        /// 本次待发布的随包语料库。覆盖集与事实块摘要由它重算。
+        #[arg(long, default_value = "corpus/build/release/corpus.db")]
+        corpus_db: std::path::PathBuf,
+        /// 披露文件。发布链路里不再跑 `pregenerate`，披露门禁在本子命令接上。
+        #[arg(long, default_value = "dataset/README.md")]
+        disclosure: std::path::PathBuf,
+        /// 只把锁里的 `seed_tag` 打到 stdout 然后退出，不做任何校验。
+        /// 发布流要先知道从哪个 tag 下载才有东西可校验，而锁只应有一个解析器。
+        #[arg(long)]
+        print_seed_tag: bool,
     },
 
     /// 把容器里的观测行裁决成净机验收报告（`docs/reports/clean-install-<date>.{md,json}`）。
@@ -417,7 +450,8 @@ fn main() -> anyhow::Result<()> {
             model_license,
             provider,
             endpoint,
-        }) => pregenerate::run(
+            seed_tag,
+        }) => pregenerate::run(pregenerate::Request {
             corpus_db,
             limit,
             out_dir,
@@ -425,6 +459,22 @@ fn main() -> anyhow::Result<()> {
             model_license,
             provider,
             endpoint,
+            seed_tag,
+        }),
+        Some(Commands::VerifySeed {
+            lock,
+            seed,
+            seed_manifest,
+            corpus_db,
+            disclosure,
+            print_seed_tag,
+        }) => verify_seed::run(
+            lock,
+            seed,
+            seed_manifest,
+            corpus_db,
+            disclosure,
+            print_seed_tag,
         ),
         Some(Commands::CleanInstallReport {
             observed,
@@ -751,6 +801,41 @@ mod tests {
             references > 0,
             "没有扫到任何 xtask 子命令调用。若这是真的，这条断言应当连同理由一起删除；\
              更可能的是调用写法变了而 invoked_subcommands 没跟上，那样它会永远绿"
+        );
+    }
+
+    /// 语料发布流必须**校验**种子，而不是在 CI 里重新生成它。
+    ///
+    /// # 这条守的是哪一次真实失败
+    ///
+    /// `corpus-release.yml` 曾直接跑 `pregenerate` 且刻意不给 `--endpoint`——CI 里没有开放
+    /// 权重推理运行时。那一步如实降级成「每条正文是未生成标记」，而下游照常把它发出去：
+    /// `corpus-v0.1.0` 的 `appreciations.json` 因此是 16 条全占位，移动端首启正是从那里取种子。
+    /// 整条链路上没有任何测试会因此变红。
+    ///
+    /// 所以断言的是**发布流里出现的是哪一个子命令**：`verify-seed` 必须在，`pregenerate`
+    /// 必须不在。有人为了「让 CI 自己产出种子」把那一步加回来时，这条会点名它。
+    #[test]
+    fn the_corpus_release_workflow_gates_the_seed_instead_of_regenerating_it() {
+        let path = repo_root().join(".github/workflows/corpus-release.yml");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", path.display()));
+        let invoked = invoked_subcommands(&join_continuations(&strip_hash_comments(&text)));
+
+        assert!(
+            invoked.iter().any(|name| name == "verify-seed"),
+            "{} 里没有 `verify-seed`：发布流必须校验种子，否则占位种子会再一次被发出去。\
+             实际调用到的是 {invoked:?}",
+            path.display()
+        );
+        assert!(
+            !invoked.iter().any(|name| name == "pregenerate"),
+            "{} 里出现了 `pregenerate`。CI 里没有开放权重推理运行时，那一步只会如实降级成\
+             16 条未生成标记然后被发给用户——这正是 corpus-v0.1.0 发出占位种子的原因。\
+             种子要在有运行时的机器上生成一次、上传到 `appreciation-seed-v*`，\
+             发布流按 `dataset/appreciations.lock.toml` 下载并 `verify-seed`。\
+             实际调用到的是 {invoked:?}",
+            path.display()
         );
     }
 
