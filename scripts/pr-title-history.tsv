@@ -1,0 +1,113 @@
+PASS	feat(workspace): 搭建 Cargo workspace、成员骨架与远端仓库	main
+PASS	feat(config): 按运行时发现顺序加载 config.toml	main
+PASS	feat(corpus): 建立带许可校验的上游数据源清单	main
+PASS	feat(logger): 初始化 tracing 并强制控制台输出到 stderr	main
+PASS	build(voice): 打通 sherpa-onnx 五平台构建并记录链接方案	main
+PASS	feat(lints): 禁止 stdout 输出并定义统一错误类型	main
+PASS	chore(build): 添加 Makefile、oxfmt 配置与 git hooks	main
+PASS	feat(corpus): 定义规范化记录模型与稳定 ID 注册表	main
+PASS	ci(workflow): 添加 CI 流水线与终态 ci-success 门禁	main
+PASS	test(core): 建立黄金查询契约并实测 FTS5 detail 模式	main
+PASS	docs(readme): 添加中英双语 README 与仓库元信息	main
+PASS	ci(release): 接入 release-please 与 git-cliff 发版流程	main
+PASS	feat(corpus): 导入 chinese-poetry 原文与平仄数据	main
+PASS	feat(corpus): 导入公有领域韵书并按资产核验来源	main
+PASS	feat(corpus): 导入 Werneror 古典朝代分桶并隔离缺字记录	main
+PASS	feat(corpus): 建立历代集评导入管道并要求逐条出处	main
+PASS	feat(corpus): 构建期繁简转换并生成字形映射表	main
+PASS	feat(corpus): 生成重出分组与数据缺陷报告并设基线	main
+PASS	feat(corpus): 实现只读 SQLite 模式、守恒校验与兼容契约	main
+PASS	feat(corpus): 按实测结论构建 FTS5 trigram 外部内容索引	main
+PASS	feat(corpus): 生成韵脚表并按韵部投票消歧多音字	main
+PASS	ci(corpus): 添加语料构建流水线与黄金查询回归	main
+PASS	test(corpus): 实测索引体积与查询延迟并产出预算结论	main
+PASS	feat(voice): 打通各平台麦克风权限并确定系统底线	main
+PASS	fix(voice): 采集被截断时报错而非返回半段音频	main
+PASS	test(voice): 核实模型许可并实测文言 CER	main
+PASS	feat(corpus): 拆出审计库并打包发布语料工件	main
+PASS	feat(core): 实现语料校验落地与只读打开	main
+PASS	feat(core): 实现查询归一化与三段式检索路由	main
+PASS	feat(core): 实现全文与残句模糊检索	main
+PASS	feat(core): 实现题目、作者、朝代、首句与尾字查询	main
+PASS	feat(core): 实现三套韵书的押韵检索	main
+PASS	feat(core): 实现主题标签检索与历代集评关联	main
+PASS	feat(core): 固化核心 API 表面与长任务协议	main
+PASS	feat(ai): 定义赏析 provider 抽象与带版本的提示词模板	main
+PASS	feat(ai): 基于 keyring-core 实现跨平台密钥存储与降级链	main
+PASS	feat(cli): 实现 yunjian 命令行检索与 JSON 输出	main
+PASS	feat(corpus): 增加占位正文清洗、粘连句拆分与结构化体裁判定	main
+PASS	feat(recite): 实现字级对齐与四类错误标注	main
+PASS	feat(ai): 接入 genai 并以 keychain 注入 BYOK 凭据	main
+PASS	feat(mcp): 基于 rmcp 实现 stdio MCP 服务	main
+PASS	feat(voice): 实现基于 rodio 的音频采集与播放	main
+PASS	feat(recite): 实现评分模型与防虚高类型边界	main
+PASS	feat(app): 搭建 Tauri v2 与 React 外壳及平台窗口配置	main
+PASS	feat(recite): 实现挖空、首字提示与遮挡三种练习模式	main
+PASS	feat(mcp): 实现只读检索工具并显式声明 annotations	main
+PASS	feat(app): 实现自绘标题栏与非 Tauri 环境降级	main
+PASS	fix(voice): 按裁决改 scoring_mode 取值域为 guided_practice 与 coverage_advisory	main
+PASS	feat(recite): 增加拼音级近音宽容层	main
+PASS	feat(mcp): 添加可选 Streamable HTTP 传输与绑定地址保护	main
+PASS	feat(ai): 实现流式赏析与真实取消语义	main
+PASS	feat(mcp): 支持自动写入 Claude 与 OpenCode 客户端配置	main
+PASS	feat(voice): 实现模型按需下载与许可校验	main
+PASS	fix(core): 契约单副本守卫排除 worktree 目录	main
+PASS	fix(ci): 为 Android 交叉编译导出 cc-rs 工具链变量	main
+PASS	fix(cli): 去掉依赖无外网假设的随机绿测试	main
+PASS	feat(voice): 实现按音步合成朗读与破读词表	main
+PASS	feat(ai): 实现内置与自费两级赏析缓存	main
+PASS	feat(recite): 接入 FSRS 排程并定义评级映射	main
+PASS	feat(mcp): 添加 AI 赏析与作诗工具并处理无密钥场景	main
+PASS	feat(ai): 使用开放权重模型预生成赏析数据集并标注来源	main
+PASS	feat(cli): 提供命令行背诵练习与排程查询	main
+PASS	fix(ci): 为采集路径的 Android 交叉编译导出 cc-rs 工具链变量	main
+PASS	feat(voice): 实现流式识别、双路解码与卡顿提示	main
+PASS	docs(guide): 补齐架构、语料、语音与许可文档	main
+PASS	test(mcp): 添加基于真实客户端的 MCP 一致性测试	main
+PASS	feat(core): 实现语料与赏析种子的下载校验与导入	main
+PASS	feat(voice): 组合语音背诵会话并按可得信号计算流畅度	main
+PASS	feat(app): 实现检索与阅读界面并区分 AI 与考据内容	main
+PASS	feat(app): 实现设置界面并如实呈现密钥存储位置	main
+PASS	test(recite): 建立背诵评分黄金测试集与诚实性门禁	main
+PASS	docs(install): 添加安装脚本与面向 LLM 的用法说明	main
+PASS	feat(app): 实现背诵界面与 FSRS 复习队列	main
+PASS	feat(app): 增加非阻塞 IPC 边界	main
+PASS	feat(app): 在桌面端集成语音背诵全流程	main
+FAIL	修复凭据边界并对齐 Rust 1.95 MSRV	main
+PASS	feat(app): 生成应用图标并按真实显示尺寸验收	main
+PASS	test(app): 完成桌面端真机验收并输出可审计报告	main
+FAIL	修复语料工件缺标签集评并校正 README 实现状态	main
+PASS	feat(app): 添加系统托盘与签名自动更新	main
+PASS	docs(guide): 设计背诵记忆方式、字典与拼音功能	main
+PASS	feat(app): 引入 Tailwind 并重构为侧栏与设置弹窗	main
+PASS	feat(recite): 实现三层拆卡与每日预算调度	main
+PASS	feat(app): 实现内置字典韵书事实面板	main
+PASS	feat(app): 实现拼音开关与注音层	main
+PASS	ci(release): 补齐五平台发布矩阵并准备 CodeBuild runner	main
+PASS	ci(corpus): 发布语料工件并验证净机离线可用	main
+FAIL	修复 F1 的 README 超行与前置工件缺失	main
+PASS	fix(ci): 修复失效的验收入口并补齐缺失证据	main
+PASS	fix(app): 让 AppImage 打包在无 FUSE 环境可用	main
+FAIL	发布语料工件并让验收命令断言语义而非退出码	main
+PASS	test(mobile): 执行移动端可行性实测并产出选型结论	main
+FAIL	修复桌面验收假失败	main
+PASS	feat(mobile): 建立跨内核的移动端门面	main
+PASS	feat(mobile): 实现移动端界面与分发流水线	main
+PASS	test(mobile): 完成移动端真机验收并输出可审计报告	main
+PASS	ci(release): 补齐 musl 与 ARM Windows 发布目标	main
+PASS	test(mobile): 接入 Device Farm 远端真机驱动并实测其能力边界	main
+PASS	fix(desktop): 解开桌面真机验收阻塞并更正 DRI3 误判	main
+PASS	fix(acceptance): 修正合成输入的连击链污染与断言起始态	main
+PASS	ci(mobile): 跑通 Android 冒烟构建并在物理真机上执行判据	main
+PASS	test(mobile): 补齐三条判据的 instrumented 测试，真机出真 verdict	main
+FAIL	桌面真机验收补齐驱动步骤与托盘宿主，逮到一个 IPC 契约缺陷	main
+PASS	fix(app): 补齐 IPC 必需 Channel 并统一错误原因提取	main
+PASS	feat(mobile): 落地 UniFFI 绑定分支	main
+PASS	fix(release): 分发物随带许可声明并加断言守住	main
+FAIL	订阅语料物化进度并在面板显示，桌面验收最后一条 FAIL 转 PASS	main
+PASS	ci(build): Linux job 改用 CodeBuild 托管 runner	main
+FAIL	核实语音模型许可并实测文言 CER	pr#27
+PASS	feat(mcp): 添加 AI 赏析与作诗工具	pr#61
+PASS	test(mcp): 添加真实客户端一致性门禁	pr#67
+PASS	test(mobile): 增加移动端可行性实测门禁	pr#93
+PASS	chore(main): release 0.1.0	pr#12
