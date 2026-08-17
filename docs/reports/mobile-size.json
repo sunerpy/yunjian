@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
-  "generated_date": "2026-08-15",
-  "commit_sha": "f19fcb7ec070c3a9627909f0c8abd19087336059",
-  "binding_verdict": "undetermined",
+  "generated_date": "2026-08-17",
+  "commit_sha": "8a589760263cf7edf13dca3a91d7f3baed7e270b",
+  "binding_verdict": "uniffi_native",
   "all_pass": false,
-  "executed_pass": 0,
-  "failed": 0,
-  "not_executed": 7,
+  "executed_pass": 4,
+  "failed": 1,
+  "not_executed": 2,
   "apk_ceiling_bytes": 83886080,
   "universal_apk_default": false,
   "build_commands": {
-    "android": "cargo tauri android build --ci --split-per-abi --apk --aab --target aarch64 armv7 i686 x86_64",
-    "ios": "cargo tauri ios build --ci --export-method app-store-connect"
+    "android": "cd mobile/android && for abi in arm64-v8a armeabi-v7a x86 x86_64; do gradle -Pyunjian.abis=$abi :app:assembleRelease; done && gradle -Pyunjian.abis=arm64-v8a,armeabi-v7a,x86,x86_64 :app:bundleRelease",
+    "ios": "cd mobile/ios && xcodegen generate && xcodebuild archive -scheme Yunjian -destination 'generic/platform=iOS' -archivePath build/Yunjian.xcarchive && xcodebuild -exportArchive -archivePath build/Yunjian.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath build/export"
   },
   "tool_probes": {
     "adb": {
@@ -20,7 +20,7 @@
     },
     "gradle": {
       "available": false,
-      "detail": "No such file or directory (os error 2)"
+      "detail": "exit=Some(1); stdout=; stderr=mise ERROR No version is set for shim: gradle\nSet a global default version with one of the following:\nmise use -g gradle@8.13.0\nmise ERROR Version: 2026.7.7 linux-x64 (2026-07-15)\nmise ERROR Run with --verbose or MISE_VERBOSE=1 for more information"
     },
     "sdkmanager": {
       "available": false,
@@ -35,19 +35,52 @@
       "detail": "No such file or directory (os error 2)"
     }
   },
-  "artifacts": [],
+  "artifacts": [
+    {
+      "kind": "apk",
+      "path": "target/mobile/dist/yunjian-arm64-v8a-release.apk",
+      "bytes": 42699280,
+      "abi": "arm64-v8a",
+      "archive_entries_scanned": 115,
+      "forbidden_entries": []
+    },
+    {
+      "kind": "apk",
+      "path": "target/mobile/dist/yunjian-armeabi-v7a-release.apk",
+      "bytes": 30656370,
+      "abi": "armeabi-v7a",
+      "archive_entries_scanned": 115,
+      "forbidden_entries": []
+    },
+    {
+      "kind": "aab",
+      "path": "target/mobile/dist/yunjian-release.aab",
+      "bytes": 86503972,
+      "abi": null,
+      "archive_entries_scanned": 153,
+      "forbidden_entries": []
+    },
+    {
+      "kind": "apk",
+      "path": "target/mobile/dist/yunjian-x86_64-release.apk",
+      "bytes": 46852187,
+      "abi": "x86_64",
+      "archive_entries_scanned": 115,
+      "forbidden_entries": []
+    }
+  ],
   "assertions": [
     {
       "id": "android_per_abi_apks",
-      "verdict": "NOT EXECUTED",
-      "detail": "没有真实 APK，未执行四 ABI 完整性判断",
-      "executable_when": "提供完整 Android SDK/NDK 与已选 binding，执行带 --split-per-abi --apk 的构建命令"
+      "verdict": "FAIL",
+      "detail": "要求四个单 ABI APK 且禁 universal；实际 3 个（arm64-v8a, armeabi-v7a, x86_64），universal=false；缺 x86；x86 的 i686-linux-android 是否有上游 sherpa-onnx 预编译产物见 crates/yunjian-voice/build.rs 的 PREBUILT_TARGETS，没有时带 voice 的该 ABI 产物需源码编译 sherpa-onnx（cmake >= 3.13 与 C++17），这是分发 ABI 集与「移动端默认开 voice」两个决定之间的冲突，需用户裁量",
+      "executable_when": null
     },
     {
       "id": "android_aab",
-      "verdict": "NOT EXECUTED",
-      "detail": "没有真实构建产物",
-      "executable_when": "在有完整 Android SDK/NDK 与已选 binding 的 runner 上执行 distribution.toml 的 Android 命令"
+      "verdict": "PASS",
+      "detail": "产物存在：target/mobile/dist/yunjian-release.aab（86503972 bytes）",
+      "executable_when": null
     },
     {
       "id": "ios_archive",
@@ -58,26 +91,26 @@
     {
       "id": "artifact_sizes_measured",
       "verdict": "NOT EXECUTED",
-      "detail": "产物集不完整：APK 0 / 4，AAB 0 / 1，iOS archive 0 / 1；未用估算补空值",
+      "detail": "产物集不完整：APK 3 / 4，AAB 1 / 1，iOS archive 0 / 1；未用估算补空值",
       "executable_when": "在 Android 与 macOS 签名 runner 上完成构建，把全部产物下载到同一目录后重跑"
     },
     {
       "id": "apk_ceiling",
-      "verdict": "NOT EXECUTED",
-      "detail": "没有 APK，无法测量上限",
-      "executable_when": "构建四个 split release APK 后重跑；上限固定为 80 MiB/个"
+      "verdict": "PASS",
+      "detail": "3 个 APK 均不超过 83886080 bytes",
+      "executable_when": null
     },
     {
       "id": "packaged_assets",
-      "verdict": "NOT EXECUTED",
-      "detail": "没有 APK/AAB/IPA，未执行 ZIP 内容扫描",
-      "executable_when": "提供真实 APK/AAB/IPA；守卫会读取 ZIP 中央目录并拒绝 corpus .db 与语音模型"
+      "verdict": "PASS",
+      "detail": "扫描 4 个 ZIP 产物，未发现 corpus .db 或语音模型",
+      "executable_when": null
     },
     {
       "id": "instrumented_device_smoke",
-      "verdict": "NOT EXECUTED",
-      "detail": "没有物理设备 instrumented smoke 观测；未用 jsdom、模拟器或宿主结果顶替",
-      "executable_when": "连接已授权物理设备，运行 instrumented test 完成两字检索、打字背诵一轮、语音会话启动与停止，并通过 --smoke-json 提交观测"
+      "verdict": "PASS",
+      "detail": "Google Pixel 8 / 15/35：检索、打字背诵、语音 start-stop 均通过",
+      "executable_when": null
     }
   ]
 }

@@ -46,7 +46,12 @@ test_package_artifact = "target/mobile/full-tests.zip"
 test_package_upload_type = "APPIUM_NODE_TEST_PACKAGE"
 test_spec = ".aws/devicefarm/full-android.yml"
 test_type = "APPIUM_NODE"
-build_command = "cd mobile/android && gradle :app:assembleDebug :app:assembleDebugAndroidTest && cargo run -p xtask -- mobile-package"
+# **逐条实测过的打包序列**（2026-08-17，run full-acceptance-29）。此前这里写的是
+# `cargo run -p xtask -- mobile-package`，而 `xtask` 的 `Commands` 枚举里从来没有这个子命令
+# ——那让 Android 真机验收无法从干净检出复现，而配置本身看起来是完整的。
+# 测试包 zip 里必须同时有两个 APK 与 `full-measure.sh`：Device Farm 对**公共**设备一律重签，
+# 设备侧脚本要卸掉重签的那份、改装 zip 里我们自己签的两个。
+build_command = "cd mobile/android && gradle :app:assembleDebug :app:assembleDebugAndroidTest && mkdir -p ../../target/mobile && cp app/build/outputs/apk/debug/app-debug.apk ../../target/mobile/yunjian.apk && cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../../target/mobile/yunjian-androidTest.apk && cp ../../.aws/devicefarm/full-measure.sh ../../target/mobile/ && cd ../../target/mobile && rm -f full-tests.zip && zip -q full-tests.zip yunjian.apk yunjian-androidTest.apk full-measure.sh"
 blocked_reason = ""
 
 [ios_full]
@@ -58,8 +63,8 @@ test_package_artifact = "target/mobile/full-xcuitest.zip"
 test_package_upload_type = "XCTEST_UI_TEST_PACKAGE"
 test_spec = ".aws/devicefarm/full-ios.yml"
 test_type = "XCTEST_UI"
-build_command = "xcodebuild build-for-testing -scheme Yunjian -destination 'generic/platform=iOS'"
-blocked_reason = "构建 .ipa 与 XCUITest bundle 需要 macOS 与 Xcode 26；本机是 Linux，且 Device Farm 的 macOS 构建环境不在本项目已开通的资源内。UniFFI 的 Swift 生成物（YunjianMobile.swift + YunjianMobileFFI.h + modulemap）已在仓库里，缺的只有 macOS 宿主"
+build_command = "cd mobile/ios && xcodegen generate && xcodebuild build-for-testing -scheme Yunjian -destination 'generic/platform=iOS'"
+blocked_reason = "构建 .ipa 与 XCUITest bundle 需要 macOS 与 Xcode 26；本机是 Linux，且 Device Farm 的 macOS 构建环境不在本项目已开通的资源内。SwiftUI 产品工程（mobile/ios/Yunjian/）、两个测试 target 与 UniFFI 的 Swift 生成物都已在仓库里，且结构由 `cargo test -p xtask ios_project` 守着；但那些 Swift **从未经过 Swift 编译器**（见 mobile/ios/README.md 的未验证清单），缺的是 macOS 宿主与一次真实编译"
 
 [ios]
 enabled = false

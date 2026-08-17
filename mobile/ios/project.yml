@@ -1,0 +1,129 @@
+# 云笺 iOS 产品工程（XcodeGen 规格）。
+#
+# ## 为什么是 project.yml 而不是签入 .xcodeproj
+#
+# Android 侧的工程结构由 `build.gradle.kts` **声明**，产物由构建时生成。iOS 的对应物只有两种
+# 选择：签入一份手写的 `project.pbxproj`，或签入一份声明并由工具生成。
+#
+# 这里选后者，理由是可核对性：`pbxproj` 是几百行 UUID，人读不出「工程里到底有哪些文件、
+# 哪个 target 链了哪个库」，而这份工程**在本机（Linux，无 Xcode）无法编译验证**——一份
+# 读不出对错、又验不了的文件，比一份能被逐行读懂的声明危险得多。
+#
+# 生成（在 macOS 上）：
+#
+# ```sh
+# brew install xcodegen
+# cd mobile/ios && xcodegen generate      # 产出 Yunjian.xcodeproj
+# ```
+#
+# `Yunjian.xcodeproj` 刻意**不进版本库**（`.gitignore` 已忽略），与 Android 侧不签入
+# `jniLibs/*.so` 同一个道理：生成物与声明可以悄悄漂移，而漂移的表现是运行期而不是构建期。
+#
+# ## 与 Android 工程的逐条对应
+#
+# | 事项 | Android (`app/build.gradle.kts`) | iOS（本文件） |
+# | --- | --- | --- |
+# | 唯一 Rust 入口 | `kotlin.srcDir(bindings/generated)` | `sources` 直接引用 `YunjianMobile.swift` |
+# | 原生库 | `cargoNdkBuild` 产 `jniLibs/<abi>/*.so` | `scripts/build-xcframework.sh` 产 `build/YunjianMobileFFI.xcframework` |
+# | 许可原文随包 | `copyLicenseAssets` → `assets/licenses/` | `packaging/licenses` 作为 resource 打进 bundle |
+# | 系统下限 | `minSdk = 26`（AAudio 符号的分界）| `deploymentTarget: 17.0`（`AVAudioApplication` 的分界）|
+# | 验收 target | `app/src/androidTest`（进程内 + 驱动界面）| `YunjianUITests`（界面）+ `YunjianAppTests`（进程内）|
+#
+# 拆成两个测试 target 不是设计偏好：XCUITest 与被测应用不在同一个进程，读不到应用容器，
+# 而十条断言里有几条要的正是容器里的事实。见 `YunjianAppTests/ContainerFactsTests.swift`。
+
+name: Yunjian
+options:
+  bundleIdPrefix: top.onethinker
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  # 生成物不进版本库，所以不必保留旧工程里的手工设置。
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # 生成的 Swift 绑定通过 modulemap 找 C 头；头与静态库都在构建脚本产出的 xcframework 里。
+    SWIFT_INCLUDE_PATHS: $(SRCROOT)/build/include
+    OTHER_LDFLAGS: -lc++
+
+targets:
+  Yunjian:
+    type: application
+    platform: iOS
+    sources:
+      - path: Yunjian
+      # UniFFI 生成的 Swift **直接进源集，不经复制**：复制会产生一份可以与生成物漂移的副本，
+      # 而漂移的表现是运行期符号找不到。与 Android 侧 `kotlin.srcDir` 同一决定。
+      - path: ../../crates/yunjian-mobile/bindings/generated/YunjianMobile.swift
+        group: Bindings
+    resources:
+      # 许可原文随分发物走。开着 voice 的构建整体按 GPL-3.0 条款提供，而「源码可得」只满足
+      # 一半——声明义务要求原文在分发物里。与命令行归档、Android APK 带的是同一份。
+      - path: ../../packaging/licenses
+        name: licenses
+    info:
+      path: Yunjian/Info.plist
+      properties:
+        CFBundleDisplayName: 云笺
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        # 语音一轮要真采集。**这条缺了不是「权限被拒」而是进程直接被系统终止**，
+        # 那种失败读起来像应用崩溃，与权限无关。
+        NSMicrophoneUsageDescription: 云笺用麦克风采集你的朗读，用于跟读反馈；音频只在本机处理，不上传。
+        ITSAppUsesNonExemptEncryption: false
+    dependencies:
+      - framework: build/YunjianMobileFFI.xcframework
+        embed: false
+      - sdk: AVFoundation.framework
+    preBuildScripts:
+      - name: 构建 yunjian-mobile 的 iOS 静态库与 xcframework
+        # 缺 Rust 工具链或 target 时**失败并指名缺什么**，而不是产出一个装上去就找不到符号的
+        # 应用。与 Android 的 `cargoNdkBuild` 同一约定。
+        script: bash "$SRCROOT/scripts/build-xcframework.sh"
+        outputFiles:
+          - $(SRCROOT)/build/YunjianMobileFFI.xcframework
+
+  YunjianAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: YunjianAppTests
+      - path: Shared
+    dependencies:
+      - target: Yunjian
+    settings:
+      base:
+        # 进程内：宿主是应用本体，因此能读应用容器、能调 Rust 门面。
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Yunjian.app/Yunjian
+        BUNDLE_LOADER: $(TEST_HOST)
+
+  YunjianUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: YunjianUITests
+      - path: Shared
+    dependencies:
+      - target: Yunjian
+    settings:
+      base:
+        TEST_TARGET_NAME: Yunjian
+
+schemes:
+  Yunjian:
+    build:
+      targets:
+        Yunjian: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      # 顺序有意义：界面那一轮先跑（它触发首启物化），进程内那一轮再读容器里的事实。
+      # 反过来会在语料还没落地时量到 `corpus_present=false`，而那不是产品的状态。
+      testPlans:
+        - path: Yunjian.xctestplan
+          defaultPlan: true

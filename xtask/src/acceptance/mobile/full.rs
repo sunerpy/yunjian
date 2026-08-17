@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::super::{Platform, Verdict, commit_sha, device_farm, read_app_version, today};
 use super::full_criteria::{CRITERIA, MeasurementSet};
+use super::provenance::{self, TestedSource};
 use crate::verify_sources::emit;
 
 const EVIDENCE_LOG: &str = ".omo/evidence/task-71-yunjian.log";
@@ -159,7 +160,15 @@ pub(crate) struct FullReport {
     set: String,
     generated_date: String,
     pub(crate) app_version: String,
+    /// 产生这份报告的那份源码所在提交。
+    ///
+    /// 它可信的前提是两件事，都在生成时强制：被测路径在工作树里干净
+    /// （`provenance::require_clean`），以及被测源码的内容摘要一并写进
+    /// [`FullReport::tested_sources`]。**不要手改这个字段**——那会把一个可发现的溯源缺口
+    /// 变成一个更难发现的伪证据。
     pub(crate) commit_sha: String,
+    /// 被测源码的内容摘要。让「这份报告描述的是哪份代码」不依赖任何人的记忆。
+    pub(crate) tested_sources: Vec<TestedSource>,
     pub(crate) all_pass: bool,
     pub(crate) platforms: Vec<FullPlatformReport>,
 }
@@ -182,6 +191,14 @@ pub(super) fn run(root: &Path, requested: Platform) -> Result<()> {
         requested.as_str(),
         FULL_DECLARED.len()
     ));
+
+    // 溯源先行：被测源码不干净时，报告里的 `commit_sha` 会绑到一份没有被测的代码。
+    // 2026-08-17 那份 10/10 报告正是这样绑错的，而报告内部计数完全自洽——从报告本身看不出来。
+    provenance::require_clean(root)?;
+
+    // iOS 工程的结构先过一遍。一份声明了 iOS 一节的报告，若那侧的工程缺文件或报不出测量键，
+    // 十条会全部记成「驱动不可用」——那句判词读起来像缺 macOS，而真因是 harness 没接线。
+    super::ios_project::verify(root)?;
 
     let probe = resolve_probe(root, requested)?;
     let mut report = build_report(root, Some((requested, probe)))?;
@@ -308,10 +325,27 @@ fn merge_existing_other_platform(
     }
     let encoded = fs::read_to_string(&path)
         .with_context(|| format!("读取既有移动真机报告 {} 失败", path.display()))?;
-    let existing: FullReport =
-        serde_json::from_str(&encoded).context("解析既有移动真机报告失败")?;
+    // 旧报告解析不了（例如它是加溯源字段之前那一版）时**跳过沿用，而不是硬失败**：一份没有
+    // 溯源记录的报告压根无法证明它描述的是同一份源码，所以它的另一平台那一节不该被并进来。
+    // 但那也不是本次运行的错误——本次要写的报告仍然可以是完整且自洽的。
+    let existing: FullReport = match serde_json::from_str(&encoded) {
+        Ok(existing) => existing,
+        Err(error) => {
+            emit(&format!(
+                "  既有报告 {} 不含可比对的溯源记录（{error}）；不沿用它的另一平台一节",
+                path.display()
+            ));
+            return Ok(());
+        }
+    };
     validate_full_report(&existing)?;
-    if existing.app_version != report.app_version || existing.commit_sha != report.commit_sha {
+    // 版本、提交与被测源码摘要三者全同才允许沿用另一平台那一节。**摘要这一条是必需的**：
+    // 同一个 commit 上工作树可以不同（曾经生成过报告的那次就带着未提交改动），只对 sha
+    // 会把「另一份代码上量到的结果」并进这份报告。
+    if existing.app_version != report.app_version
+        || existing.commit_sha != report.commit_sha
+        || existing.tested_sources != report.tested_sources
+    {
         return Ok(());
     }
     let requested_name = requested.as_str();
@@ -351,6 +385,7 @@ fn build_report(
         generated_date: today(),
         app_version: read_app_version(root)?,
         commit_sha: commit_sha(root),
+        tested_sources: provenance::collect(root)?,
         all_pass: false,
         platforms,
     };
@@ -471,6 +506,17 @@ pub(crate) fn validate_full_report_json(encoded: &str) -> Result<()> {
     validate_full_report(&report)
 }
 
+/// 读一份已落盘的报告，供溯源门禁比对它记录的被测源码摘要。
+#[cfg(test)]
+pub(crate) fn read_full_report(path: &Path) -> Result<(String, Vec<TestedSource>)> {
+    let encoded = fs::read_to_string(path)
+        .with_context(|| format!("读取移动真机报告 {} 失败", path.display()))?;
+    let report: FullReport = serde_json::from_str(&encoded)
+        .with_context(|| format!("解析移动真机报告 {} 失败", path.display()))?;
+    validate_full_report(&report)?;
+    Ok((report.commit_sha, report.tested_sources))
+}
+
 fn validate_full_report(report: &FullReport) -> Result<()> {
     if report.schema_version != 1 || report.set != "full" {
         bail!("移动真机报告 schema_version/set 不受支持");
@@ -484,6 +530,8 @@ fn validate_full_report(report: &FullReport) -> Result<()> {
             bail!("移动真机报告字段 `{field}` 为空或未知");
         }
     }
+    validate_commit_sha(&report.commit_sha)?;
+    validate_tested_sources(&report.tested_sources)?;
     if report.platforms.len() != 2
         || report.platforms[0].platform != "android"
         || report.platforms[1].platform != "ios"
@@ -556,6 +604,55 @@ fn validate_full_report(report: &FullReport) -> Result<()> {
             "移动真机报告 all_pass={}，逐项机械导出为 {derived}",
             report.all_pass
         );
+    }
+    Ok(())
+}
+
+/// `commit_sha` 必须是一个完整的 40 位十六进制对象名。
+///
+/// 短 sha 看起来一样能读，但它**不能**被 `verify` 之外的读者稳定解析成同一个提交（历史增长后
+/// 短前缀会歧义），而这个字段的全部用途就是「谁都能回到那份代码」。
+fn validate_commit_sha(sha: &str) -> Result<()> {
+    if sha.len() != 40 || !sha.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        bail!("移动真机报告的 commit_sha `{sha}` 不是 40 位十六进制对象名，无法据它回到被测代码");
+    }
+    Ok(())
+}
+
+/// 溯源记录必须逐条覆盖声明的被测路径，且顺序一致。
+///
+/// 顺序也校验，是因为「同一批路径换了顺序」通常意味着有人手工编辑过这份报告——而手工编辑
+/// 正是这段机制要消除的东西。
+fn validate_tested_sources(sources: &[TestedSource]) -> Result<()> {
+    let expected: Vec<(&str, bool)> = provenance::TESTED_PATHS
+        .iter()
+        .map(|path| (*path, true))
+        .chain(provenance::RECORDED_PATHS.iter().map(|path| (*path, false)))
+        .collect();
+    if sources.len() != expected.len() {
+        bail!(
+            "移动真机报告记录了 {} 条被测源码，声明为 {} 条",
+            sources.len(),
+            expected.len()
+        );
+    }
+    for (actual, (path, enforced)) in sources.iter().zip(expected) {
+        if actual.path != path || actual.freshness_enforced != enforced {
+            bail!(
+                "被测源码记录与声明不符：报告 `{}`（门禁 {}），声明 `{path}`（门禁 {enforced}）",
+                actual.path,
+                actual.freshness_enforced
+            );
+        }
+        if actual.digest.len() != 64 || !actual.digest.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            bail!(
+                "被测源码 `{path}` 的摘要 `{}` 不是 64 位十六进制",
+                actual.digest
+            );
+        }
+        if actual.files == 0 {
+            bail!("被测源码 `{path}` 记录了 0 个文件");
+        }
     }
     Ok(())
 }

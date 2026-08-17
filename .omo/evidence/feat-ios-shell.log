@@ -1,0 +1,1904 @@
+==> cargo fmt --all --check
+==> oxfmt --check
+Checking formatting...
+
+All matched files use the correct format.
+Finished in 744ms on 274 files using 32 threads.
+==> cargo clippy --workspace --all-targets -- -D warnings
+   Compiling yunjian-voice v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-voice)
+    Checking yunjian-app v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-app)
+    Checking yunjian-cli v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-cli)
+    Checking yunjian-mobile v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-mobile)
+    Checking xtask v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/xtask)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.98s
+==> cargo test --workspace
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling yunjian-voice v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-voice)
+   Compiling yunjian-cli v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-cli)
+   Compiling yunjian-app v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-app)
+   Compiling yunjian-mobile v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-mobile)
+   Compiling xtask v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/xtask)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.71s
+     Running unittests src/main.rs (target/debug/deps/xtask-cd6fde1c720bae6b)
+
+running 182 tests
+test acceptance::dom::tests::progress_shot_is_a_png_name ... ok
+test acceptance::linux::tests::escape_point_is_farther_than_gtk_double_click_distance ... ok
+test acceptance::device_farm::tests::rejects_a_region_other_than_us_west_2 ... ok
+test acceptance::linux::tests::responsiveness_probe_rereads_geometry_for_each_double_click ... ok
+test acceptance::linux::tests::escape_wait_outlasts_gtk_double_click_time ... ok
+test acceptance::device_farm::tests::platform_lookup_covers_only_mobile_platforms ... ok
+test acceptance::dom::tests::progress_samples_keeps_both_ends_and_states_the_omitted_count ... ok
+test acceptance::linux::tests::desktop_artifact_older_than_its_inputs_is_rejected ... ok
+test acceptance::device_farm::tests::parses_a_complete_configuration ... ok
+test acceptance::device_farm::tests::rejects_an_unknown_schema_version ... ok
+test acceptance::device_farm::tests::missing_artifacts_names_every_absent_input ... ok
+test acceptance::device_farm::tests::schedule_plan_renders_every_upload_and_the_run_itself ... ok
+test acceptance::device_farm::tests::unexecuted_reason_reports_a_disabled_platform_as_blocked_not_as_missing_artifacts ... ok
+test acceptance::linux::tests::desktop_artifact_newer_than_its_inputs_is_accepted ... ok
+test acceptance::dom::tests::progress_samples_lists_everything_when_short ... ok
+test acceptance::linux::tests::restore_assertion_requires_maximize_to_have_succeeded ... ok
+test acceptance::device_farm::tests::full_artifacts_never_alias_the_spike_ones ... ok
+test acceptance::device_farm::tests::the_shipped_configuration_targets_us_west_2_and_leaves_ios_blocked ... ok
+test acceptance::measurements::tests::no_measurements_at_all_is_still_not_executed ... ok
+test acceptance::measurements::tests::an_unavailable_key_carries_the_device_reason_into_the_detail ... ok
+test acceptance::measurements::tests::complete_measurements_pass_or_fail_purely_by_the_threshold ... ok
+test acceptance::measurements::tests::a_missing_required_key_is_not_executed_not_failed ... ok
+test acceptance::linux::tests::synthetic_clicks_break_the_click_chain_first ... ok
+test acceptance::measurements::tests::parses_values_and_unavailable_keys_into_separate_buckets ... ok
+test acceptance::measurements::tests::numbers_and_booleans_keep_their_json_types ... ok
+test acceptance::measurements::tests::unknown_lines_never_abort_the_parse ... ok
+test acceptance::mobile::full_criteria::tests::a_missing_required_key_is_not_executed_rather_than_fail ... ok
+test acceptance::device_farm::tests::unexecuted_reason_names_the_build_command_when_artifacts_are_missing ... ok
+test acceptance::mobile::full_criteria::tests::all_keys_present_and_satisfying_is_pass ... ok
+test acceptance::mobile::full_criteria::tests::an_explicitly_unavailable_key_is_not_executed_with_its_reason ... ok
+test acceptance::mobile::full_criteria::tests::auto_grading_voice_flips_the_ruling_to_fail ... ok
+test acceptance::mobile::full_criteria::tests::criteria_cover_every_declared_assertion_in_order ... ok
+test acceptance::mobile::full_criteria::tests::all_keys_present_but_violating_a_threshold_is_fail ... ok
+test acceptance::mobile::full_criteria::tests::a_perfect_typed_answer_must_score_exactly_one ... ok
+test acceptance::mobile::full_criteria::tests::emulator_markers_are_rejected_as_physical_devices ... ok
+test acceptance::mobile::ios_project::tests::swift_names_map_onto_the_kotlin_naming_convention ... ok
+test acceptance::mobile::ios_project::tests::tag_parity_rejects_a_diverged_value ... ok
+test acceptance::mobile::full_criteria::tests::parse_only_accepts_the_declared_prefix ... ok
+test acceptance::mobile::full_criteria::tests::every_criterion_requires_the_keys_its_checks_read ... ok
+test acceptance::mobile::ios_project::tests::a_missing_project_file_is_reported_with_its_path ... ok
+test acceptance::tests::blank_detail_is_rejected ... ok
+test acceptance::tests::close_and_exit_assertions_preserve_the_tray_contract ... ok
+test acceptance::tests::declared_ids_are_unique ... ok
+test acceptance::tests::foreign_platforms_report_a_reason_and_an_executable_condition ... ok
+test acceptance::tests::mobile_spike_predeclares_four_measurable_criteria ... ok
+test acceptance::tests::not_executed_without_executable_condition_is_rejected ... ok
+test acceptance::tests::passing_ui_assertion_without_a_screenshot_is_rejected ... ok
+test acceptance::tests::every_ui_assertion_requires_a_screenshot ... ok
+test acceptance::tests::fill_remaining_covers_every_declared_assertion ... ok
+test acceptance::tests::ime_assertion_is_declared ... ok
+test acceptance::tests::mobile_full_predeclares_every_real_device_assertion ... ok
+test acceptance::screenshot::tests::two_color_empty_surface_is_not_mistaken_for_rendered_ui ... ok
+test acceptance::tests::mobile_selection_is_tauri_only_for_four_passes_and_native_for_any_failure ... ok
+test acceptance::screenshot::tests::multiple_meaningful_regions_are_treated_as_rendered_ui ... ok
+test acceptance::tests::generated_mobile_full_report_passes_the_same_parser ... ok
+test acceptance::tests::mobile_report_serializes_the_three_stable_selection_literals ... ok
+test acceptance::tests::platform_parsing_accepts_the_five_documented_values ... ok
+test acceptance::tests::voice_success_and_degradation_are_separate_assertions ... ok
+test acceptance::tests::recording_the_same_assertion_twice_is_rejected ... ok
+test acceptance::tests::recording_an_undeclared_assertion_is_rejected ... ok
+test cer_spike::tests::markdown_always_states_the_verdict_and_the_optimistic_bound ... ok
+test cer_spike::tests::quotas_sum_to_fifty_poems ... ok
+test cer_spike::tests::raw_url_percent_encodes_the_chinese_path ... ok
+test cer_spike::tests::punctuation_and_spacing_do_not_count ... ok
+test cer_spike::tests::cer_counts_substitutions_insertions_and_deletions ... ok
+test cer_spike::tests::cer_of_identical_text_is_zero ... ok
+test cer_spike::tests::editorial_glosses_are_stripped_from_reference_text ... ok
+test cer_spike::tests::the_shipped_report_breaks_cer_down_by_genre_when_measured ... ok
+test cer_spike::tests::empty_hypothesis_is_total_loss ... ok
+test cer_spike::tests::traditional_output_is_normalized_before_scoring ... ok
+test cer_spike::tests::verdict_has_exactly_two_possible_values ... ok
+test acceptance::mobile::ios_project::tests::the_ten_xcuitest_methods_carry_the_test_prefix ... ok
+test corpus_measure::tests::a_busted_artifact_budget_selects_the_tang_song_default_mitigation ... ok
+test corpus_measure::tests::a_busted_budget_without_a_mitigation_is_rejected ... ok
+test corpus_measure::tests::a_busted_verdict_names_the_table_that_dominates_the_file ... ok
+test corpus_measure::tests::a_fully_measured_report_passes_validation ... ok
+test corpus_measure::tests::a_metadata_probe_may_hit_nothing_only_when_it_declares_the_table_is_empty ... ok
+test corpus_measure::tests::a_not_measured_row_with_a_reason_is_a_successful_report ... ok
+test corpus_measure::tests::a_shipped_row_without_a_measured_first_launch_build_time_is_rejected ... ok
+test corpus_measure::tests::a_report_with_no_shipped_shape_row_cannot_be_within_budget ... ok
+test corpus_measure::tests::a_verdict_within_budget_records_whether_the_shipping_scale_was_measured ... ok
+test acceptance::tests::all_pass_is_a_bool_and_false_when_anything_is_not_executed ... ok
+test acceptance::tests::a_zero_overlap_outside_edge_to_edge_does_not_earn_a_pass ... ok
+test corpus_measure::tests::a_shipped_row_without_the_audit_database_size_is_rejected ... ok
+test acceptance::mobile::ios_project::tests::every_declared_measurement_key_is_produced_by_the_ios_harness ... ok
+test corpus_measure::tests::an_absurd_budget_flips_the_verdict_and_still_names_a_mitigation ... ok
+test corpus_measure::tests::a_shipped_row_whose_byte_ledger_still_contains_ngram_is_rejected ... ok
+test corpus_measure::tests::a_p95_bust_alone_also_flips_the_verdict ... ok
+test cer_spike::tests::the_shipped_report_declares_a_legal_scoring_mode ... ok
+test cer_spike::tests::the_selfcheck_channel_is_distinguishable_from_the_real_report ... ok
+test acceptance::tests::three_passes_plus_the_out_of_scope_ios_criterion_still_yields_undetermined ... ok
+test acceptance::tests::the_targetsdk_the_build_actually_shipped_is_a_failure_not_a_relaxed_threshold ... ok
+test acceptance::tests::every_amended_threshold_is_recorded_in_the_report_text ... ok
+test acceptance::tests::unavailable_mobile_hardware_is_not_executed_and_keeps_selection_undetermined ... ok
+test corpus_measure::tests::only_the_tang_song_scales_restrict_dynasties_and_truncate ... ok
+test corpus_measure::tests::the_declared_budget_is_three_hundred_mib_and_records_why_it_was_raised ... ok
+test corpus_measure::tests::the_parser_rejects_a_missing_reference_machine ... ok
+test corpus_measure::tests::the_markdown_marks_not_measured_scales_verbatim ... ok
+test corpus_measure::tests::the_markdown_keeps_structural_cleaning_and_rhyme_before_after_evidence ... ok
+test corpus_measure::tests::the_parser_rejects_a_content_probe_that_hit_nothing ... ok
+test acceptance::tests::markdown_lists_every_assertion_and_flags_unexecuted_platforms ... ok
+test corpus_measure::tests::the_parser_rejects_a_measured_row_missing_its_measurement ... ok
+test acceptance::tests::a_missing_device_measurement_is_still_not_executed_rather_than_failed ... ok
+test corpus_measure::tests::load_rejects_a_placeholder_report_read_from_disk ... ok
+test corpus_measure::tests::the_parser_rejects_a_not_measured_row_without_a_blocking_reason ... ok
+test corpus_measure::tests::the_parser_rejects_a_query_without_an_explain_query_plan ... ok
+test corpus_measure::tests::the_parser_rejects_a_report_with_zero_measured_scales ... ok
+test corpus_measure::tests::the_parser_rejects_a_zero_valued_measurement_field ... ok
+test corpus_package::tests::the_checksum_sidecar_uses_the_format_sha256sum_dash_c_accepts ... ok
+test corpus_measure::tests::the_parser_rejects_a_placeholder_anywhere_in_the_report ... ok
+test corpus_package::tests::the_manifest_round_trips_through_json_without_losing_a_field ... ok
+test corpus_measure::tests::the_parser_rejects_fewer_than_eight_representative_queries ... ok
+test corpus_measure::tests::the_written_report_records_why_the_budget_was_raised_from_two_hundred_fifty ... ok
+test mobile_distribution::tests::frozen_distribution_constants_cannot_be_relaxed_silently ... ok
+test mobile_distribution::tests::forbidden_asset_guard_catches_corpus_and_voice_models ... ok
+test mobile_distribution::tests::abi_detector_distinguishes_split_from_universal_archives ... ok
+test acceptance::tests::ime_assertion_carries_an_explicit_verdict_in_the_report ... ok
+test prerequisite::tests::a_missing_path_yields_an_actionable_message ... ok
+test corpus_measure::tests::the_scale_keys_parse_and_round_trip ... ok
+test mobile_distribution::tests::a_missing_abi_is_reported_with_its_cause ... ok
+test acceptance::tests::three_android_criteria_can_reach_pass_from_a_real_device_log ... ok
+test acceptance::tests::all_pass_is_true_only_when_everything_passed ... ok
+test mobile_distribution::tests::the_abi_to_triple_map_agrees_with_the_voice_build_script ... ok
+test tests::corpus_measure_uses_the_shipped_fixture_directories_by_default ... ok
+test verify_icons::tests::classify_rejects_a_third_solid_colour ... ok
+test verify_icons::tests::colour_count_separates_native_render_from_downscale ... ok
+test verify_icons::tests::catches_a_tier_whose_strokes_are_thinner_than_its_grid ... ok
+test acceptance::tests::the_rationale_argues_the_verdict_the_report_actually_carries ... ok
+test acceptance::tests::report_has_no_unlisted_assertion_and_no_blank_verdict ... ok
+test corpus_package::tests::a_corrupted_artifact_fails_to_decompress_at_all ... ok
+test prerequisite::tests::an_existing_path_is_accepted ... ok
+test verify_icons::tests::contact_sheet_covers_every_required_ico_size ... ok
+test verify_icons::tests::expected_units_match_the_generator_per_tier ... ok
+test verify_icons::tests::magnification_factor_is_integral_and_centred ... ok
+test verify_icons::tests::measures_the_shipped_skeleton_from_pixels ... ok
+test verify_icons::tests::parses_ico_directory_preserving_order_and_256_encoding ... ok
+test verify_icons::tests::layer_order_is_observable_not_just_the_set ... ok
+test verify_icons::tests::failures_report_every_item ... ok
+test verify_icons::tests::rejects_ico_with_bad_header ... ok
+test verify_icons::tests::rejects_a_one_pixel_clearance ... ok
+test verify_models::tests::bundled_copyleft_without_impact_statement_is_rejected ... ok
+test verify_models::tests::empty_production_asr_or_tts_fails_the_gate ... ok
+test verify_icons::tests::rejects_the_v5_solid_seal_with_two_bars ... ok
+test corpus_measure::tests::gzip_size_counts_bytes_without_writing_a_file ... ok
+test verify_models::tests::denylisted_names_are_rejected_naming_the_model ... ok
+test verify_icons::tests::rejects_a_vertically_symmetric_glyph ... ok
+test verify_models::tests::license_field_must_match_the_evidence_text ... ok
+test corpus_package::tests::a_single_flipped_byte_changes_the_artifact_digest ... ok
+test verify_icons::tests::decodes_rgb_png_as_opaque_rgba_so_flattened_sources_are_caught ... ok
+test acceptance::mobile::ios_project::tests::the_shipped_ios_project_satisfies_every_structural_requirement ... ok
+test verify_models::tests::model_card_evidence_requires_the_front_matter_line ... ok
+test verify_sources::tests::full_sha1_rejects_branch_names_and_short_revs ... ok
+test verify_sources::tests::iso_date_shape ... ok
+test verify_models::tests::unverified_license_is_rejected_naming_the_model ... ok
+test verify_sources::tests::denylist_item_parser_takes_first_backticked_token ... ok
+test verify_models::tests::shipped_manifest_parses_and_only_holds_allowed_licenses ... ok
+test acceptance::tests::unavailable_mobile_devices_produce_a_complete_auditable_full_report ... ok
+test verify_sources::tests::sha256_matches_nist_vectors ... ok
+test verify_models::tests::shipped_manifest_holds_no_denylisted_model ... ok
+test acceptance::tests::the_committed_mobile_report_still_describes_the_current_sources ... ok
+test verify_sources::tests::shipped_manifest_holds_no_denylisted_source ... ok
+test verify_models::tests::vendored_evidence_matches_recorded_hashes_and_declares_the_license ... ok
+test verify_icons::tests::contact_sheet_cells_contain_icon_pixels_not_just_backdrop ... ok
+test verify_sources::tests::vendored_licenses_match_recorded_hashes ... ok
+test verify_sources::tests::shipped_manifest_parses_and_has_no_unverified_shippable_asset ... ok
+test acceptance::mobile::provenance::tests::a_recorded_only_source_may_drift_without_failing ... ok
+test acceptance::mobile::provenance::tests::every_tested_path_exists_and_hashes_to_a_stable_digest ... ok
+test acceptance::mobile::provenance::tests::a_changed_tested_source_fails_verification ... ok
+test acceptance::tests::mobile_full_parser_rejects_an_unlisted_assertion_and_blank_verdict ... ok
+test verify_icons::tests::backdrop_probe_catches_a_single_polluted_cell ... ok
+test acceptance::tests::an_injected_failure_makes_tauri_mobile_unreachable ... ok
+test acceptance::mobile::provenance::tests::a_dropped_path_from_the_manifest_fails_verification ... ok
+test verify_icons::tests::compensation_sheet_places_both_palettes_side_by_side ... ok
+test verify_icons::tests::small_sheet_stays_within_native_viewing_budget ... ok
+test corpus_package::tests::compression_is_deterministic_so_the_digest_is_reproducible ... ok
+test corpus_package::tests::the_round_trip_check_rejects_a_truncated_artifact_before_opening_it ... ok
+test corpus_package::tests::the_round_trip_check_rejects_a_manifest_describing_another_build ... ok
+test corpus_package::tests::the_round_trip_check_rejects_an_artifact_carrying_a_diagnostic_table ... ok
+test verify_icons::tests::cell_margins_are_uniform_across_tiers ... ok
+test mobile_distribution::tests::no_artifact_report_is_explicitly_not_complete ... ok
+test acceptance::tests::dropping_a_background_process_reaps_its_child ... ok
+test acceptance::device_farm::tests::probe_command_pins_the_region_and_the_pool ... ok
+
+test result: ok. 182 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.73s
+
+     Running tests/acceptance_semantics.rs (target/debug/deps/acceptance_semantics-f5067ea00f759691)
+
+running 5 tests
+test the_corpus_release_workflow_verifies_the_release_after_publishing_it ... ok
+test no_workflow_prints_a_gh_jq_result_without_asserting_it ... ok
+test workflows_only_request_json_fields_gh_actually_supports ... ok
+test every_tee_pipeline_in_ci_is_protected_from_losing_the_exit_code ... ok
+test jq_assertions_are_either_dash_e_or_compared ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_ai-4f675550f3d0050a)
+
+running 63 tests
+test keystore::tests::persistence_mapping_covers_every_upstream_variant_conservatively ... ok
+test keystore::tests::keyutils_persistence_maps_to_login_session_not_persistent ... ok
+test keystore::tests::keyring_no_entry_error_becomes_absent_rather_than_propagating ... ok
+test keystore::tests::missing_key_is_absent_plus_reprompt_not_an_error ... ok
+test keystore::tests::round_trip_get_set_delete ... ok
+test keystore::tests::real_keyutils_store_reports_login_session ... ok
+test keystore::tests::settings_string_says_system_keychain_only_when_persistent_and_os_encrypted ... ok
+test keystore::tests::settings_string_for_keyutils_is_not_system_keychain ... ok
+test keystore::tests::session_secret_zeroizes_on_drop ... ok
+test keystore::tests::report_field_vocabularies_are_stable ... ok
+test pregenerate::tests::dataset_push_rejects_a_record_whose_licence_is_not_open_weight ... ok
+test pregenerate::tests::duplicate_stable_ids_are_rejected_because_the_shipped_table_would_overwrite ... ok
+test pregenerate::tests::a_dataset_declaring_no_inference_must_carry_the_marker_in_every_record ... ok
+test pregenerate::tests::disclosure_gate_requires_every_marker ... ok
+test keystore::tests::debug_output_of_keystore_and_report_carries_no_secret ... ok
+test pregenerate::tests::every_closed_api_provider_is_rejected_naming_the_open_weight_requirement ... ok
+test pregenerate::tests::licence_outside_the_allow_list_is_rejected_by_name ... ok
+test pregenerate::tests::ollama_is_not_treated_as_a_closed_api_provider ... ok
+test pregenerate::tests::open_weight_licence_allow_list_is_exactly_mit_and_apache ... ok
+test pregenerate::tests::open_weight_model_accepts_mit_weights_on_a_local_runtime ... ok
+test pregenerate::tests::pregeneration_refuses_to_read_the_local_cache_table ... ok
+test pregenerate::tests::missing_provenance_fields_are_rejected_field_by_field ... ok
+test pregenerate::tests::reviewed_true_is_rejected_because_no_review_path_exists ... ok
+test pregenerate::tests::records_convert_into_shipped_rows_matching_the_shipped_table_columns ... ok
+test pregenerate::tests::unknown_runtime_is_rejected_even_when_it_is_not_a_known_closed_provider ... ok
+test keystore::tests::keystore_errors_never_render_the_key ... ok
+test keystore::tests::session_memory_reports_process_only ... ok
+test genai_provider::tests::a_provider_that_requires_a_key_refuses_to_build_without_one ... ok
+test genai_provider::tests::config_debug_only_reports_non_secret_shape ... ok
+test provider::tests::provider_grounding_contains_known_facts_and_preserved_citation ... ok
+test provider::tests::provider_null_provider_returns_typed_no_key_outcome ... ok
+test provider::tests::provider_stream_uses_core_operation_handle ... ok
+test provider::tests::provider_cache_key_includes_template_version ... ok
+test pregenerate::tests::dataset_json_is_a_top_level_array_carrying_every_required_field ... ok
+test keystore::tests::plaintext_file_refuses_to_write_without_opt_in ... ok
+test provider::tests::provider_request_defaults_to_deterministic_versioned_template ... ok
+test genai_provider::tests::endpoint_rejects_userinfo_and_sensitive_query_keys ... ok
+test pregenerate::tests::sha256_matches_the_reference_digest_of_the_empty_input ... ok
+test keystore::tests::plaintext_file_tightens_permissions_on_a_preexisting_loose_file ... ok
+test pregenerate::tests::coverage_target_is_declared_as_the_four_anthology_tags ... ok
+test keystore::tests::plaintext_file_is_mode_0600 ... ok
+test keystore::tests::plaintext_file_reports_plaintext_and_warns ... ok
+test stream::tests::appreciation_operation_adapter_obeys_all_core_protocol_rules ... ok
+test genai_provider::tests::debug_rendering_never_leaks_the_key ... ok
+test genai_provider::tests::provider_debug_does_not_render_endpoint_or_extra_body ... ok
+test genai_provider::tests::an_upstream_401_names_the_provider_without_leaking_the_key ... ok
+test genai_provider::tests::a_custom_base_url_is_honoured_by_the_service_target_resolver ... ok
+test genai_provider::tests::the_resolver_key_reaches_the_authorization_header_without_touching_the_environment ... ok
+test stream::tests::first_chunk_arrives_before_server_finishes_then_usage_and_complete_are_cached ... ok
+test stream::tests::malformed_mid_stream_transport_is_typed_failed_and_never_cached ... ok
+test cache::tests::mismatched_seed_is_refused_with_every_version_named_before_any_row_is_written ... ok
+test stream::tests::cancelling_mid_stream_stops_chunks_within_100_ms_and_never_caches_partial_text ... ok
+test cache::tests::shipped_hit_is_provider_independent_and_performs_zero_provider_calls ... ok
+test cache::tests::cold_poem_calls_once_then_uses_the_user_paid_cache ... ok
+test cache::tests::cache_writes_never_modify_the_read_only_corpus_file ... ok
+test pregenerate::tests::seed_rows_are_accepted_by_the_shipped_cache_and_then_hit_for_another_provider ... ok
+test pregenerate::tests::resume_ignores_rows_the_user_paid_for_and_only_skips_shipped_rows ... ok
+test cache::tests::template_version_bump_misses_both_tiers ... ok
+test cache::tests::changed_grounding_marks_shipped_stale_and_falls_through_but_metadata_only_edit_hits ... ok
+test cache::tests::interrupted_seed_replacement_rolls_back_rows_and_metadata ... ok
+test cache::tests::lru_eviction_removes_only_user_paid_rows ... ok
+test cache::tests::seed_upgrade_replaces_shipped_rows_preserves_local_cache_and_reports_staleness ... ok
+test cache::tests::purge_scopes_delete_only_matching_user_paid_rows ... ok
+
+test result: ok. 63 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/linux_no_dbus.rs (target/debug/deps/linux_no_dbus-88529f0bdda6ec84)
+
+running 2 tests
+test child_probes_store_selection_without_dbus ... ignored, 由 without_secret_service_falls_back_to_keyutils_and_ui_never_says_system_keychain 以子进程调用
+test without_secret_service_falls_back_to_keyutils_and_ui_never_says_system_keychain ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_app-9f8eb19046da7550)
+
+running 34 tests
+test ipc::tests::blocking_workers_cannot_await_or_build_a_nested_runtime ... ok
+test ipc::tests::dictionary_database_lookup_runs_on_the_blocking_pool ... ok
+test ipc::tests::synchronous_cancel_is_not_queued_behind_a_long_worker ... ok
+test tray::tests::menu_ids_map_to_exactly_four_actions ... ok
+test tray::tests::only_left_button_down_toggles_the_window ... ok
+test updater::tests::current_target_is_one_of_the_release_manifest_keys ... ok
+test ipc::tests::streaming_uses_channels_without_events_or_eval ... ok
+test updater::tests::network_errors_are_readable_and_do_not_echo_proxy_credentials ... ok
+test voice_ipc::rig::tests::default_build_reports_the_feature_flag_as_the_reason ... ok
+test ipc::tests::no_command_returns_audio_as_a_byte_vector ... ok
+test ipc::tests::dropping_appreciation_cancels_before_cache_write ... ok
+test voice_ipc::wire_tests::every_degrade_reason_has_a_distinct_wire_key ... ok
+test voice_ipc::wire_tests::every_fetch_stage_maps_onto_a_distinct_wire_string ... ok
+test voice_ipc::wire_tests::marks_use_a_millisecond_timebase ... ok
+test voice_ipc::wire_tests::async_command_bodies_never_block_the_runtime ... ok
+test ipc::tests::dictionary_ipc_has_no_modern_lexicon_extension_surface ... ok
+test voice_ipc::wire_tests::blocking_workers_neither_await_nor_nest_a_runtime ... ok
+test voice_ipc::wire_tests::the_windows_exclusion_is_declared_with_its_reason_and_follow_up ... ok
+test voice_ipc::wire_tests::every_voice_command_is_async ... ok
+test voice_ipc::wire_tests::voice_streaming_never_uses_events_or_eval ... ok
+test voice_ipc::wire_tests::no_voice_command_returns_audio_as_a_byte_vector ... ok
+test ipc::tests::every_registered_business_command_is_async ... ok
+test voice_ipc::tests::demonstration_refuses_with_the_specific_reason_when_voice_is_unavailable ... ok
+test voice_ipc::tests::a_denied_microphone_switches_to_typed_practice_with_the_reason ... ok
+test ipc::tests::channel_adapter_obeys_the_workspace_operation_protocol ... ok
+test voice_ipc::tests::model_download_reports_progress_and_lands ... ok
+test voice_ipc::tests::demonstration_returns_a_url_and_one_mark_per_foot ... ok
+test voice_ipc::tests::model_download_is_cancellable ... ok
+test voice_ipc::tests::a_mid_session_device_loss_degrades_without_losing_progress ... ok
+test voice_ipc::tests::asr_partials_arrive_over_the_channel ... ok
+test voice_ipc::tests::a_running_session_does_not_serialize_other_commands ... ok
+test voice_ipc::tests::the_final_report_never_carries_the_biased_hypothesis ... ok
+test voice_ipc::tests::report_payload_keys_are_frozen ... ok
+test voice_ipc::tests::highlight_marks_match_the_synthesis_segment_count ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s
+
+     Running unittests src/main.rs (target/debug/deps/yunjian_desktop-e7112b95765bcd55)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bundle_icons.rs (target/debug/deps/bundle_icons-0a65dfbbf196a506)
+
+running 3 tests
+test tray_icon_exists_because_bundle_icon_does_not_cover_it ... ok
+test first_entry_per_extension_matches_what_codegen_picks ... ok
+test every_referenced_icon_exists_on_disk ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bundle_targets.rs (target/debug/deps/bundle_targets-6ffda767e798b856)
+
+running 6 tests
+test bundle_recipe_fails_when_an_artifact_is_missing ... ok
+test bundle_verification_covers_every_required_artifact_kind ... ok
+test bundle_recipe_runs_without_a_release_signing_key ... ok
+test linux_auto_update_requires_the_appimage_artifact ... ok
+test release_matrix_is_locked_to_six_native_platform_targets ... ok
+test the_release_path_still_signs_and_never_borrows_the_local_no_sign_switch ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tray_contract.rs (target/debug/deps/tray_contract-11228843af2fd9ba)
+
+running 2 tests
+test tray_module_is_wired_into_setup_and_window_events ... ok
+test tray_source_keeps_the_four_required_actions_and_distinct_handlers ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/updater_contract.rs (target/debug/deps/updater_contract-5e9127ddd255e295)
+
+running 7 tests
+test background_startup_check_failure_never_opens_a_modal_dialog ... ok
+test startup_check_has_an_acceptance_isolation_switch ... ok
+test updater_plugin_and_startup_check_are_wired_into_the_builder ... ok
+test updater_configuration_requires_signed_artifacts_and_a_stable_endpoint ... ok
+test updater_enables_system_proxy_and_sanitizes_network_errors ... ok
+test updater_commands_stream_progress_and_release_check_only_resources ... ok
+test updater_uses_a_closed_platform_key_set ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/window_capabilities.rs (target/debug/deps/window_capabilities-6d2748db42929615)
+
+running 5 tests
+test capability_grants_exactly_the_minimal_set ... ok
+test capability_targets_the_same_window_label_as_both_configs ... ok
+test the_frontend_ipc_layer_declares_exactly_the_methods_these_permissions_cover ... ok
+test extra_window_permissions_are_genuinely_absent_from_the_default_set ... ok
+test permissions_already_in_the_default_set_are_not_granted_twice ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/window_config.rs (target/debug/deps/window_config-ef7cc3838f5e2dd3)
+
+running 9 tests
+test crate_opts_into_the_workspace_lint_gate ... ok
+test base_config_disables_decorations_and_keeps_shadow ... ok
+test both_icon_formats_exist_because_two_different_code_paths_require_them ... ok
+test frontend_dist_points_at_the_react_app ... ok
+test geometry_fields_are_restated_and_equal ... ok
+test logging_goes_through_the_project_convention_not_a_tauri_plugin ... ok
+test title_bar_style_is_declared_only_on_macos ... ok
+test macos_overlay_keeps_native_decorations_with_an_overlay_title_bar ... ok
+test overlay_declares_the_same_window_set_as_the_base ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_cli-c94cdf38aa8cfbdc)
+
+running 87 tests
+test cli::tests::books_and_tones_convert_to_core_types ... ok
+test cli::tests::log_levels_match_the_core_level_table ... ok
+test cli::tests::the_binary_is_named_yunjian_not_yunjian_cli ... ok
+test cli::tests::global_flags_are_accepted_after_the_subcommand ... ok
+test cli::tests::search_defaults_to_ten_hits_and_no_filters ... ok
+test cli::tests::global_flags_are_accepted_before_the_subcommand ... ok
+test command::tests::status_resolves_the_first_two_levels_only ... ok
+test command::tests::the_corpus_flag_overrides_the_configured_path ... ok
+test cli::tests::rhyme_requires_an_explicit_book ... ok
+test command::tests::status_reports_a_missing_corpus_without_materializing_anything ... ok
+test cli::tests::assets_has_exactly_status_and_fetch ... ok
+test cli::tests::the_mcp_subcommand_exists_so_the_entry_name_is_fixed_from_day_one ... ok
+test cli::tests::every_command_maps_to_a_stable_ascii_envelope_name ... ok
+test cli::tests::corpus_has_exactly_status_and_fetch ... ok
+test command::tests::without_the_flag_the_configured_corpus_survives ... ok
+test envelope::tests::empty_status_is_not_an_error_and_keeps_its_payload ... ok
+test envelope::tests::every_status_warning_and_error_code_serializes_to_snake_case_ascii ... ok
+test cli::tests::serving_and_installing_are_two_different_envelope_names ... ok
+test envelope::tests::failure_renders_message_and_hint_for_stderr ... ok
+test envelope::tests::failure_envelope_omits_data_and_keeps_a_stable_code ... ok
+test cli::tests::install_requires_an_explicit_client_because_the_two_shapes_are_not_interchangeable ... ok
+test envelope::tests::success_envelope_carries_the_four_always_present_keys ... ok
+test envelope::tests::hint_is_omitted_rather_than_null_when_absent ... ok
+test envelope::tests::warnings_survive_serialization_with_code_and_message ... ok
+test exit::model_tests::a_missing_model_is_three_and_points_at_models_fetch_not_the_corpus ... ok
+test exit::model_tests::a_refused_license_is_two_and_never_suggests_downloading_again ... ok
+test exit::tests::a_bad_request_is_two_and_a_data_defect_is_three ... ok
+test exit::tests::a_missing_api_key_is_two_and_points_at_the_keychain_not_the_corpus ... ok
+test exit::tests::a_missing_corpus_is_three_and_always_names_the_fetch_command ... ok
+test exit::tests::an_unshipped_rhyme_book_is_a_usage_error_not_a_missing_corpus ... ok
+test exit::tests::corpus_failure_carries_the_hint_by_construction ... ok
+test exit::tests::the_four_codes_are_exactly_zero_one_two_three ... ok
+test mcp_install::jsonc::tests::a_brace_inside_a_string_does_not_end_the_object ... ok
+test mcp_install::jsonc::tests::a_multibyte_comment_is_replaced_byte_for_byte ... ok
+test mcp_install::jsonc::tests::a_non_object_root_is_reported_rather_than_guessed ... ok
+test mcp_install::jsonc::tests::escaped_quotes_do_not_end_the_string ... ok
+test mcp_install::jsonc::tests::members_are_located_in_source_order ... ok
+test mcp_install::jsonc::tests::block_comments_keep_their_newlines_so_error_line_numbers_stay_true ... ok
+test cli::tests::ai_cache_purge_requires_exactly_one_scope ... ok
+test mcp_install::jsonc::tests::comments_survive_the_upsert ... ok
+test mcp_install::jsonc::tests::only_direct_members_are_found ... ok
+test mcp_install::jsonc::tests::slashes_inside_strings_are_not_comments ... ok
+test mcp_install::jsonc::tests::stripping_comments_preserves_every_byte_offset ... ok
+test mcp_install::jsonc::tests::upserting_an_existing_member_replaces_only_its_value ... ok
+test mcp_install::tests::a_missing_platform_directory_is_reported_with_an_actionable_hint ... ok
+test mcp_install::tests::a_fresh_claude_config_gets_a_string_command_and_a_separate_args_array ... ok
+test cli::tests::the_command_definition_itself_is_valid ... ok
+test mcp_install::tests::a_fresh_opencode_config_gets_an_array_command_including_the_argument ... ok
+test mcp_install::tests::a_stale_entry_is_replaced_rather_than_duplicated ... ok
+test mcp_install::tests::an_invalid_config_is_refused_instead_of_replaced ... ok
+test mcp_install::tests::opencode_defaults_to_the_project_file_and_global_switches_to_xdg ... ok
+test mcp_install::tests::merging_into_a_config_without_the_container_key_keeps_the_other_top_level_keys ... ok
+test mcp_install::jsonc::tests::upserting_into_a_populated_object_leaves_the_other_members_byte_identical ... ok
+test mcp_install::jsonc::tests::upserting_into_an_empty_object_produces_a_single_member ... ok
+test mcp_install::tests::an_unrelated_server_entry_survives_the_merge_byte_identically ... ok
+test mcp_install::tests::a_non_object_root_is_refused ... ok
+test mcp_install::jsonc::tests::nested_arrays_and_objects_are_skipped_whole ... ok
+test output::tests::a_next_cursor_is_rendered_as_a_ready_to_paste_flag ... ok
+test output::tests::filters_hits_ignores_the_annotation_only_option ... ok
+test output::tests::a_ready_derived_state_omits_the_reason_field ... ok
+test output::tests::search_json_and_human_output_agree_on_the_hit_count ... ok
+test mcp_install::tests::the_two_clients_never_share_a_shape ... ok
+test mcp_install::tests::a_container_key_that_is_not_an_object_is_refused_rather_than_clobbered ... ok
+test mcp_install::tests::installing_twice_is_idempotent ... ok
+test output::tests::a_degraded_derived_state_is_spelled_out_in_both_forms ... ok
+test provision::tests::degradation_explains_itself_and_stays_silent_when_ready ... ok
+test mcp_install::tests::an_explicit_path_overrides_every_derivation ... ok
+test provision::tests::a_missing_corpus_reports_a_reason_instead_of_panicking ... ok
+test mcp_install::tests::claude_always_resolves_to_the_user_level_file ... ok
+test mcp_install::tests::comments_in_a_json_named_file_are_preserved_and_do_not_break_parsing ... ok
+test exit::model_tests::an_unknown_name_is_two_and_sends_the_caller_to_the_list_command ... ok
+test provision::tests::milestones_and_progress_partition_every_materialization_event ... ok
+test provision::tests::unknown_total_reports_minus_one_rather_than_zero_percent ... ok
+test tests::a_failed_report_becomes_a_failed_envelope_without_data ... ok
+test tests::the_envelope_mirrors_the_report_status_and_keeps_warnings ... ok
+test tests::the_voice_backend_probe_stays_callable_so_the_native_link_survives ... ok
+test tests::the_log_level_flag_overrides_the_configured_level ... ok
+test mcp_install::tests::a_dry_run_touches_nothing ... ok
+test mcp_install::tests::a_yunjian_on_path_is_written_as_the_bare_name ... ok
+test mcp_install::tests::a_different_yunjian_earlier_on_path_forces_the_absolute_path ... ok
+test mcp_install::tests::a_refused_config_is_left_on_disk_untouched ... ok
+test mcp_install::tests::a_renamed_executable_never_becomes_the_bare_name ... ok
+test mcp_install::tests::an_existing_jsonc_project_file_is_preferred_over_creating_a_json_one ... ok
+test mcp_install::tests::an_executable_outside_path_is_written_as_an_absolute_path ... ok
+test mcp_install::tests::the_dry_run_payload_renders_the_document_and_the_write_payload_reports_the_action ... ok
+test mcp_install::tests::writing_creates_a_backup_only_when_it_changes_an_existing_file ... ok
+test command::tests::ai_cache_purge_uses_app_data_and_preserves_shipped_rows ... ok
+
+test result: ok. 87 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running unittests src/main.rs (target/debug/deps/yunjian-598b62fe203b5128)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (target/debug/deps/cli-ab4d6e2c3384181b)
+
+running 32 tests
+test the_shipped_crates_have_exactly_one_stdout_exemption ... ok
+test a_missing_corpus_in_json_mode_puts_the_hint_in_the_envelope ... ok
+test corpus_status_on_an_empty_data_dir_exits_three_without_materializing ... ok
+test models_list_reports_every_manifest_entry_with_its_license_and_never_opens_the_corpus ... ok
+test models_remove_on_an_empty_cache_exits_one_rather_than_claiming_it_deleted_something ... ok
+test models_remove_deletes_a_present_cache_and_reports_what_went ... ok
+test models_verify_rejects_a_local_archive_whose_digest_does_not_match ... ok
+test models_fetch_with_an_unknown_name_exits_two_and_lists_the_real_names ... ok
+test a_missing_corpus_exits_three_and_names_the_fetch_command ... ok
+test a_model_problem_never_points_at_corpus_fetch ... ok
+test models_list_in_human_mode_names_the_attribution_directory ... ok
+test models_fetch_on_a_present_model_returns_immediately_without_downloading ... ok
+test models_verify_on_an_empty_cache_succeeds_because_nothing_local_is_not_a_failure ... ok
+test an_unknown_flag_exits_two ... ok
+test corpus_fetch_opens_the_configured_corpus_and_reports_it_ready ... ok
+test show_on_an_unknown_id_exits_one_because_it_is_a_miss_not_a_broken_corpus ... ok
+test human_output_also_lands_on_stdout_without_any_log_text ... ok
+test a_zero_limit_is_a_usage_error ... ok
+test a_query_with_no_hits_exits_one_and_is_not_reported_as_an_error ... ok
+test a_two_character_query_returns_results_as_json_while_logs_stay_on_stderr ... ok
+test the_rhyme_book_option_annotates_hits_without_filtering_them ... ok
+test the_author_filter_narrows_the_page_and_explains_an_emptied_page ... ok
+test author_lists_the_works_and_reports_the_total ... ok
+test rhyme_search_requires_a_book_and_finds_the_anchor ... ok
+test show_renders_a_poem_with_its_tones_rhymes_and_sourced_commentary ... ok
+test corpus_status_reports_the_shape_of_the_corpus_it_actually_opened ... ok
+test an_unshipped_rhyme_book_exits_two_rather_than_answering_no ... ok
+test the_two_character_query_uses_the_ngram_candidate_path ... ok
+test trace_level_logging_cannot_pollute_the_json_pipe ... ok
+test assets_status_json_reports_corpus_seed_versions_record_count_and_staleness ... ok
+test the_mcp_subcommand_enters_stdio_mode_without_a_cli_envelope ... ok
+test corpus_fetch_imports_a_nonempty_seed_and_is_idempotent ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.59s
+
+     Running tests/distribution_licenses.rs (target/debug/deps/distribution_licenses-98b5d9740ce0a14c)
+
+running 7 tests
+test the_desktop_bundle_declares_mit_and_ships_the_license_file ... ok
+test the_release_workflow_stages_the_license_payload_into_the_cli_archive ... ok
+test both_archive_formats_verify_the_license_payload_after_packing ... ok
+test the_license_payload_holds_exactly_the_files_that_must_ship ... ok
+test the_notice_names_the_component_the_license_and_where_to_get_the_source ... ok
+test the_shipped_gpl_text_is_the_recorded_upstream_copying_file ... ok
+test the_shipped_mit_copy_is_byte_identical_to_the_repository_license ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/install_scripts.rs (target/debug/deps/install_scripts-7e81665d26be6474)
+
+running 8 tests
+test the_quickstart_shows_install_then_fetch_then_search_in_order ... ok
+test the_readme_carries_both_mcp_client_shapes_and_each_one_parses ... ok
+test the_llm_section_is_collapsible_and_states_the_stream_and_exit_code_contract ... ok
+test both_installers_honour_the_same_environment_variable_names ... ok
+test a_tampered_asset_aborts_with_exit_three_and_installs_nothing ... ok
+test an_unset_version_is_not_required_to_be_a_v_prefixed_tag ... ok
+test a_verified_asset_lands_in_the_default_directory ... ok
+test a_missing_musl_asset_falls_back_to_the_gnu_build ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/mcp_install.rs (target/debug/deps/mcp_install-94da02f419761e5c)
+
+running 14 tests
+test a_missing_client_is_a_usage_error ... ok
+test a_dry_run_over_an_existing_config_leaves_it_byte_identical ... ok
+test a_dry_run_prints_the_resulting_file_to_stdout_and_touches_nothing ... ok
+test a_container_key_that_is_not_an_object_is_refused_rather_than_clobbered ... ok
+test global_on_claude_reports_that_it_changed_nothing ... ok
+test an_invalid_config_is_refused_with_exit_two_and_left_untouched ... ok
+test a_fresh_claude_config_gets_a_string_command_and_args_mcp ... ok
+test a_backup_file_is_created_before_an_existing_config_is_rewritten ... ok
+test a_fresh_opencode_config_gets_an_array_command_and_type_local ... ok
+test an_executable_off_path_is_registered_by_absolute_path ... ok
+test opencode_without_global_writes_the_project_file_in_the_working_directory ... ok
+test comments_in_a_json_named_config_survive_and_do_not_break_the_merge ... ok
+test an_existing_unrelated_server_entry_survives_the_merge_byte_identically ... ok
+test a_newly_created_config_needs_no_backup_and_a_reinstall_writes_nothing ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/recite.rs (target/debug/deps/recite-a55f9fb78736f7e2)
+
+running 20 tests
+test the_cli_carries_no_scoring_logic_of_its_own ... ok
+test a_missing_corpus_exits_three_and_names_the_fetch_command ... ok
+test an_unknown_mode_exits_two_and_lists_the_real_modes ... ok
+test an_out_of_range_ratio_exits_two_with_a_readable_message ... ok
+test every_rejected_ratio_shape_exits_two_however_it_was_written ... ok
+test recite_due_on_an_empty_schedule_exits_one_rather_than_failing ... ok
+test an_unknown_poem_id_exits_two_and_sends_the_caller_to_search ... ok
+test an_empty_answer_exits_two_without_recording_a_review ... ok
+test a_wrong_answer_marks_every_character_and_lists_the_differences ... ok
+test voice_mode_falls_back_to_typing_and_still_exits_zero ... ok
+test the_seed_is_echoed_so_a_session_can_be_replayed_without_having_passed_one ... ok
+test a_user_chosen_grade_overrides_the_typed_mapping ... ok
+test the_voice_fallback_is_a_warning_in_the_envelope_not_an_error ... ok
+test the_json_envelope_keeps_the_documented_shape_and_carries_the_full_score ... ok
+test a_perfect_typed_answer_prints_a_full_score_and_exits_zero ... ok
+test recite_due_lists_the_schedule_after_a_review ... ok
+test first_char_and_masked_modes_run_without_any_cloze_parameter ... ok
+test recite_stats_reports_the_distribution_and_the_thresholds_in_effect ... ok
+test recite_due_without_all_lists_only_what_is_due_today ... ok
+test the_same_seed_reproduces_the_same_cloze_blanks ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.63s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_core-24c58625eefc953e)
+
+running 175 tests
+test config::tests::child_asserts_env_invalid_toml ... ignored, 由 init_config_via_env_returns_err_for_invalid_toml 带着 APP_CONFIG 拉起
+test config::tests::child_asserts_first_run ... ignored, 由 first_run_end_to_end_in_an_empty_environment 带着隔离的家目录拉起
+test api::tests::facade_is_one_cheap_cloning_arc ... ok
+test api::tests::facade_exposes_every_search_path_with_typed_arguments ... ok
+test api::tests::every_public_request_and_response_is_owned_serializable_send_sync_static ... ok
+test config::tests::user_config_path_ends_with_app_scoped_config_file ... ok
+test config::tests::defaults_match_the_documented_contract ... ok
+test config::tests::only_two_env_overrides_exist ... ok
+test corpus::tests::a_sibling_suffix_appends_rather_than_replacing_the_extension ... ok
+test config::tests::first_run_never_overwrites_an_existing_file ... ok
+test corpus::tests::a_partial_temp_file_is_never_mistaken_for_the_materialized_corpus ... ok
+test config::tests::explicit_sources_do_not_silently_fall_through ... ok
+test corpus::tests::a_missing_corpus_names_every_place_that_was_looked_at ... ok
+test config::tests::config_carries_no_credential_shaped_field ... ok
+test api::tests::facade_source_contains_no_public_borrow_or_trait_object ... ok
+test config::tests::invalid_toml_reports_the_offending_path ... ok
+test config::tests::init_config_via_env_returns_err_for_invalid_toml ... ok
+test api::tests::dependency_manifest_excludes_shell_and_rejected_search_engines ... ok
+test corpus::tests::this_crate_declares_no_shell_framework_dependency ... ok
+test corpus::tests::the_sidecar_parser_requires_a_line_naming_this_archive ... ok
+test config::tests::get_config_panics_before_init - should panic ... ok
+test config::tests::toml_omitting_every_optional_table_still_parses ... ok
+test config::tests::default_template_mentions_every_field ... ok
+test config::tests::credential_key_in_config_file_is_rejected_by_name ... ok
+test config::tests::discovery_prefers_earlier_sources ... ok
+test config::tests::full_toml_parses_every_field ... ok
+test config::tests::first_run_materializes_a_commented_default_file ... ok
+test config::tests::default_template_round_trips_to_defaults ... ok
+test corpus::tests::version_comparison_ignores_prerelease_and_build_metadata ... ok
+test config::tests::first_run_end_to_end_in_an_empty_environment ... ok
+test derive::tests::an_illegal_recorded_detail_mode_is_rejected_before_anything_is_built ... ok
+test derive::tests::absent_structures_are_reported_before_any_query_runs ... ok
+test derive::tests::rhyme_and_metrical_splitters_have_deliberately_different_comma_semantics ... ok
+test derive::tests::the_external_content_fts_leaves_no_shadow_content_table ... ok
+test derive::tests::a_poem_whose_body_is_only_punctuation_is_not_expected_to_derive_anything ... ok
+test derive::tests::derived_grams_cover_one_and_two_characters_and_cross_line_boundaries ... ok
+test derive::tests::last_chars_are_derived_per_line_with_punctuation_stripped ... ok
+test error::tests::ai_error_does_not_store_the_key ... ok
+test derive::tests::grams_are_deduplicated_per_poem_but_not_across_poems ... ok
+test derive::tests::an_interrupted_build_leaves_no_half_populated_structure ... ok
+test error::tests::ai_error_keeps_the_diagnosable_part ... ok
+test error::tests::borrows_when_nothing_to_redact ... ok
+test error::tests::every_variant_displays_with_its_domain_prefix ... ok
+test error::tests::handles_multibyte_neighbours ... ok
+test error::tests::ai_error_never_renders_the_key ... ok
+test error::tests::keeps_prose_that_merely_mentions_a_credential_name ... ok
+test error::tests::keeps_short_identifiers ... ok
+test error::tests::redaction_is_idempotent ... ok
+test error::tests::redacts_prefixed_secrets ... ok
+test error::tests::redacts_scheme_tokens_but_keeps_the_scheme ... ok
+test error::tests::redacts_named_credentials_regardless_of_value_shape ... ok
+test error::tests::result_alias_is_usable ... ok
+test logger::tests::level_name_round_trips_through_parse_level ... ok
+test logger::tests::parse_level_accepts_the_documented_names_only ... ok
+test error::tests::io_and_db_errors_convert_with_from ... ok
+test derive::tests::a_partially_covered_structure_is_rejected ... ok
+test derive::tests::build_is_idempotent_and_reports_measured_counts_per_step ... ok
+test derive::tests::the_last_char_lookup_uses_its_index_after_first_launch_build ... ok
+test derive::tests::two_character_lookup_uses_the_covering_index_after_first_launch_build ... ok
+test derive::tests::a_missing_last_char_row_is_rejected_too ... ok
+test derive::tests::a_table_without_its_covering_index_counts_as_not_built ... ok
+test logger::tests::probe_dir_creates_missing_directories_and_leaves_nothing_behind ... ok
+test logger::tests::unknown_configured_level_falls_back_to_info_instead_of_silence ... ok
+test logger::tests::timer_resolution_never_panics ... ok
+test rhyme::tests::only_unresolved_is_not_a_positive_claim ... ok
+test rhyme::tests::querying_a_withheld_book_is_a_typed_error_not_an_empty_answer ... ok
+test rhyme::tests::shipped_books_pass_the_availability_gate ... ok
+test rhyme::tests::shipped_set_is_exactly_the_two_public_domain_books ... ok
+test rhyme::tests::xinyun_slot_exists_but_is_not_shipped ... ok
+test rhyme::tests::stable_keys_match_the_shipped_schema_checks ... ok
+test logger::tests::probe_dir_reports_an_unusable_location ... ok
+test rhyme::tests::keys_round_trip_and_are_distinct ... ok
+test rhyme::tests::tone_keys_are_distinct_and_only_level_is_level ... ok
+test logger::tests::utc_fallback_formats_a_zero_offset_timestamp ... ok
+test derive::tests::a_detail_mode_drifting_from_corpus_meta_is_rejected ... ok
+test logger::tests::passing_a_misspelled_level_straight_through_would_silence_everything ... ok
+test derive::tests::the_fts_table_is_built_from_the_mode_recorded_in_corpus_meta ... ok
+test operation::tests::core_operation_protocol_conforms ... ok
+2026-08-17T16:47:46.060692266+08:00  INFO yunjian_core::logger: 日志已初始化 level="info" json=false timezone="local" to_file=true dir=/tmp/yunjian-logger-reload-2467540-1786956466046566697-2
+2026-08-17T16:47:46.06083961+08:00  INFO yunjian_core::logger: 已在运行时调整日志级别 level="debug"
+test logger::tests::runtime_level_change_takes_effect ... ok
+test corpus::tests::an_out_of_range_schema_version_is_rejected_with_an_actionable_message ... ok
+2026-08-17T16:47:46.166367497+08:00  WARN yunjian_core::corpus: 首启派生结构不可用：两字查询将退化，下次启动会重试 corpus=/tmp/yunjian-corpus-open-derive-failure-2467540-0/corpus.db reason=I/O 错误：Is a directory (os error 21)
+test corpus::tests::a_failed_derivation_leaves_the_dictionary_usable ... ok
+test corpus::tests::a_configured_path_that_does_not_exist_is_an_error_not_a_silent_fallback ... ok
+test corpus::tests::a_manifest_declaring_an_unsupported_schema_is_refused_before_decompression ... ok
+test corpus::tests::an_archive_with_no_expected_digest_is_refused_rather_than_trusted ... ok
+test corpus::tests::a_manifest_naming_an_absent_artifact_is_an_error_not_a_fallback ... ok
+test corpus::tests::a_manifest_demanding_a_newer_app_is_refused_before_anything_is_written ... ok
+test corpus::tests::a_truncated_archive_is_diagnosed_as_truncated_rather_than_as_a_bad_digest ... ok
+test corpus::tests::a_checksum_mismatch_aborts_materialization_and_leaves_no_file ... ok
+test search::meta::tests::prefix_upper_bound_is_exclusive_and_survives_the_surrogate_gap ... ok
+test corpus::tests::an_already_materialized_copy_is_reused_without_reading_the_archive ... ok
+test corpus::tests::first_launch_derivation_runs_once_and_reports_every_step ... ok
+test corpus::tests::any_insert_against_the_opened_handle_is_a_read_only_error ... ok
+test corpus::tests::an_explicit_configured_path_is_used_as_is_and_nothing_is_materialized ... ok
+test corpus::tests::the_handle_is_cheap_to_clone_and_usable_from_several_threads ... ok
+test corpus::tests::a_sha256_sidecar_is_accepted_when_no_manifest_describes_the_archive ... ok
+test corpus::tests::a_verified_archive_is_materialized_atomically_and_recorded_with_its_corpus_version ... ok
+test corpus::tests::an_interrupted_materialization_restarts_cleanly_and_produces_a_valid_corpus ... ok
+test assets::tests::a_corrupted_seed_aborts_before_import_but_leaves_the_dictionary_usable ... ok
+test assets::tests::an_interrupted_import_keeps_the_previous_seed_and_the_corpus ... ok
+test assets::tests::a_fresh_profile_installs_the_corpus_and_imports_a_nonempty_seed_idempotently ... ok
+test search::dictionary::tests::engine_default_keeps_its_evidence_but_does_not_become_attested ... ok
+test search::dictionary::tests::one_character_returns_variants_raw_rhyme_facts_and_locators ... ok
+test search::dictionary::tests::two_character_query_is_one_request_but_never_synthesizes_a_definition ... ok
+test search::dictionary::tests::response_shape_has_no_slot_for_modern_dictionary_content ... ok
+test search::dictionary::tests::contextual_poyin_preserves_confidence_complete_evidence_and_location ... ok
+test search::dictionary::tests::query_rejects_empty_or_more_than_two_content_characters ... ok
+2026-08-17T16:47:46.686445241+08:00  WARN yunjian_core::corpus: 首启派生结构不可用：两字查询将退化，下次启动会重试 corpus=/tmp/yunjian-query-plan-2467540-7/corpus.db reason=数据库错误：no such column: body in SELECT stable_id, body FROM poem ORDER BY stable_id at offset 18
+test search::query::tests::unavailable_derived_indexes_degrade_short_queries_with_the_reason ... ok
+test corpus::tests::an_interrupted_derivation_is_detected_by_the_marker_and_redone ... ok
+test search::rhyme::tests::every_entry_point_requires_an_explicit_book ... ok
+test search::query::tests::detail_none_whole_line_uses_indexed_like_and_returns_the_fixture_poem ... ok
+test search::query::tests::generated_match_terms_have_no_prefix_wildcard ... ok
+test search::query::tests::empty_patterns_and_unconstrained_patterns_are_explicit ... ok
+test search::query::tests::two_character_sql_uses_the_ngram_constraint_without_scanning_poem ... ok
+test search::rhyme::tests::the_indexes_this_module_relies_on_exist_in_the_shipped_schema ... ok
+test search::rhyme::tests::the_sql_never_mentions_the_full_text_table ... ok
+test search::query::tests::metadata_plans_stay_out_of_the_full_text_router ... ok
+test search::query::tests::normalization_is_corpus_driven_and_keeps_pattern_syntax ... ok
+test search::text::tests::cursor_is_bound_to_the_normalized_query ... ok
+test search::text::tests::exact_line_selection_reports_the_best_matching_line_index ... ok
+test search::query::tests::length_and_runtime_detail_mode_choose_all_three_routes ... ok
+test search::text::tests::poem_id_is_the_final_deterministic_tiebreak ... ok
+test search::meta::tests::a_conflicting_attribution_returns_both_authors_with_their_sources ... ok
+test search::meta::tests::dropping_the_first_line_index_makes_the_plan_inspection_fail ... ok
+test search::meta::tests::a_malformed_cursor_is_rejected_instead_of_being_ignored ... ok
+test search::meta::tests::author_lookup_tolerates_a_dirty_upstream_author_value ... ok
+test search::meta::tests::an_unknown_dynasty_key_is_an_error_rather_than_an_empty_page ... ok
+test search::text::tests::handle_can_search_from_a_worker_thread ... ok
+test search::text::tests::ranks_domain_signals_and_builds_unicode_highlights_in_rust ... ok
+test search::meta::tests::exact_author_matches_rank_before_prefix_matches ... ok
+test search::meta::tests::every_metadata_query_uses_a_btree_index_and_never_touches_the_fts_table ... ok
+test search::meta::tests::dynasty_results_expose_both_the_canonical_key_and_the_raw_label ... ok
+test search::meta::tests::identical_input_yields_identical_ordering_across_runs ... ok
+test search::meta::tests::last_char_search_reads_the_derived_table_and_counts_poems_not_lines ... ok
+test search::meta::tests::first_line_prefix_matches_the_precomputed_column ... ok
+test search::meta::tests::punctuation_only_input_returns_an_empty_page_without_querying ... ok
+test search::meta::tests::paging_through_the_cursor_skips_nothing_and_repeats_nothing ... ok
+test search::topic::tests::the_asserted_index_names_match_the_shipped_schema ... ok
+test search::meta::tests::the_five_metadata_contract_classes_pass_against_the_production_functions ... ok
+test search::text::tests::hard_cap_cursor_and_tiebreak_page_thousands_without_gaps ... ok
+test search::topic::tests::the_upstream_undetermined_markers_map_to_unknown_not_to_level ... ok
+test search::rhyme::tests::a_tone_section_prefix_is_stripped_and_tone_still_filters ... ok
+test search::meta::tests::the_tune_half_is_validated_against_the_allow_list ... ok
+test text::tests::ascii_and_chinese_punctuation_are_both_recognized ... ok
+test text::tests::content_chars_drops_whitespace_and_both_punctuation_families ... ok
+test search::rhyme::tests::a_polyphone_matches_on_any_of_its_readings ... ok
+test search::rhyme::tests::a_ci_group_queried_against_pingshui_names_the_book_mismatch ... ok
+test search::rhyme::tests::an_uncollected_character_is_indeterminate_not_negative ... ok
+test search::meta::tests::the_three_upstream_title_conventions_all_resolve ... ok
+test search::rhyme::tests::a_withheld_book_is_an_error_never_an_empty_answer ... ok
+test search::meta::tests::title_branches_are_mutually_exclusive_so_a_poem_is_never_returned_twice ... ok
+test search::rhyme::tests::a_single_character_cannot_be_asked_to_rhyme ... ok
+test search::rhyme::tests::confidence_travels_with_every_hit ... ok
+test search::rhyme::tests::one_pair_gets_book_dependent_answers ... ok
+test search::rhyme::tests::queries_use_indexes_and_never_touch_the_full_text_table ... ok
+test search::rhyme::tests::two_characters_in_one_dong_rhyme_under_pingshui ... ok
+test search::rhyme::tests::unresolved_feet_never_produce_a_positive_claim ... ok
+test search::rhyme::tests::same_group_but_different_tone_explains_its_negative ... ok
+test search::topic::tests::a_character_whose_readings_are_all_oblique_stays_oblique_rather_than_ambiguous ... ok
+test search::topic::tests::a_character_read_in_both_level_and_oblique_is_either_and_carries_all_its_readings ... ok
+test search::topic::tests::a_tag_page_is_capped_and_carries_a_cursor_only_when_more_remain ... ok
+test search::topic::tests::an_unknown_poem_id_is_a_named_error_rather_than_an_empty_detail ... ok
+test search::topic::tests::an_unknown_tag_is_an_error_that_lists_what_does_exist ... ok
+test search::topic::tests::every_topic_query_uses_an_index_and_none_touches_the_fts_table ... ok
+test search::topic::tests::every_commentary_entry_comes_back_with_a_non_empty_citation ... ok
+test search::topic::tests::dropping_the_tag_index_makes_the_plan_inspection_fail ... ok
+test search::topic::tests::poem_detail_lists_work_group_siblings_without_repeating_the_poem_itself ... ok
+test search::topic::tests::known_tones_are_derived_from_the_rhyme_book_not_guessed ... ok
+test search::topic::tests::poem_detail_carries_the_curated_tags_and_the_rhyme_group_with_its_confidence ... ok
+test search::topic::tests::the_citation_error_names_the_offending_commentary_and_field ... ok
+test search::topic::tests::poem_detail_returns_the_poem_its_author_and_its_provenance ... ok
+test search::topic::tests::the_tag_contract_entries_pass_against_the_production_entry_point ... ok
+test search::topic::tests::tag_membership_matches_the_checked_in_vocabulary_projection ... ok
+test search::topic::tests::tone_lines_and_rhyme_feet_keep_their_distinct_boundaries ... ok
+test search::topic::tests::unknown_tone_positions_survive_as_unknown_and_are_never_rendered_as_level ... ok
+test search::topic::tests::a_commentary_missing_any_citation_field_is_a_typed_error_naming_it ... ok
+
+test result: ok. 173 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 7.63s
+
+     Running tests/golden_queries.rs (target/debug/deps/golden_queries-414887ee6b3ae5d2)
+
+running 47 tests
+test contract_holds_at_least_30_entries ... ok
+test contract_ids_are_unique ... ok
+test contract_covers_all_18_required_classes ... ok
+test contract_ids_match_generated_tests ... ok
+test every_anchor_resolves_to_a_committed_fixture ... ok
+test fixture_set_is_internally_consistent ... ok
+test q04_two_char_author_libai ... ok
+test q20_title_jingyesi ... ok
+test q26_firstline_chuangqian ... ok
+test q31_rhyme_xiapingshiersqin ... ok
+test q23_citune_shuidiaogetou ... ok
+test q05_two_char_author_dufu ... ok
+test q25_citune_title_mingyuejishiyou ... ok
+test q27_firstline_guoposhan ... ok
+test the_three_short_query_traps_are_present_and_demand_non_empty_results ... ok
+test two_character_entries_all_route_to_the_ngram_path ... ok
+test variant_map_covers_every_non_simplified_query ... ok
+test q29_lastchar_liu ... ok
+test q28_lastchar_shuang ... ok
+test q32_tag_sixiang ... ok
+test q21_title_chunwang ... ok
+test q30_rhyme_xiapingqiyang ... ok
+test q24_citune_title_chibihuaigu ... ok
+test q22_citune_niannujiao ... ok
+test q33_tag_biansai ... ok
+test q35_punct_mixed ... ok
+test q18_rare_yixuxi ... ok
+test q16_variant_cechengfeng ... ok
+test q01_two_char_mingyue ... ok
+test q19_rare_two_char_xuxi ... ok
+test q13_line7_gusuchengwai ... ok
+test q15_traditional_jutouwangmingyue ... ok
+test q06_three_char_mingyueguang ... ok
+test q11_line5_bairiyishanjin ... ok
+test q10_line5_chuangqianmingyueguang ... ok
+test q34_punct_comma_period ... ok
+test q12_line7_lianganyuansheng ... ok
+test q17_variant_bingsaichuan ... ok
+test q03_two_char_chunfeng ... ok
+test q09_four_char_haishangmingyue ... ok
+test q14_traditional_guopo ... ok
+test q07_three_char_gurenxi ... ok
+test q02_two_char_xiangsi ... ok
+test q08_four_char_bairiyishan ... ok
+test q37_nofullrun_yue_shuang ... ok
+test q36_nofullrun_ming_guang ... ok
+test queries_toml_has_exactly_one_copy_in_the_repo ... ok
+
+test result: ok. 47 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+
+     Running tests/index_mode_verdict.rs (target/debug/deps/index_mode_verdict-4bf2c7af2de2e8be)
+
+running 11 tests
+test report_states_that_the_sample_corpus_is_synthetic ... ok
+test scale_projection_shows_the_bare_like_path_growing_with_corpus_size ... ok
+test chosen_configuration_violates_neither_gate ... ok
+test chosen_configuration_has_no_entry_scraping_past_the_budget ... ok
+test detail_full_is_the_only_mode_serving_whole_line_queries ... ok
+test two_character_p95_is_recorded_both_with_and_without_the_ngram_table ... ok
+test chosen_configuration_meets_min_hits_on_every_single_entry ... ok
+test detail_none_really_fails_a_whole_line_class ... ok
+test metadata_lookups_use_an_index_rather_than_scanning_the_poem_table ... ok
+test chosen_configuration_stays_within_latency_budget_on_every_entry ... ok
+test report_records_the_full_contract_and_every_configuration ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/logger_stdio.rs (target/debug/deps/logger_stdio-56e59c9b042271f4)
+     Running unittests src/lib.rs (target/debug/deps/yunjian_corpus-7124a9ba8120100d)
+
+running 194 tests
+test commentary::tests::every_seed_entry_resolves_against_the_real_corpus ... ignored, 需要锁定 revision 的完整上游检出，由 YUNJIAN_CHINESE_POETRY_DIR 指定
+test db::tests::audit_path_is_derived_from_the_corpus_path_not_supplied_separately ... ok
+test commentary::tests::the_dynasty_vocabulary_ends_before_1912 ... ok
+test commentary::tests::commentary_text_must_look_pre_modern ... ok
+test commentary::tests::an_entry_citing_a_1980s_publication_is_rejected ... ok
+test commentary::tests::an_entry_without_a_citation_is_rejected ... ok
+test commentary::tests::a_modern_dynasty_is_rejected_with_an_explicit_reason ... ok
+test commentary::tests::a_citation_without_an_edition_is_rejected ... ok
+test commentary::tests::duplicate_entry_ids_are_rejected ... ok
+test commentary::tests::a_citation_without_a_volume_locator_is_rejected ... ok
+test ingest::chinese_poetry::tests::commentator_split_tolerates_prose_without_a_speaker ... ok
+test db::tests::missing_one_hundred_dispositions_is_a_hard_conservation_failure ... ok
+test ingest::chinese_poetry::tests::full_checkout_totals_match_the_manifest_within_one_percent ... ignored, 需要锁定 revision 的完整上游检出，由 YUNJIAN_CHINESE_POETRY_DIR 指定
+test form::tests::fixed_length_structures_map_to_the_four_regulated_forms ... ok
+test form::tests::yuefu_is_an_independent_prefix_flag_and_never_matches_a_substring ... ok
+test form::tests::unequal_line_lengths_are_irregular_and_a_ci_tune_has_priority ... ok
+test ingest::chinese_poetry::tests::name_before_paren_handles_both_bracket_widths ... ok
+test commentary::tests::an_unresolvable_poem_reference_is_rejected_rather_than_guessed ... ok
+test commentary::tests::a_wrong_first_line_does_not_silently_link_to_a_same_title_poem ... ok
+test commentary::tests::a_correctly_cited_helin_yulu_entry_is_accepted_and_linked ... ok
+test commentary::tests::every_source_note_pins_a_revision_for_re_verification ... ok
+test db::tests::schema_defaults_structured_fields_for_legacy_inserts ... ok
+test ingest::tests::punctuation_is_skipped_rather_than_scored ... ok
+test commentary::tests::the_seed_corpus_holds_at_least_one_hundred_entries ... ok
+test ingest::tests::undetermined_tone_markers_become_unknown ... ok
+test ingest::tests::script_is_detected_per_text_not_per_repository ... ok
+test commentary::tests::every_accepted_citation_carries_work_pre_modern_dynasty_and_a_locatable_source_note ... ok
+test commentary::tests::every_shipped_entry_passes_validation ... ok
+test commentary::tests::the_index_is_a_generated_artifact_that_does_not_drift ... ok
+test ingest::werneror::tests::allow_list_is_the_manifest_and_holds_no_modern_bucket ... ok
+test ingest::werneror::tests::a_declared_bucket_that_is_absent_fails ... ok
+test commentary::tests::a_tampered_index_is_detected ... ok
+test ingest::chinese_poetry::tests::misaligned_strains_are_recovered_by_native_id_and_reported ... ok
+test ingest::werneror::tests::fixture_bucket_list_matches_the_fixture_directory ... ok
+test ingest::werneror::tests::full_checkout_contributes_only_the_works_chinese_poetry_lacks ... ignored, 需要 Werneror 与 chinese-poetry 两份完整上游检出
+test ingest::werneror::tests::full_checkout_totals_match_the_manifest_within_one_percent ... ignored, 需要锁定 revision 的完整上游检出，由 YUNJIAN_WERNEROR_DIR 指定
+test ingest::chinese_poetry::tests::dynasty_is_canonicalized_while_the_original_string_survives ... ok
+test ingest::chinese_poetry::tests::every_declared_file_yields_its_expected_record_count ... ok
+test ingest::chinese_poetry::tests::wholly_modern_files_are_excluded_with_a_recorded_reason ... ok
+test ingest::chinese_poetry::tests::native_ids_are_used_as_locators_but_never_as_user_facing_keys ... ok
+test ingest::chinese_poetry::tests::four_body_granularities_are_each_handled ... ok
+test ingest::chinese_poetry::tests::modern_biography_in_an_author_field_is_truncated_to_the_name ... ok
+test ingest::chinese_poetry::tests::pre_modern_commentary_and_biographies_are_shipped ... ok
+test ingest::chinese_poetry::tests::modern_commentary_fields_never_reach_the_shippable_set ... ok
+test ingest::chinese_poetry::tests::script_is_detected_per_record_across_the_same_repository ... ok
+test ingest::chinese_poetry::tests::strains_attach_to_the_positionally_matching_poem_and_mark_unknown_tones ... ok
+test ingest::chinese_poetry::tests::fixture_total_is_within_one_percent_of_the_declared_expectation ... ok
+test ingest::werneror::tests::quoted_fields_and_both_line_endings_are_parsed ... ok
+test ingest::werneror::tests::lone_question_mark_is_lossy_only_inside_cjk_context ... ok
+test ingest::werneror::tests::two_character_tunes_do_not_hijack_poem_titles ... ok
+test model::tests::ci_tune_is_split_from_combined_title ... ok
+test model::tests::clean_one_to_one_move_is_auto_aliased ... ok
+test model::tests::dynasty_raw_is_reversible_for_all_keys_and_cross_dynasty_label ... ok
+test model::tests::disabling_shift_detection_demonstrates_silent_id_reassignment ... ok
+test model::tests::every_record_has_a_non_empty_provenance_kind ... ok
+test ingest::chinese_poetry::tests::an_emptied_shard_fails_loudly_with_its_file_name ... ok
+test model::tests::fold_six_events_reconstructs_current_state ... ok
+test model::tests::locator_cannot_be_bound_to_a_second_stable_id ... ok
+test model::tests::head_insertion_is_rejected_as_suspected_shift ... ok
+test model::tests::migration_file_parses_one_line_authorization ... ok
+test model::tests::middle_deletion_is_rejected_as_suspected_shift ... ok
+test ingest::chinese_poetry::tests::a_renamed_shard_family_fails_rather_than_silently_shrinking ... ok
+test model::tests::appending_events_never_rewrites_existing_log_bytes ... ok
+test model::tests::moved_and_edited_record_requires_reviewed_migration ... ok
+test model::tests::restricted_records_never_enter_shippable_collection ... ok
+test model::tests::native_keys_survive_wholesale_reordering ... ok
+test model::tests::new_locator_appends_mint ... ok
+test model::tests::positional_locator_reuse_is_rejected_as_suspected_shift ... ok
+test model::tests::traditional_two_han_label_canonicalizes_to_han ... ok
+test model::tests::stable_id_survives_content_correction ... ok
+test model::tests::work_group_ignores_author_but_edition_group_does_not ... ok
+test model::tests::two_record_reorder_is_rejected_as_suspected_shift ... ok
+test ingest::werneror::tests::an_empty_cipai_allow_list_fails ... ok
+test ingest::werneror::tests::dedup_key_bridges_the_traditional_and_simplified_copies ... ok
+test ingest::werneror::tests::bodies_are_split_into_lines_and_dynasties_are_canonicalized ... ok
+test ingest::werneror::tests::ci_tune_is_split_only_for_whitelisted_tunes ... ok
+test ingest::werneror::tests::every_declared_file_yields_its_expected_record_count ... ok
+test normalize::tests::reason_code_is_the_string_the_defect_report_uses ... ok
+test ingest::werneror::tests::unknown_bucket_defaults_to_excluded ... ok
+test ingest::werneror::tests::modern_bucket_is_excluded_by_policy_and_counted ... ok
+test ingest::werneror::tests::known_gap_the_yu_variant_is_not_normalized_by_t2s ... ok
+test ingest::werneror::tests::lossy_records_are_quarantined_reported_and_kept_out_of_the_main_table ... ok
+test ingest::werneror::tests::header_change_fails_with_the_file_name ... ok
+test ingest::werneror::tests::positional_locators_are_used_because_the_csv_has_no_native_key ... ok
+test ingest::werneror::tests::header_only_file_fails_with_the_file_name ... ok
+test ingest::werneror::tests::body_containing_li_question_mark_is_flagged_and_reported ... ok
+test ingest::werneror::tests::row_whose_dynasty_does_not_match_its_bucket_is_not_ingested ... ok
+test ingest::werneror::tests::poem_present_in_both_sources_resolves_to_the_chinese_poetry_copy ... ok
+test normalize::tests::per_line_conversion_equals_whole_body_conversion ... ok
+test db::tests::opened_corpus_is_query_only_and_blocks_insert ... ok
+test normalize::tests::residual_variants_close_the_documented_yu_gap ... ok
+test normalize::tests::a_glyph_that_survives_normalization_is_never_rewritten ... ok
+test db::tests::schema_is_the_checked_in_single_source_of_truth ... ok
+test db::tests::the_shipped_artifact_carries_no_diagnostic_or_derived_tables ... ok
+test normalize::tests::non_round_trip_stable_record_is_flagged_conversion_unstable ... ok
+test normalize::tests::the_residual_table_never_maps_toward_a_traditional_glyph ... ok
+test normalize::tests::dropping_the_guo_row_breaks_the_traditional_rewrite ... ok
+test normalize::tests::candidate_table_size_is_pinned_to_the_measured_dictionary ... ok
+test normalize::tests::variant_supplement_rows_are_genuinely_missing_from_the_dictionaries ... ok
+test db::tests::stored_last_chars_use_rhyme_boundaries_while_line_count_uses_structure ... ok
+test db::tests::structured_form_and_yuefu_flag_are_stored_and_use_btree_indexes ... ok
+test db::tests::incompatible_schema_is_a_typed_actionable_error ... ok
+test db::tests::cross_file_conservation_catches_dispositions_deleted_from_the_audit_database ... ok
+test db::tests::build_populates_one_complete_meta_row_and_conserves_dispositions ... ok
+test normalize::tests::mixed_script_record_is_fully_normalized ... ok
+test normalize::tests::stable_records_carry_no_findings ... ok
+test normalize::tests::line_structure_survives_normalization ... ok
+test normalize::tests::empty_corpus_yields_an_empty_variant_map ... ok
+test normalize::tests::variant_map_contains_the_guo_and_yi_rows ... ok
+test normalize::tests::variant_map_holds_only_mappings_present_in_the_corpus ... ok
+test db::tests::the_first_launch_build_turns_a_shipped_artifact_into_a_searchable_corpus ... ok
+test normalize::tests::the_plan_sample_line_is_simplified_while_its_original_survives ... ok
+test normalize::tests::table_driven_rewrite_turns_traditional_query_into_the_indexed_form ... ok
+test db::tests::a_real_built_corpus_opens_through_the_core_handle ... ok
+test quality::tests::reason_code_strings_match_the_serialized_form ... ok
+test normalize::tests::traditional_body_becomes_simplified_and_original_is_preserved_byte_for_byte ... ok
+test normalize::tests::the_generated_table_covers_every_variant_the_query_contract_needs ... ok
+test quality::tests::strain_defects_do_not_become_ledger_rows ... ok
+test quality::tests::the_committed_baseline_covers_all_reason_codes ... ok
+test normalize::tests::already_simplified_record_is_untouched ... ok
+test normalize::tests::variant_map_rows_are_deterministically_ordered ... ok
+test db::tests::an_audit_database_from_another_build_is_rejected_even_when_the_counts_line_up ... ok
+test quality::tests::tolerance_is_floored_so_small_counts_are_exact ... ok
+test db::tests::identical_inputs_produce_identical_database_bytes ... ok
+test quality::tests::werneror_lossy_rows_are_counted_once_not_twice ... ok
+test quality::tests::a_duplicated_locator_in_the_ledger_is_rejected ... ok
+test quality::tests::zero_tolerance_codes_admit_no_drift_at_all ... ok
+test rhyme::tests::a_bad_tone_value_fails_the_parse ... ok
+test rhyme::tests::a_character_in_two_rhyme_groups_yields_two_rows ... ok
+test rhyme::tests::a_missing_pingshui_tone_section_fails_the_parse ... ok
+test rhyme::tests::an_empty_asset_fails_loudly_rather_than_yielding_zero_rows ... ok
+test rhyme::tests::an_unknown_cilin_tone_key_fails_the_parse ... ok
+test rhyme::tests::an_unregistered_top_level_key_fails_the_parse ... ok
+test rhyme::tests::character_reverse_index_is_derived_by_inverting_the_rhyme_table ... ok
+test quality::tests::a_normalization_finding_for_an_unknown_record_fails_loudly ... ok
+test rhyme::tests::full_checkout_matches_the_measured_totals ... ignored, 需要锁定 revision 的完整上游检出，由 YUNJIAN_CHINESE_WORD_RHYME_DIR 指定
+test rhyme::tests::cilin_resolves_nineteen_parts ... ok
+test rhyme::tests::pingshui_resolves_the_measured_group_counts ... ok
+test rhyme::tests::reversed_nesting_produces_equivalent_logical_output ... ok
+test rhyme::tests::querying_xinyun_returns_a_typed_error_and_never_an_empty_result ... ok
+test rhyme::tests::tone_table_is_cross_checked_not_trusted ... ok
+test rhyme::tests::withheld_assets_are_absent_from_the_shippable_set ... ok
+test quality::tests::a_lost_record_without_a_disposition_row_fails_conservation ... ok
+test rhyme::tests::within_group_duplicates_are_counted_and_deduplicated ... ok
+test rhyme_foot::tests::ambiguous_two_line_poem_without_corroboration_stays_unresolved ... ok
+test rhyme::tests::sources_manifest_marks_both_named_assets_unverified_and_unshippable ... ok
+test rhyme_foot::tests::ci_uses_cilin_instead_of_pingshui ... ok
+test rhyme_foot::tests::contradictory_rhyme_feet_are_reported_instead_of_breaking_a_tie ... ok
+test rhyme_foot::tests::regulated_verse_polyphone_is_resolved_by_the_other_rhyme_feet ... ok
+test rhyme_foot::tests::confidence_distribution_and_unresolved_ratio_are_measurable ... ok
+test tag::tests::a_reviewed_entry_needs_a_real_reason ... ok
+test tag::tests::a_tag_with_no_rules_and_no_explanation_is_rejected ... ok
+test tag::tests::a_wrong_schema_version_is_refused_rather_than_guessed ... ok
+test rhyme_foot::tests::unresolved_findings_are_counted_in_the_quality_report ... ok
+test tag::tests::adding_and_denying_the_same_tag_is_rejected ... ok
+test tag::tests::an_anthology_tag_with_keyword_rules_is_rejected ... ok
+test tag::tests::an_undeclared_tag_name_in_the_reviewed_list_is_rejected ... ok
+test tag::tests::every_declared_tag_either_has_rules_or_says_why_not ... ok
+test quality::tests::a_restricted_record_in_the_shippable_slice_is_rejected ... ok
+test quality::tests::an_orphan_finding_fails_the_cross_report_join ... ok
+test tag::tests::the_same_poem_may_not_appear_twice_in_the_reviewed_list ... ok
+test tag::tests::the_shipped_vocabulary_parses_and_declares_the_planned_axes ... ok
+test quality::tests::conservation_is_asserted_over_dispositions_never_over_findings ... ok
+test quality::tests::chibi_dual_attribution_fires_conflicting_attribution ... ok
+test quality::tests::prose_genres_are_exempt_from_the_verse_line_limit ... ok
+test quality::tests::a_blocked_unit_claiming_to_be_shipped_is_rejected ... ok
+test quality::tests::a_self_contradictory_report_is_never_written_to_disk ... ok
+test quality::tests::a_baseline_missing_a_reason_code_fails_rather_than_passing_it ... ok
+test quality::tests::duplicates_are_grouped_and_never_deleted ... ok
+test quality::tests::glued_lines_are_split_and_closing_quotes_stay_with_the_previous_line ... ok
+test quality::tests::poem_count_must_equal_shipped ... ok
+test quality::tests::artifacts_are_byte_reproducible_across_two_runs ... ok
+test quality::tests::placeholder_body_is_quarantined_without_becoming_empty_body_or_shippable ... ok
+test quality::tests::restricted_records_are_quarantined_and_never_shipped ... ok
+test quality::tests::the_committed_baseline_matches_a_fresh_fixture_run ... ok
+test quality::tests::glued_line_cleaning_preserves_rhyme_vote_evidence ... ok
+test quality::tests::excluded_by_policy_covers_the_modern_and_unlisted_buckets ... ok
+test quality::tests::one_record_can_carry_three_findings_without_breaking_conservation ... ok
+test quality::tests::work_group_excludes_the_author_so_two_attributions_land_in_one_group ... ok
+test quality::tests::every_stable_id_in_defects_json_appears_in_dispositions_json ... ok
+test quality::tests::conversion_unstable_joins_to_the_record_by_stable_id ... ok
+test quality::tests::lossy_char_records_are_quarantined_and_kept_out_of_the_main_table ... ok
+test quality::tests::unknown_dynasty_can_only_come_from_the_ingest_stage_and_is_an_exclusion ... ok
+test tag::tests::both_a_keyword_rule_and_the_reviewed_list_decide_real_assignments ... ok
+test quality::tests::input_row_drift_fails_because_per_code_counts_stop_being_comparable ... ok
+test tag::tests::the_shipped_vocabulary_reproduces_every_tag_the_golden_contract_declares ... ok
+test tag::tests::no_produced_tag_falls_outside_the_checked_in_vocabulary ... ok
+test quality::tests::the_end_to_end_run_over_committed_fixtures_is_conserved_and_joinable ... ok
+test quality::tests::baseline_drift_fails_and_names_the_reason_code ... ok
+test tag::tests::a_deny_that_removes_nothing_fails_the_build_but_only_when_the_poem_is_in_scope ... ok
+test quality::tests::empty_body_is_reported_and_excluded_by_the_ingest_stage ... ok
+test tag::tests::keyword_matching_folds_traditional_text_so_rules_do_not_silently_miss ... ok
+test quality::tests::the_detection_key_folds_the_yu_variant_that_work_group_misses ... ok
+test quality::tests::suspect_length_fires_on_a_short_body_and_on_an_unsplit_verse_line ... ok
+
+test result: ok. 189 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 2.40s
+
+     Running tests/docs_completeness.rs (target/debug/deps/docs_completeness-a6203f28d864eeb5)
+
+running 6 tests
+test voice_doc_states_that_pronunciation_standard_is_not_assessed ... ok
+test both_readmes_stay_within_the_line_ceiling ... ok
+test english_readme_status_matches_code_facts ... ok
+test readme_status_matches_code_facts ... ok
+test corpus_doc_names_every_denylist_entry ... ok
+test licenses_doc_has_an_entry_for_every_model_and_every_source ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/first_launch_contracts.rs (target/debug/deps/first_launch_contracts-b82ce7bbab45ef8d)
+
+running 7 tests
+test fts_two_character_plan_uses_the_ngram_covering_index ... ok
+test the_first_launch_derivation_reproduces_the_fixture_declared_last_chars ... ok
+test without_the_first_launch_build_the_two_character_contracts_cannot_run_at_all ... ok
+test fts_schema_matches_the_binding_verdict_and_has_no_shadow_content_table ... ok
+test fts_all_thirty_seven_golden_contracts_return_the_expected_top_hit ... ok
+test fts_verdict_drift_is_rejected_instead_of_being_silently_ignored ... ok
+test fts_external_content_eliminates_the_shadow_copy_and_reduces_bytes ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.53s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_mcp-b6903712dfa91323)
+
+running 10 tests
+test similarity::tests::a_rhyme_group_match_requires_the_same_book ... ok
+test similarity::tests::a_rhyme_group_match_requires_the_same_tone_not_just_the_same_group ... ok
+test similarity::tests::an_identical_poem_scores_one ... ok
+test similarity::tests::each_component_never_exceeds_its_declared_weight ... ok
+test similarity::tests::excluding_frequent_characters_removes_the_overlap_they_would_have_manufactured ... ok
+test similarity::tests::nothing_in_common_scores_zero ... ok
+test similarity::tests::the_axes_a_candidate_matched_are_reported_per_axis ... ok
+test similarity::tests::the_four_weights_sum_to_one_so_a_score_is_readable_as_a_fraction ... ok
+test similarity::tests::two_poems_without_a_ci_tune_do_not_count_as_sharing_one ... ok
+test similarity::tests::two_untagged_poems_are_not_treated_as_sharing_every_tag ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ai_tools.rs (target/debug/deps/ai_tools-20b7c6dda653c48b)
+
+running 4 tests
+test ai_tools_complete_the_exact_five_tool_set_with_open_world_annotations ... ok
+test missing_key_is_a_successful_result_with_settings_guidance_for_both_tools ... ok
+test generated_seven_character_quatrain_is_labelled_rhymed_and_never_persisted ... ok
+test shipped_appreciation_is_provider_independent_and_skips_the_provider ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.97s
+
+     Running tests/stdio.rs (target/debug/deps/stdio-cdea66b206e47072)
+     Running tests/tools.rs (target/debug/deps/tools-ecb09c1bd2ba5fb6)
+
+running 21 tests
+test the_canonical_full_set_is_the_union_of_the_two_subsets ... ok
+test a_missing_corpus_yields_a_structured_error_from_every_offline_tool ... ok
+test each_offline_tool_declares_an_output_schema ... ok
+test explain_returns_a_citation_for_every_commentary_entry ... ok
+test explain_returns_work_group_alternatives_and_provenance ... ok
+test the_default_limit_applies_when_the_caller_omits_it ... ok
+test search_reports_that_author_and_dynasty_only_filter_the_current_page ... ok
+test an_oversized_limit_is_clamped_rather_than_rejected ... ok
+test each_offline_tool_carries_a_chinese_title_and_a_description ... ok
+test a_poem_sharing_a_tag_and_a_rhyme_group_scores_above_one_sharing_neither ... ok
+test a_two_character_query_returns_results ... ok
+test the_advertised_list_is_exactly_the_canonical_five_tool_set ... ok
+test explain_rejects_an_unknown_poem_id_as_a_visible_tool_error ... ok
+test explain_keeps_unknown_tones_as_unknown_instead_of_calling_them_level ... ok
+test every_advertised_tool_name_matches_the_mcp_charset ... ok
+test every_result_carries_structured_content_and_a_matching_text_block ... ok
+test explain_reports_rhyme_groups_per_book_with_a_confidence ... ok
+test similar_scores_are_auditable_and_capped ... ok
+test each_offline_tool_declares_read_only_and_a_closed_world_explicitly ... ok
+test similar_by_axis_restricts_candidates_without_changing_the_weights ... ok
+test similar_excludes_the_most_frequent_characters_from_the_overlap_term ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.62s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_mobile-1a79c7fa6b345fbf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/architecture.rs (target/debug/deps/architecture-8e54602ab48e6133)
+
+running 8 tests
+test android_build_ships_the_license_payload ... ok
+test byte_exact_digest_guard_keeps_its_line_ending_precondition ... ok
+test manifest_builds_only_the_selected_uniffi_branch ... ok
+test manifest_directly_depends_on_all_four_domain_crates ... ok
+test android_shell_exists_and_only_calls_rust_through_the_bindings ... ok
+test generated_bindings_and_android_initializer_are_versioned ... ok
+test domain_crates_contain_no_uniffi_dependency ... ok
+test protected_domain_logic_matches_its_frozen_digest ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/surface.rs (target/debug/deps/surface-ef83d6fb3cfa8150)
+
+running 3 tests
+test facade_exposes_every_required_feature_group ... ok
+test binding_branch_matches_the_recorded_three_state_verdict ... ok
+test built_binding_state_matches_manifest_dependencies ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/uniffi_native.rs (target/debug/deps/uniffi_native-28e3e5282c930d76)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_recite-48a27f47e16764e9)
+
+running 43 tests
+test phonetic::tests::the_mandarin_fuzzy_pairs_are_what_make_a_near_match_near ... ok
+test phonetic::tests::any_reading_may_carry_the_match_even_when_the_first_does_not ... ok
+test schedule::tests::rerecitation_threshold_is_configurable_and_caps_the_grade ... ok
+test modes::tests::no_hidden_voice_dependency ... ok
+test phonetic::tests::the_near_match_table_is_fed_toneless_readings ... ok
+test modes::tests::both_splitters_cover_every_content_character_exactly_once ... ok
+test schedule::tests::schedule_source_has_no_voice_automatic_grading_path ... ok
+test score::tests::either_rejection_threshold_is_sufficient ... ok
+test score::tests::every_numeric_component_is_clamped_to_the_unit_interval ... ok
+test phonetic::tests::a_near_substitution_is_partially_forgiven_not_fully ... ok
+test modes::tests::an_over_long_mask_stage_converges_to_this_poems_last_stage ... ok
+test score::tests::voice_feedback_exposes_only_activity_pauses_and_relative_rhythm ... ok
+test modes::tests::the_prompt_preserves_punctuation_and_the_content_character_count ... ok
+test align::tests::missing_line_is_exactly_deletions_for_that_line ... ok
+test modes::tests::masked_mode_walks_from_full_text_to_fully_masked ... ok
+test score::tests::an_unrelated_poem_is_rejected_instead_of_looking_plausible ... ok
+test modes::tests::out_of_range_and_non_finite_ratios_are_regularized ... ok
+test phonetic::tests::strict_accuracy_and_every_other_component_are_left_untouched ... ok
+test align::tests::identical_text_is_all_normal_after_normalization ... ok
+test modes::tests::a_twenty_character_poem_at_ratio_zero_point_three_blanks_exactly_six ... ok
+test score::tests::deleting_one_line_counts_each_missing_character ... ok
+test modes::tests::first_char_mode_keeps_exactly_one_character_per_presentation_line ... ok
+test phonetic::tests::a_character_without_a_reading_keeps_the_substitution_whole ... ok
+test modes::tests::all_three_modes_return_the_typed_score_type_of_the_voice_capable_kernel ... ok
+test modes::tests::the_same_seed_reproduces_identical_blanks_across_runs ... ok
+test align::tests::inverse_text_normalization_stays_off ... ok
+test phonetic::tests::an_insertion_is_never_reclassified_even_when_it_sounds_like_the_reference ... ok
+test phonetic::tests::a_semantically_different_character_stays_a_full_substitution ... ok
+test align::tests::extra_character_is_one_insertion ... ok
+test phonetic::tests::a_deletion_is_never_reclassified_phonetically ... ok
+test modes::tests::rendering_and_scoring_indices_stay_separate_across_variant_rewriting ... ok
+test modes::tests::a_perfect_typed_answer_scores_one_through_the_shared_kernel ... ok
+test align::tests::backing_up_four_characters_is_one_rerecitation ... ok
+test phonetic::tests::a_homophone_of_zhong_is_reclassified_as_near_substitution ... ok
+test align::tests::wrong_character_is_one_substitution ... ok
+test modes::tests::rhyme_feet_are_blanked_before_anything_else ... ok
+test modes::tests::an_empty_body_yields_an_answerable_session_rather_than_a_panic ... ok
+test score::tests::adding_deletions_never_increases_a_score_component ... ok
+test modes::tests::content_words_are_blanked_before_function_words ... ok
+test phonetic::tests::lenient_accuracy_never_falls_below_strict_accuracy ... ok
+test modes::tests::every_mode_scores_through_the_one_shared_kernel_not_a_second_path ... ok
+test score::tests::verbatim_reference_is_a_perfect_score_with_zero_errors ... ok
+test score::tests::source_guards_keep_voice_derived_text_out_of_typed_scoring ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running tests/daily_schedule_contract.rs (target/debug/deps/daily_schedule_contract-8b5a4f6a953e3d62)
+
+running 4 tests
+test cold_start_estimate_uses_only_content_length_and_first_learning ... ok
+test daily_budget_prioritizes_obligations_and_exposes_every_unpacked_due_card ... ok
+test one_capability_ticket_can_advance_fsrs_exactly_once ... ok
+test same_day_relearning_records_practice_without_calling_fsrs_again ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/golden.rs (target/debug/deps/golden-9daf2c29ad135eca)
+
+running 5 tests
+test high_cer_forces_guided_practice_and_voice_feedback_has_no_machine_score ... ok
+test wholly_wrong_poems_are_present_and_rejected_by_contract ... ok
+test accented_reading_is_explicitly_unmeasured_not_synthetic_ground_truth ... ok
+test golden_manifest_cannot_be_weakened_into_an_empty_or_vague_suite ... ok
+test all_hand_labelled_attempts_match_the_immutable_contract ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/learning_contract.rs (target/debug/deps/learning_contract-7a38479d097abd3b)
+
+running 3 tests
+test a_short_four_line_poem_is_one_fsrs_chunk_not_four_tiny_cards ... ok
+test adjacent_lines_form_chunks_and_a_trailing_line_joins_the_previous_chunk ... ok
+test mastery_never_averages_away_an_unestablished_or_overdue_chunk ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/schedule_contract.rs (target/debug/deps/schedule_contract-00ef06b7345fa72c)
+
+running 8 tests
+test grading_priority_covers_the_named_product_cases ... ok
+test strictly_more_errors_never_improve_the_grade ... ok
+test fsrs_uses_twenty_one_parameters_with_decay_zero_point_two ... ok
+test grading_is_a_total_single_valued_function_over_the_boundary_grid ... ok
+test thresholds_are_read_from_recite_grading_config ... ok
+test due_today_returns_only_cards_due_no_later_than_the_requested_day ... ok
+test history_survives_content_hash_changes_because_storage_is_keyed_by_stable_id ... ok
+test user_chosen_review_entry_point_accepts_all_four_grades ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/type_boundaries.rs (target/debug/deps/type_boundaries-9858c5275a9809b8)
+
+running 1 test
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.24
+    Checking cfg-if v1.0.4
+   Compiling libc v0.2.189
+   Compiling shlex v2.0.1
+   Compiling serde_core v1.0.229
+   Compiling find-msvc-tools v0.1.10
+   Compiling serde v1.0.229
+   Compiling crossbeam-utils v0.8.22
+   Compiling autocfg v1.5.1
+    Checking once_cell v1.21.4
+    Checking foldhash v0.2.0
+    Checking log v0.4.33
+    Checking itoa v1.0.18
+    Checking zeroize v1.9.0
+   Compiling crossbeam-epoch v0.9.20
+    Checking typenum v1.20.1
+   Compiling zmij v1.0.23
+    Checking equivalent v1.0.2
+   Compiling httparse v1.10.1
+   Compiling heck v0.5.0
+    Checking cpufeatures v0.3.0
+   Compiling crc32fast v1.5.0
+   Compiling pkg-config v0.3.33
+    Checking regex-syntax v0.8.11
+   Compiling vcpkg v0.2.15
+   Compiling crossbeam-deque v0.8.7
+    Checking untrusted v0.9.0
+   Compiling serde_json v1.0.151
+   Compiling rayon-core v1.13.0
+    Checking powerfmt v0.2.0
+    Checking simd-adler32 v0.3.10
+   Compiling rustls v0.23.43
+   Compiling cc v1.4.2
+    Checking hashbrown v0.17.1
+    Checking bytes v1.12.1
+    Checking tracing-core v0.1.36
+    Checking rustls-pki-types v1.15.1
+    Checking num-conv v0.2.2
+    Checking deranged v0.5.8
+    Checking adler2 v2.0.1
+    Checking lazy_static v1.5.0
+   Compiling getrandom v0.4.3
+    Checking memchr v2.8.3
+   Compiling thiserror v2.0.20
+    Checking num_threads v0.1.7
+    Checking rand_core v0.10.1
+    Checking pin-project-lite v0.2.17
+    Checking smallvec v1.15.2
+    Checking time-core v0.1.9
+    Checking miniz_oxide v0.8.9
+    Checking sharded-slab v0.1.7
+    Checking thread_local v1.1.10
+   Compiling anyhow v1.0.104
+    Checking option-ext v0.2.0
+   Compiling pinyin v0.11.0
+    Checking rawpointer v0.2.1
+    Checking either v1.17.0
+    Checking const-oid v0.10.2
+    Checking base64 v0.23.1
+    Checking subtle v2.6.1
+    Checking nu-ansi-term v0.50.3
+    Checking toml_write v0.1.2
+    Checking winnow v0.7.15
+    Checking tracing-log v0.2.0
+    Checking chacha20 v0.10.1
+    Checking fallible-iterator v0.3.0
+    Checking percent-encoding v2.3.2
+    Checking symlink v0.1.0
+    Checking fallible-streaming-iterator v0.1.9
+    Checking utf8-zero v0.8.1
+    Checking indexmap v2.14.0
+    Checking hashlink v0.12.1
+    Checking bitflags v2.13.1
+    Checking itertools v0.14.0
+   Compiling num-traits v0.2.19
+   Compiling matrixmultiply v0.3.11
+    Checking flate2 v1.1.9
+    Checking inputx-phonetic-edit v1.4.0
+    Checking webpki-roots v1.0.9
+    Checking crossbeam-channel v0.5.16
+    Checking http v1.5.0
+    Checking hybrid-array v0.4.14
+    Checking regex-automata v0.4.18
+   Compiling ring v0.17.14
+   Compiling libsqlite3-sys v0.38.2
+   Compiling syn v3.0.3
+   Compiling syn v2.0.119
+    Checking num-complex v0.4.6
+    Checking num-integer v0.1.46
+    Checking crypto-common v0.2.2
+    Checking block-buffer v0.12.1
+    Checking priority-queue v2.7.0
+    Checking getrandom v0.2.17
+    Checking time v0.3.55
+    Checking dirs-sys v0.5.0
+    Checking ureq-proto v0.6.1
+    Checking dirs v6.0.0
+    Checking rayon v1.12.0
+    Checking rand v0.10.2
+    Checking ndarray v0.17.2
+    Checking digest v0.11.3
+    Checking sha2 v0.11.0
+    Checking matchers v0.2.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling tracing-attributes v0.1.31
+   Compiling snafu-derive v0.9.2
+   Compiling strum_macros v0.28.0
+    Checking rustls-webpki v0.103.13
+    Checking toml_datetime v0.6.11
+    Checking tracing-serde v0.2.0
+    Checking serde_spanned v0.6.9
+    Checking toml_edit v0.22.27
+    Checking tracing v0.1.44
+    Checking tracing-subscriber v0.3.23
+    Checking strum v0.28.0
+    Checking snafu v0.9.2
+    Checking fsrs v6.6.1
+    Checking toml v0.8.23
+    Checking tracing-appender v0.2.5
+    Checking ureq v3.4.0
+    Checking rusqlite v0.40.2
+    Checking yunjian-core v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-core)
+    Checking yunjian-recite v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-recite)
+    Checking yunjian-recite-tests v0.0.0 (/config/workspace/ProdDir/AI/yj-ios/target/tests/trybuild/yunjian-recite)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.20s
+
+
+test [0m[1mtests/ui/biased_hyp_cannot_be_scored.rs[0m ... [0m[32mok
+[0mtest [0m[1mtests/ui/lifetime_core_type_cannot_join_stable_facade.rs[0m ... [0m[32mok
+[0mtest [0m[1mtests/ui/voice_feedback_cannot_be_a_typed_score.rs[0m ... [0m[32mok
+[0mtest [0m[1mtests/ui/voice_feedback_cannot_be_graded.rs[0m ... [0m[32mok
+[0m
+
+test voice_derived_types_cannot_enter_typed_scoring ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.11s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_spike-03c499698e25e1ae)
+
+running 9 tests
+test corpus::tests::residual_temp_files_only_counts_the_production_temp_suffix ... ok
+test corpus::tests::measurement_json_carries_every_key_the_gate_requires ... ok
+test corpus::tests::layout_follows_the_production_naming_convention ... ok
+test corpus::tests::observe_still_credits_a_materialization_that_lands_just_before_the_worker_returns ... ok
+test corpus::tests::recorded_digest_is_recomputed_rather_than_transcribed ... ok
+test corpus::tests::an_unreachable_manifest_is_a_reported_failure_not_a_panic ... ok
+test corpus::tests::observe_reports_a_production_failure_without_inventing_timings ... ok
+test corpus::tests::observe_marks_a_budget_overrun_instead_of_hanging ... ok
+test corpus::tests::observe_times_both_milestones_in_order ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running unittests src/lib.rs (target/debug/deps/yunjian_voice-bf489e438a780503)
+
+running 207 tests
+test audio::tests::no_device_comes_from_an_empty_enumeration ... ok
+test audio::tests::a_granted_permission_on_a_supported_system_opens_the_gate ... ok
+test audio::tests::permission_denied_comes_from_a_denied_report ... ok
+test audio::tests::a_denied_permission_routes_the_recite_session_to_typing_not_a_zero_score ... ok
+test audio::tests::a_device_reporting_an_invalid_format_fails_instead_of_dividing_by_zero ... ok
+test audio::tests::an_open_device_that_produces_nothing_is_reported_as_no_device ... ok
+test audio::tests::resampler_edge_rounding_is_not_mistaken_for_truncation ... ok
+test audio::tests::downmix_drops_a_partial_trailing_frame_rather_than_padding_it ... ok
+test audio::tests::a_device_already_at_the_target_format_is_passed_through_untouched ... ok
+test audio::tests::downmix_averages_channels_instead_of_dropping_one ... ok
+test audio::tests::restricted_and_undetermined_keep_their_own_reasons_through_the_audio_layer ... ok
+test audio::tests::the_pipewire_bridge_outranks_the_exclusive_alsa_hardware_device ... ok
+test audio::tests::a_system_below_the_floor_beats_a_denied_permission ... ok
+test audio::tests::the_permission_gate_runs_before_the_device_is_ever_opened ... ok
+test audio::tests::an_unrecognized_open_failure_degrades_without_claiming_a_cause ... ok
+test audio::tests::a_wasapi_device_in_use_also_classifies_as_busy ... ok
+test annotate::tests::the_wire_tag_agrees_with_the_kind_label ... ok
+test audio::tests::target_sample_count_follows_the_requested_duration ... ok
+test audio::tests::device_busy_is_told_apart_from_no_device_only_by_the_enumeration ... ok
+test audio::tests::ties_keep_enumeration_order_so_the_choice_is_reproducible ... ok
+test audio::tests::unsupported_platform_version_comes_from_the_shell_reporting_an_old_system ... ok
+test audio::tests::pick_input_prefers_the_bridge_over_whatever_came_first ... ok
+test augment::tests::degenerate_inputs_pass_through_unchanged ... ok
+test error::tests::feature_disabled_message_names_the_flag ... ok
+test lexicon::tests::a_malformed_pinyin_is_rejected ... ok
+test annotate::tests::the_annotation_layer_never_touches_the_rhyme_book_tables ... ok
+test lexicon::tests::a_row_claiming_to_override_must_give_a_reading ... ok
+test lexicon::tests::a_toneless_syllable_is_neutral ... ok
+test annotate::tests::the_annotation_layer_cannot_reach_a_database_or_the_network ... ok
+test augment::tests::upsampling_is_left_alone ... ok
+test lexicon::tests::an_engine_default_row_must_not_give_a_reading ... ok
+test audio::tests::every_audio_error_degrades_to_typed_practice_with_its_own_explanation ... ok
+test lexicon::tests::a_context_character_missing_from_the_lexicon_is_an_error ... ok
+test lexicon::tests::an_unlocated_row_is_rejected_with_its_line_number ... ok
+test lexicon::tests::an_override_is_a_multi_character_entry_borrowing_a_homophone ... ok
+test lexicon::tests::a_zero_width_clause_is_rejected ... ok
+test lexicon::tests::an_unknown_source_value_is_rejected ... ok
+test augment::tests::plain_resampling_does_change_pitch ... ok
+test lexicon::tests::an_unreachable_reading_is_an_error_not_a_silent_skip ... ok
+test lexicon::tests::empty_evidence_is_rejected ... ok
+test lexicon::tests::anthology_membership_matches_the_reviewed_list ... ok
+test lexicon::tests::evidence_without_a_locator_is_rejected ... ok
+test lexicon::tests::evidence_without_an_edition_is_rejected ... ok
+test augment::tests::pink_noise_is_spectrally_tilted_not_white ... ok
+test lexicon::tests::only_single_character_entries_are_indexed ... ok
+test lexicon::tests::located_and_editioned_evidence_passes ... ok
+test annotate::tests::the_three_golden_readings_are_attested_in_their_own_lines ... ok
+test error::tests::require_files_names_the_first_missing_path ... ok
+test lexicon::tests::sample_size_counts_as_a_locator ... ok
+test lexicon::tests::shipped_citune_table_parses_and_every_row_is_located ... ok
+test lexicon::tests::a_context_row_does_not_leak_to_other_lines ... ok
+test lexicon::tests::engine_default_rows_do_not_override ... ok
+test annotate::tests::punctuation_has_no_reading_layer_at_all ... ok
+test lexicon::tests::the_lexicon_v_is_indexed_as_u_umlaut ... ok
+test annotate::tests::every_non_overriding_row_in_the_shipped_table_fails_the_attested_conversion ... ok
+test annotate::tests::an_engine_default_row_is_not_promoted_to_an_attested_reading ... ok
+test annotate::tests::a_character_without_reading_data_gets_no_invented_pinyin ... ok
+test lexicon::tests::tone_marks_and_trailing_digits_are_both_accepted ... ok
+test augment::tests::pink_noise_hits_the_requested_snr ... ok
+test lexicon::tests::v_is_normalised_to_u_umlaut ... ok
+test lexicon::tests::v1_claims_no_citune_authority ... ok
+test lexicon::tests::shipped_roster_parses_and_every_row_is_located ... ok
+test lexicon::tests::characters_outside_the_roster_are_not_demanded ... ok
+test lexicon::tests::shipped_poyin_parses ... ok
+test annotate::tests::multiple_candidates_without_evidence_stay_uncertain ... ok
+test annotate::tests::a_sole_candidate_is_generic_and_not_claimed_as_a_classical_verdict ... ok
+test annotate::tests::an_override_beats_a_sole_generic_candidate ... ok
+test annotate::tests::a_context_row_does_not_reach_a_line_without_that_context ... ok
+test annotate::tests::coverage_counts_every_content_character_exactly_once ... ok
+test annotate::tests::the_golden_poem_has_at_least_one_of_each_reachable_tier ... ok
+test lexicon::tests::the_three_golden_readings_come_from_the_lexicon ... ok
+test annotate::tests::line_index_counts_only_non_blank_lines ... ok
+test models::tests::cache_paths_are_relative_to_the_cache_root_and_discover_follows_the_env ... ok
+test lexicon::tests::ledger_rows_produce_no_overrides ... ok
+test lexicon::tests::only_citune_claims_authority ... ok
+test lexicon::tests::pseudo_initials_are_dropped_when_recovering_a_syllable ... ok
+test lexicon::tests::rhythm_source_identifiers_are_stable ... ok
+test models::tests::every_failure_degrades_to_typed_practice_with_a_specific_message ... ok
+test lexicon::tests::readings_in_a_line_are_returned_in_order ... ok
+test lexicon::tests::every_poyin_row_carries_located_evidence ... ok
+test lexicon::tests::coverage_gap_is_reported_with_the_missing_characters ... ok
+test lexicon::tests::coverage_over_the_roster_is_closed ... ok
+test lexicon::tests::shipped_polyphone_index_parses ... ok
+test models::tests::an_archive_without_a_top_level_directory_still_lands ... ok
+test models::tests::a_successful_unpack_flattens_the_top_level_directory ... ok
+test augment::tests::antialiased_downsampling_suppresses_the_folded_image ... ok
+test permission::tests::android_requires_both_permissions ... ok
+test permission::tests::capture_failure_degrades_without_a_permission_report ... ok
+test permission::tests::denied_permission_degrades_to_typed_practice_with_an_explanation ... ok
+test permission::tests::device_busy_and_capture_failed_give_different_instructions ... ok
+test permission::tests::every_degrade_reason_has_a_message_naming_both_cause_and_recovery ... ok
+test permission::tests::granted_permission_allows_voice_regardless_of_the_feature_flag ... ok
+test permission::tests::macos_requires_both_entitlements_and_the_usage_description ... ok
+test permission::tests::mobile_gates_need_shell_code_desktop_gates_do_not ... ok
+test permission::tests::restricted_and_undetermined_also_degrade_but_with_distinct_reasons ... ok
+test permission::tests::system_too_old_message_quotes_the_platform_floor ... ok
+test permission::tests::the_crate_entry_point_short_circuits_on_the_feature_flag ... ok
+test platform::tests::android_floor_is_26_not_tauri_default_24 ... ok
+test platform::tests::every_floor_states_a_concrete_version_and_a_reason ... ok
+test platform::tests::every_platform_has_exactly_one_floor ... ok
+test platform::tests::lookup_returns_the_requested_platform ... ok
+test models::tests::the_denylist_outranks_a_clean_looking_license ... ok
+test prosody::tests::a_clause_count_mismatch_degrades_instead_of_misplacing_pauses ... ok
+test models::tests::a_denylisted_url_is_refused_even_under_an_innocent_name ... ok
+test models::tests::a_gpl_licensed_model_is_refused_at_load_time ... ok
+test prosody::tests::a_five_syllable_clause_in_a_ci_splits_two_three ... ok
+test models::tests::an_unknown_schema_version_is_refused_rather_than_best_effort_parsed ... ok
+test models::tests::the_licenses_directory_has_no_files_beyond_the_manifest ... ok
+test prosody::tests::a_five_syllable_poem_yields_two_feet_per_line ... ok
+test models::tests::a_missing_model_without_network_yields_the_typed_fallback ... ok
+test models::tests::an_empty_directory_does_not_count_as_present ... ok
+test models::tests::an_empty_denylist_is_refused_because_it_would_pass_everything ... ok
+test prosody::tests::a_sample_rate_change_mid_reading_is_rejected ... ok
+test models::tests::each_denylisted_name_is_refused_at_load_time ... ok
+test models::tests::statuses_cover_every_manifest_entry_and_flag_refusals ... ok
+test prosody::tests::a_matching_pattern_is_used_and_reports_its_source ... ok
+test prosody::tests::a_full_scale_sine_contains_no_silence ... ok
+test prosody::tests::a_seven_syllable_poem_yields_three_feet_per_line ... ok
+test models::tests::licenses_outside_the_allow_list_are_all_refused ... ok
+test prosody::tests::a_single_whole_line_synthesis_has_no_boundary_silence ... ok
+test models::tests::an_unknown_name_lists_what_is_actually_available ... ok
+test models::tests::every_plan_named_identifier_is_still_on_the_denylist ... ok
+test models::tests::the_shipped_manifest_parses_and_holds_only_allowed_licenses ... ok
+test models::tests::remove_cached_deletes_both_the_directory_and_the_archive ... ok
+test models::tests::remove_cached_does_not_apply_the_license_gate ... ok
+test models::tests::ensure_model_on_a_cached_model_performs_no_network_call ... ok
+test prosody::tests::default_prosody_matches_the_documented_values ... ok
+test prosody::tests::a_tune_absent_from_the_table_falls_back_to_punctuation ... ok
+test prosody::tests::empty_lines_are_dropped ... ok
+test prosody::tests::five_syllable_lines_split_two_three ... ok
+test prosody::tests::other_lengths_are_not_split_on_a_guess ... ok
+test prosody::tests::each_foot_is_synthesized_separately ... ok
+test prosody::tests::punctuation_does_not_count_toward_the_syllable_count ... ok
+test recognize::tests::a_biased_config_cannot_produce_an_unbiased_hypothesis ... ok
+test recognize::tests::a_pause_after_four_characters_prompts_the_fifth_exactly_once ... ok
+test recognize::tests::a_zero_length_audio_never_looks_faster_than_realtime ... ok
+test recognize::tests::a_dual_pass_within_budget_keeps_highlighting ... ok
+test prosody::tests::timestamps_index_the_actual_buffer ... ok
+test prosody::tests::seven_syllable_lines_split_two_two_three ... ok
+test recognize::tests::a_dual_pass_slower_than_realtime_drops_to_a_single_pass_instead_of_dropping_frames ... ok
+test prosody::tests::zero_pauses_produce_a_gapless_buffer ... ok
+test prosody::tests::dbfs_converts_to_a_linear_threshold ... ok
+test prosody::tests::all_zero_audio_is_one_silent_span ... ok
+test prosody::tests::spliced_silence_meets_the_configured_pauses ... ok
+test recognize::tests::a_silent_take_emits_one_prompt_and_reports_no_speech ... ok
+test recognize::tests::advancing_the_cursor_allows_a_second_prompt ... ok
+test recognize::tests::an_unbiased_config_cannot_produce_a_display_hypothesis ... ok
+test recognize::tests::a_partial_hypothesis_is_emitted_before_the_utterance_ends ... ok
+test recognize::tests::the_modeling_unit_is_cjkchar_because_hotwords_are_per_character ... ok
+test recognize::tests::hotwords_are_split_per_character_and_per_line ... ok
+test recognize::tests::hotwords_on_greedy_search_is_rejected_instead_of_silently_ignored ... ok
+test recognize::tests::itn_is_disabled_and_has_no_way_to_be_enabled ... ok
+test recognize::tests::never_speaking_prompts_from_the_session_cursor ... ok
+test recognize::tests::the_gate_counts_pauses_and_records_speech ... ok
+test recognize::tests::silence_shorter_than_the_threshold_does_not_prompt ... ok
+test recognize::tests::the_gate_derives_frame_length_from_the_sample_rate ... ok
+test recognize::tests::diagnostics_are_off_by_default_so_no_hypothesis_reaches_the_caller ... ok
+test prosody::tests::one_timestamp_per_foot ... ok
+test models::tests::a_truncated_download_reports_size_rather_than_checksum ... ok
+test recognize::tests::the_homophone_replacer_is_off_by_absence_not_by_preference ... ok
+test models::tests::licenses_directory_holds_a_file_for_every_manifest_entry ... ok
+test session::tests::a_missing_model_is_not_reported_as_a_capture_failure ... ok
+test recognize::tests::the_stream_reports_both_measured_rtf_values_in_its_outcome ... ok
+test session::tests::a_script_splits_on_punctuation_and_refuses_to_be_empty ... ok
+test session::tests::gap_variance_grows_with_irregular_onsets ... ok
+test session::tests::each_of_the_five_failure_paths_yields_a_distinct_reason_code ... ok
+test session::tests::a_zero_scale_config_does_not_produce_a_non_finite_coherence ... ok
+test session::tests::coherence_degrades_monotonically_in_each_of_the_three_signals ... ok
+test session::tests::coherence_is_computed_from_exactly_the_three_available_signals ... ok
+test session::tests::coherence_is_synthesised_from_timings_alone_never_from_a_transcript ... ok
+test session::tests::coherence_never_leaves_the_unit_interval ... ok
+test session::tests::a_session_without_a_demonstration_falls_back_to_a_neutral_duration_ratio ... ok
+test session::tests::a_mid_session_disconnection_keeps_the_finished_lines_and_switches_to_typed ... ok
+test session::tests::cancelling_stops_the_session_without_a_report ... ok
+test session::tests::gap_variance_is_zero_for_perfectly_even_onsets ... ok
+test session::tests::duration_ratio_without_a_demonstration_is_neutral ... ok
+test session::tests::a_ticket_is_bound_to_the_stable_id_and_not_to_any_content_hash ... ok
+test session::tests::playback_and_recording_never_overlap ... ok
+test session::tests::progress_snapshots_alternate_demonstrating_and_listening_per_line ... ok
+test session::tests::gap_variance_is_zero_when_there_is_no_gap_to_speak_of ... ok
+test augment::tests::narrowband_roundtrip_attenuates_above_the_telephone_band ... ok
+test session::tests::a_synthesis_failure_before_the_first_line_degrades_with_zero_progress ... ok
+test session::tests::relative_rhythm_reads_the_duration_ratio_band ... ok
+test models::tests::a_failing_unpack_leaves_no_partial_model_directory ... ok
+test session::tests::the_preflight_gate_routes_a_denied_permission_to_typed_practice ... ok
+test session::tests::the_stage_type_cannot_express_playing_and_recording_at_once ... ok
+test session::tests::the_gate_threshold_follows_the_configured_long_pause ... ok
+test session::tests::prompts_are_forwarded_and_counted ... ok
+test session::tests::timelines_concatenate_by_shifting_onsets_rather_than_restarting_the_clock ... ok
+test tests::rms_of_full_scale_square_wave_is_one ... ok
+test tests::rms_of_silence_is_zero ... ok
+test tests::availability_tracks_the_feature_flag ... ok
+test models::tests::a_matching_download_lands_atomically_and_reports_progress ... ok
+test session::tests::the_metric_is_labelled_as_rhythm_coherence_not_pronunciation ... ok
+test models::tests::the_download_chain_works_over_a_real_socket ... ok
+test audio::tests::a_truncated_capture_is_an_error_not_a_short_success ... ok
+test audio::tests::downsampling_low_passes_first_so_a_12khz_tone_cannot_fold_into_the_voice_band ... ok
+test audio::tests::one_second_of_48khz_stereo_yields_16000_mono_samples ... ok
+test recognize::tests::cancelling_stops_the_stream_without_an_outcome ... ok
+test recognize::tests::decode_witness_is_constructed_in_exactly_one_file ... ok
+test audio::tests::a_48khz_device_is_resampled_to_16khz_against_an_analytic_golden ... ok
+test session::tests::the_grade_comes_from_the_user_and_the_session_never_derives_one ... ok
+test session::tests::a_scripted_session_produces_one_report_and_submits_exactly_one_grade ... ok
+test models::tests::a_response_longer_than_the_manifest_is_cut_off_mid_write ... ok
+test augment::tests::time_stretch_preserves_pitch_while_changing_duration ... ok
+test models::tests::a_checksum_mismatch_aborts_and_leaves_no_file ... ok
+test models::tests::a_cached_archive_with_a_bad_digest_is_refused_without_touching_the_network ... ok
+
+test result: ok. 207 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.47s
+
+     Running tests/no_pronunciation_scoring.rs (target/debug/deps/no_pronunciation_scoring-33e7cf1d0b5a03b6)
+
+running 4 tests
+test the_metric_has_exactly_one_user_facing_name ... ok
+test the_public_score_type_has_no_pronunciation_field ... ok
+test the_three_rhythm_inputs_are_the_only_way_into_coherence ... ok
+test the_session_source_never_claims_pronunciation_scoring ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/platform_config.rs (target/debug/deps/platform_config-f74a0b29d2d9a5b8)
+
+running 10 tests
+test android_manifest_declares_both_audio_permissions ... ok
+test android_manifest_permission_names_match_the_rust_contract ... ok
+test android_plugin_reports_both_permissions_separately ... ok
+test platform_requirements_document_states_a_concrete_minimum_for_all_five_platforms ... ok
+test ios_plugin_activates_the_audio_session_before_capture ... ok
+test declared_minimum_system_versions_match_the_platform_floors ... ok
+test android_min_sdk_is_at_least_26_in_both_gradle_and_tauri_config ... ok
+test macos_and_ios_info_plists_carry_the_usage_description ... ok
+test macos_hardened_runtime_stays_on ... ok
+test macos_bundle_config_points_at_an_entitlements_file_with_both_microphone_keys ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/smoke.rs (target/debug/deps/smoke-1b3288e69d91f7a0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/type_boundaries.rs (target/debug/deps/type_boundaries-688a6c3c30ef63a5)
+
+running 1 test
+   Compiling ring v0.17.14
+   Compiling yunjian-voice v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-voice)
+    Checking hound v3.5.1
+   Compiling rustls v0.23.43
+    Checking rustls-webpki v0.103.13
+    Checking ureq v3.4.0
+    Checking yunjian-core v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-core)
+    Checking yunjian-recite v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-recite)
+    Checking yunjian-voice-tests v0.0.0 (/config/workspace/ProdDir/AI/yj-ios/target/tests/trybuild/yunjian-voice)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.31s
+
+
+test [0m[1mtests/ui/biased_hyp_from_the_voice_path_cannot_be_scored.rs[0m ... [0m[32mok
+[0mtest [0m[1mtests/ui/decode_witness_cannot_be_forged.rs[0m ... [0m[32mok
+[0mtest [0m[1mtests/ui/grade_ticket_cannot_be_submitted_twice.rs[0m ... [0m[32mok
+[0mtest [0m[1mtests/ui/rhythm_inputs_cannot_be_forged.rs[0m ... [0m[32mok
+[0mtest [0m[1mtests/ui/unbiased_hyp_cannot_be_scored.rs[0m ... [0m[32mok
+[0m
+
+test neither_decode_pass_can_enter_typed_scoring ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.92s
+
+   Doc-tests yunjian_ai
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_app
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_cli
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_core
+
+running 2 tests
+test crates/yunjian-core/src/logger.rs - logger (line 23) - compile ... ok
+test crates/yunjian-core/src/search/rhyme.rs - search::rhyme (line 12) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test crates/yunjian-core/src/search/rhyme.rs - search::rhyme (line 23) - compile fail ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+all doctests ran in 0.85s; merged doctests compilation took 0.79s
+   Doc-tests yunjian_corpus
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_mcp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_mobile
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_recite
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_spike
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests yunjian_voice
+
+running 1 test
+test crates/yunjian-voice/src/lib.rs - session (line 92) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.50s; merged doctests compilation took 0.49s
+==> cargo test -p yunjian-mcp --features http --test conformance
+   Compiling serde_core v1.0.229
+   Compiling crossbeam-utils v0.8.22
+   Compiling simd-adler32 v0.3.10
+   Compiling rustix v1.1.4
+   Compiling linux-raw-sys v0.12.1
+   Compiling form_urlencoded v1.2.2
+   Compiling httpdate v1.0.3
+   Compiling tracing v0.1.44
+   Compiling tokio v1.53.1
+   Compiling ref-cast-impl v1.0.26
+   Compiling darling_core v0.24.0
+   Compiling zerocopy v0.8.56
+   Compiling serde_json v1.0.151
+   Compiling serde_derive_internals v0.30.0
+   Compiling memchr v2.8.3
+   Compiling parking_lot_core v0.9.12
+   Compiling rmcp v3.1.2
+   Compiling ryu v1.0.23
+   Compiling sse-stream v0.2.5
+   Compiling idna v1.1.0
+   Compiling matchit v0.8.4
+   Compiling miniz_oxide v0.8.9
+   Compiling axum-core v0.5.6
+   Compiling parking_lot v0.12.5
+   Compiling ref-cast v1.0.26
+   Compiling flate2 v1.1.9
+   Compiling url v2.5.8
+   Compiling concurrent-queue v2.5.0
+   Compiling crossbeam-channel v0.5.16
+   Compiling schemars_derive v1.2.2
+   Compiling async-channel v2.5.0
+   Compiling async-executor v1.14.0
+   Compiling compression-codecs v0.4.38
+   Compiling ureq v3.4.0
+   Compiling blocking v1.6.2
+   Compiling darling_macro v0.24.0
+   Compiling serde v1.0.229
+   Compiling uuid v1.24.0
+   Compiling serde_with v3.22.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling darling v0.24.0
+   Compiling rmcp-macros v3.1.2
+   Compiling zvariant_utils v4.0.0
+   Compiling zcheapstr v1.1.0
+   Compiling enumflags2 v0.7.12
+   Compiling serde_spanned v0.6.9
+   Compiling tracing-serde v0.2.0
+   Compiling toml_datetime v0.6.11
+   Compiling chrono v0.4.45
+   Compiling fluent-uri v0.4.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling email_address v0.2.9
+   Compiling toml_edit v0.22.27
+   Compiling zvariant v5.14.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling value-ext v0.1.5
+   Compiling ahash v0.8.12
+   Compiling schemars v1.2.2
+   Compiling referencing v0.37.4
+   Compiling jsonschema v0.37.1
+   Compiling tracing-appender v0.2.5
+   Compiling toml v0.8.23
+   Compiling tokio-util v0.7.19
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling async-compression v0.4.43
+   Compiling tokio-stream v0.1.19
+   Compiling yunjian-core v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-core)
+   Compiling zbus_names v4.3.4
+   Compiling polling v3.11.0
+   Compiling async-io v2.6.0
+   Compiling h2 v0.4.15
+   Compiling tower-http v0.6.11
+   Compiling async-signal v0.2.14
+   Compiling async-process v2.5.0
+   Compiling zbus v5.19.0
+   Compiling hyper v1.11.0
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.8.9
+   Compiling reqwest v0.13.4
+   Compiling secret-service v5.1.0
+   Compiling genai v0.6.5
+   Compiling zbus-secret-service-keyring-store v1.0.0
+   Compiling yunjian-ai v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-ai)
+   Compiling yunjian-mcp v0.1.0 (/config/workspace/ProdDir/AI/yj-ios/crates/yunjian-mcp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 26.55s
+     Running tests/conformance.rs (target/debug/deps/conformance-8891d87e7464bbd2)
+==> npm test（app/）
+
+> yunjian-app@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.10 /config/workspace/ProdDir/AI/yj-ios/app
+
+(node:2485921) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2486322) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2485915) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  36 passed (36)
+      Tests  428 passed (428)
+   Start at  16:49:12
+   Duration  3.13s (transform 6.63s, setup 0ms, import 12.08s, tests 4.99s, environment 48.79s)
+
+==> scripts/check-pr-title.py --self-test
+PR 标题校验器自检通过：真实历史 113 条、合成用例 25 条，允许类型 13 个（现读 release-please-config.json）
+门禁通过：fmt-check lint test mcp-conformance frontend-test pr-title-check
+
+=== Device Farm run 29 (2026-08-17) ===
+arn: .../run/9b17cc74-307c-4fdb-b97c-90dc308a8a62/c4798f9e-1de1-42b3-abb2-0e341ae649e9
+name: full-acceptance-29-provenance-8a58976  result: PASSED  deviceMinutes: 16.04
+=== full test totals ===
+passed 1317 failed 0 ignored 9

@@ -829,6 +829,56 @@ fn generated_mobile_full_report_passes_the_same_parser() {
         .unwrap_or_else(|error| panic!("生成报告 {} 校验失败：{error}", path.display()));
 }
 
+/// 已落盘的真机报告必须仍然描述当前源码。
+///
+/// # 这条守的缺陷
+///
+/// `mobile-qa-2026-08-17.json` 曾记 `commit_sha=8c7424fa…`，而让 Android 从 9 PASS 变成
+/// 10 PASS 的修复在那之后。报告内部计数完全自洽、截图与测量值都在——**从报告本身看不出
+/// 任何问题**，所以这件事只能由一条外部断言发现。
+///
+/// 判据刻意是**内容摘要**而不是 git 历史：`actions/checkout` 默认浅克隆拿不到旧提交，
+/// 一条「报告描述的是不是当前代码」的断言不该因为克隆深度而失效或通过
+/// （`crates/yunjian-mobile/tests/architecture.rs` 记过同一条）。
+#[test]
+fn the_committed_mobile_report_still_describes_the_current_sources() {
+    let report_dir = repo_root().join("docs/reports");
+    let mut reports = std::fs::read_dir(&report_dir)
+        .expect("报告目录必须存在")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("mobile-qa-") && name.ends_with(".json"))
+        })
+        .collect::<Vec<_>>();
+    reports.sort();
+    let path = reports.last().expect("必须先生成 mobile-qa JSON 报告");
+
+    let (commit_sha, tested_sources) = mobile::read_full_report(path)
+        .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", path.display()));
+
+    assert_eq!(
+        commit_sha.len(),
+        40,
+        "报告 {} 的 commit_sha `{commit_sha}` 不是完整对象名；\
+         短 sha 会随历史增长而歧义，而这个字段的用途正是让任何人都能回到那份代码",
+        path.display()
+    );
+    assert!(
+        commit_sha.chars().all(|ch| ch.is_ascii_hexdigit()),
+        "commit_sha `{commit_sha}` 含非十六进制字符"
+    );
+
+    mobile::verify_provenance(&repo_root(), &tested_sources).unwrap_or_else(|error| {
+        panic!(
+            "报告 {} 描述的源码与当前工作树不符：{error}",
+            path.display()
+        )
+    });
+}
+
 #[test]
 fn foreign_platforms_report_a_reason_and_an_executable_condition() {
     for platform in [Platform::Windows, Platform::MacOs] {

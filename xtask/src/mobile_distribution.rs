@@ -18,6 +18,21 @@ const REPORT_MARKDOWN: &str = "docs/reports/mobile-size.md";
 const APK_CEILING_BYTES: u64 = 80 * 1024 * 1024;
 const REQUIRED_ANDROID_ABIS: [&str; 4] = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"];
 
+/// 四个 ABI 与它们的 Rust target triple。
+///
+/// 用来把「缺哪个 ABI」翻成「缺它的原因」：`crates/yunjian-voice/build.rs` 的
+/// `PREBUILT_TARGETS` 列出上游 sherpa-onnx 提供预编译产物的 triple，不在其中的 ABI
+/// 在**默认开 voice**的前提下无法构建。下面那条测试逐条比对两份清单，防止悄悄分叉。
+const ABI_RUST_TARGETS: [(&str, &str); 4] = [
+    ("arm64-v8a", "aarch64-linux-android"),
+    ("armeabi-v7a", "armv7-linux-androideabi"),
+    ("x86", "i686-linux-android"),
+    ("x86_64", "x86_64-linux-android"),
+];
+
+/// 上游 sherpa-onnx 预编译目标清单的来源。判据不内置第二份副本。
+const VOICE_BUILD_SCRIPT: &str = "crates/yunjian-voice/build.rs";
+
 #[derive(Debug, Deserialize)]
 struct DistributionConfig {
     schema_version: u32,
@@ -35,7 +50,7 @@ struct DistributionConfig {
 #[derive(Debug, Deserialize)]
 struct AndroidConfig {
     project: String,
-    generated_project: String,
+    tauri_generated_project: String,
     min_sdk: u32,
     abis: Vec<String>,
     formats: Vec<String>,
@@ -46,7 +61,7 @@ struct AndroidConfig {
 #[derive(Debug, Deserialize)]
 struct IosConfig {
     project: String,
-    generated_project: String,
+    tauri_generated_project: String,
     build_command: String,
     archive_kind: String,
 }
@@ -204,24 +219,19 @@ fn validate_config(root: &Path, config: &DistributionConfig) -> Result<()> {
     if config.android.min_sdk != 26
         || config.android.abis != REQUIRED_ANDROID_ABIS
         || config.android.formats != ["apk", "aab"]
-        || !config.android.build_command.contains("--split-per-abi")
-        || !config.android.build_command.contains("--apk --aab")
         || config.android.native_build_note.trim().is_empty()
     {
-        bail!("Android 分发配置缺少 minSdk 26、四 ABI、APK/AAB、split 或 NDK 说明");
+        bail!("Android 分发配置缺少 minSdk 26、四 ABI、APK/AAB 或原生构建说明");
     }
     if config.android.project != "mobile/android"
-        || config.android.generated_project != "crates/yunjian-app/gen/android"
+        || config.android.tauri_generated_project != "crates/yunjian-app/gen/android"
         || config.ios.project != "mobile/ios"
-        || config.ios.generated_project != "crates/yunjian-app/gen/apple"
+        || config.ios.tauri_generated_project != "crates/yunjian-app/gen/apple"
         || config.ios.archive_kind != "xcarchive_or_ipa"
-        || !config
-            .ios
-            .build_command
-            .contains("--export-method app-store-connect")
     {
-        bail!("移动工程落点或 iOS archive 命令发生漂移");
+        bail!("移动工程落点发生漂移");
     }
+    validate_build_commands(root, config)?;
     let spike: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(root.join(SPIKE_REPORT)).context("读取 mobile spike 报告失败")?,
     )
@@ -235,6 +245,77 @@ fn validate_config(root: &Path, config: &DistributionConfig) -> Result<()> {
             "分发配置 binding_verdict={}，实测报告 verdict={recorded}",
             config.binding_verdict
         );
+    }
+    Ok(())
+}
+
+/// 构建命令必须属于**被选中的那条分支**，而且那条分支的选中状态在文件系统上可判定。
+///
+/// # 为什么这条必须存在
+///
+/// 曾经这里只校验 `--split-per-abi` 与 `--export-method app-store-connect` 的存在，那是
+/// **tauri_mobile 分支**的命令形状。裁决在 2026-08-16 变成 `uniffi_native` 之后，配置仍写着
+/// 那两条命令，于是 `docs/reports/mobile-size.json` 描述的是一条根本没有被走的构建路径——
+/// 而报告本身看起来完好（有 schema、有断言、有 `all_pass` 字段）。
+///
+/// 「报告存在 ≠ 报告描述的是当前系统」，所以判据不能只看命令里有没有某个开关，还要看
+/// **另一条分支的产物在不在**：`uniffi_native` 下 Tauri 的生成工程必须不存在。
+fn validate_build_commands(root: &Path, config: &DistributionConfig) -> Result<()> {
+    match config.binding_verdict.as_str() {
+        "uniffi_native" => {
+            for (label, generated) in [
+                ("Android", config.android.tauri_generated_project.as_str()),
+                ("iOS", config.ios.tauri_generated_project.as_str()),
+            ] {
+                if root.join(generated).exists() {
+                    bail!(
+                        "裁决是 uniffi_native，但 {label} 的 Tauri 生成工程 `{generated}` 存在；\
+                         两条分支的产物同时在树上时，报告说不清测的是哪一个"
+                    );
+                }
+            }
+            for (label, command, needles) in [
+                (
+                    "Android",
+                    config.android.build_command.as_str(),
+                    ["mobile/android", "assembleRelease", "bundleRelease"].as_slice(),
+                ),
+                (
+                    "iOS",
+                    config.ios.build_command.as_str(),
+                    ["mobile/ios", "xcodegen", "xcodebuild"].as_slice(),
+                ),
+            ] {
+                for needle in needles {
+                    if !command.contains(needle) {
+                        bail!(
+                            "裁决是 uniffi_native，{label} 构建命令里没有 `{needle}`：\
+                             它描述的不是原生工程那条路径"
+                        );
+                    }
+                }
+                if command.contains("cargo tauri") {
+                    bail!(
+                        "裁决是 uniffi_native，{label} 构建命令仍是 `cargo tauri …`：\
+                         那是 tauri_mobile 分支的命令"
+                    );
+                }
+            }
+        }
+        "tauri_mobile" => {
+            if !config.android.build_command.contains("--split-per-abi")
+                || !config.android.build_command.contains("--apk --aab")
+                || !config
+                    .ios
+                    .build_command
+                    .contains("--export-method app-store-connect")
+            {
+                bail!(
+                    "裁决是 tauri_mobile，构建命令必须是带 split 与 app-store-connect 的 tauri 命令"
+                );
+            }
+        }
+        other => bail!("未知 binding verdict `{other}`：只接受 uniffi_native 或 tauri_mobile"),
     }
     Ok(())
 }
@@ -305,18 +386,20 @@ fn inspect_artifact(path: &Path, model_names: &[String]) -> Result<InspectedArti
     let bytes = fs::metadata(path)
         .with_context(|| format!("读取 {} 元信息失败", path.display()))?
         .len();
-    let mut zip =
+    let zip =
         ZipArchive::new(File::open(path).with_context(|| format!("打开 {} 失败", path.display()))?)
             .with_context(|| format!("{} 不是可读 ZIP 容器", path.display()))?;
-    let mut entries = Vec::with_capacity(zip.len());
-    for index in 0..zip.len() {
-        entries.push(
-            zip.by_index(index)
-                .with_context(|| format!("读取 {} 第 {index} 个 ZIP 条目失败", path.display()))?
-                .name()
-                .replace('\\', "/"),
-        );
-    }
+    // 只读**中央目录里的名字**，不构造解压读取器。
+    //
+    // `by_index` 会为该条目建一个解压器，于是 deflate 条目在 `zip` 的
+    // `default-features = false` 配置下报 `Compression method not supported`——而真实的
+    // release APK 里恰好一部分条目是 deflate（实测 arm64 那份：70 条 stored、45 条 deflate）。
+    // 那条报错读起来像「产物坏了」，实际是扫描器要了它不需要的能力：这个守卫问的是
+    // 「包里有没有 corpus .db 或语音模型」，只需要**条目名**。
+    let entries: Vec<String> = zip
+        .file_names()
+        .map(|name| name.replace('\\', "/"))
+        .collect();
     let abis = archive_abis(&entries);
     let forbidden_entries = entries
         .iter()
@@ -517,14 +600,40 @@ fn android_apk_outcome(apks: &[&InspectedArtifact]) -> Outcome {
             ),
         )
     } else {
-        fail(
-            "android_per_abi_apks",
-            format!(
-                "要求四个单 ABI APK 且禁 universal；实际 {} 个，识别 ABI={actual:?}，universal={universal}",
-                apks.len()
-            ),
-        )
+        // **判词要带上缺失的原因**，否则读者只看到「实际 3 个」，会以为是构建时偷懒。
+        // 判词的信息量决定了下一步能不能动手（本仓库在真机验收上反复吃过这条）。
+        let missing: Vec<&str> = expected
+            .iter()
+            .filter(|abi| !actual.contains(*abi))
+            .map(String::as_str)
+            .collect();
+        let mut detail = format!(
+            "要求四个单 ABI APK 且禁 universal；实际 {} 个（{}），universal={universal}",
+            apks.len(),
+            actual.iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+        if !missing.is_empty() {
+            let _ = write!(detail, "；缺 {}", missing.join(", "));
+            for abi in &missing {
+                if let Some(triple) = abi_rust_target(abi) {
+                    let _ = write!(
+                        detail,
+                        "；{abi} 的 {triple} 是否有上游 sherpa-onnx 预编译产物见 {VOICE_BUILD_SCRIPT} 的 PREBUILT_TARGETS，\
+                         没有时带 voice 的该 ABI 产物需源码编译 sherpa-onnx（cmake >= 3.13 与 C++17），\
+                         这是分发 ABI 集与「移动端默认开 voice」两个决定之间的冲突，需用户裁量"
+                    );
+                }
+            }
+        }
+        fail("android_per_abi_apks", detail)
     }
+}
+
+fn abi_rust_target(abi: &str) -> Option<&'static str> {
+    ABI_RUST_TARGETS
+        .iter()
+        .find(|(name, _)| *name == abi)
+        .map(|(_, triple)| *triple)
 }
 
 fn single_artifact_outcome(
@@ -900,6 +1009,83 @@ mod tests {
             "lib/x86_64/libyunjian.so".to_owned(),
         ]);
         assert_eq!(universal.len(), 2);
+    }
+
+    /// ABI → triple 的映射必须与语音构建脚本认识的目标对得上。
+    ///
+    /// 判据不内置第二份预编译清单：**有备份，两份清单就能悄悄分叉**，而分叉的形态是判词
+    /// 说「x86 没有上游预编译」而实际上游已经补上了（或反过来）。这条测试解析
+    /// `crates/yunjian-voice/build.rs` 里的那份清单，并要求每个 triple 的收录状态可判定。
+    #[test]
+    fn the_abi_to_triple_map_agrees_with_the_voice_build_script() {
+        let script = fs::read_to_string(repo_root().join(VOICE_BUILD_SCRIPT))
+            .expect("必须能读到语音构建脚本");
+        // 先切到 `= &[` 之后再找 `]`：直接找第一个 `]` 会切在类型标注 `&[&str]` 上，
+        // 于是解析出一个空清单——那会让这条测试**通过**（空清单里当然没有 i686），
+        // 也就是一条永远绿的假门禁。
+        let prebuilt = script
+            .split_once("const PREBUILT_TARGETS")
+            .and_then(|(_, tail)| tail.split_once("= &["))
+            .and_then(|(_, tail)| tail.split_once(']'))
+            .map(|(list, _)| list.to_owned())
+            .expect("语音构建脚本里必须有 PREBUILT_TARGETS 清单");
+        assert!(
+            prebuilt.contains("aarch64-linux-android"),
+            "解析器与脚本格式已经不匹配：清单里连 arm64 都没读到"
+        );
+        let mapped: BTreeSet<&str> = ABI_RUST_TARGETS.iter().map(|(abi, _)| *abi).collect();
+        let required: BTreeSet<&str> = REQUIRED_ANDROID_ABIS.iter().copied().collect();
+        assert_eq!(
+            mapped, required,
+            "映射必须逐个覆盖声明的四个 ABI，少一个就有 ABI 的成因说不出来"
+        );
+
+        // 逐个断言收录状态，而不是「都在」或「都不在」：这三个在清单里、x86 那个不在，
+        // 而后者正是 `android_per_abi_apks` 判 FAIL 的成因。
+        for triple in [
+            "aarch64-linux-android",
+            "armv7-linux-androideabi",
+            "x86_64-linux-android",
+        ] {
+            assert!(
+                prebuilt.contains(triple),
+                "`{triple}` 应在上游预编译清单里；它不在说明清单或解析器变了"
+            );
+        }
+        // 上游哪天补上 i686，这条会红——届时应重跑四 ABI 构建，而不是改判词。
+        assert!(
+            !prebuilt.contains("i686-linux-android"),
+            "上游已提供 i686-linux-android 预编译产物：现在可以真的构建四个 ABI 了，\
+             请重跑分发构建并重算 mobile-size.json"
+        );
+    }
+
+    #[test]
+    fn a_missing_abi_is_reported_with_its_cause() {
+        let apk = InspectedArtifact {
+            kind: ArtifactKind::Apk,
+            path: PathBuf::from("target/mobile/dist/yunjian-arm64-v8a-release.apk"),
+            bytes: 1,
+            abis: BTreeSet::from(["arm64-v8a".to_owned()]),
+            entries: vec!["lib/arm64-v8a/libyunjian_mobile.so".to_owned()],
+            forbidden_entries: Vec::new(),
+        };
+        let outcome = android_apk_outcome(&[&apk]);
+        assert_eq!(
+            outcome.verdict,
+            Verdict::Fail,
+            "缺 ABI 是真失败，不是未执行"
+        );
+        assert!(
+            outcome.detail.contains("缺 armeabi-v7a, x86, x86_64"),
+            "判词必须列出缺哪几个：{}",
+            outcome.detail
+        );
+        assert!(
+            outcome.detail.contains("i686-linux-android") && outcome.detail.contains("需用户裁量"),
+            "判词必须带上成因与下一步，否则读者只看到「实际 1 个」：{}",
+            outcome.detail
+        );
     }
 
     #[test]

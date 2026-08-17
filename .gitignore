@@ -69,6 +69,13 @@ Thumbs.db
 /mobile/android/.gradle/
 /mobile/android/local.properties
 
+# iOS 产品工程的生成物。工程结构的唯一真相是 `mobile/ios/project.yml`，`.xcodeproj` 由
+# `xcodegen generate` 产出；签入它会让声明与生成物悄悄漂移，而漂移的表现在运行期而不是
+# 构建期（与不签入 `jniLibs/*.so` 同一个道理）。`build/` 是 xcframework 与静态库的落点。
+/mobile/ios/Yunjian.xcodeproj/
+/mobile/ios/build/
+/mobile/ios/Yunjian/Info.plist
+
 # 语音权重的本地缓存。真实内容由 `cargo run -p xtask -- fetch-models` 下载并逐字节
 # 校验；仓库里只有 `models/licenses/` 与 `models/DENYLIST.md` 这类身份与许可记录。
 /models/cache
