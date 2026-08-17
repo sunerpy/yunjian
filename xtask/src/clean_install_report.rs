@@ -300,27 +300,72 @@ pub fn run(
         },
     );
 
-    let shipped_calls = counts["shipped_calls"].as_u64();
+    // 「零调用」要两路都成立：fixture 那一路证明缓存路径被读到，待发布数据集那一路证明
+    // **要发出去的那份工件**在运行期也零调用。少了后者，这条 PASS 可能是靠一份永不发布的
+    // fixture 撑起来的；少了前者，数据集一换内容这条实验就跟着漂。
+    //
+    // 但本条**不**替 `generation_executed` 下裁决：那是下一条断言的事。这里只要求返回的
+    // 正文不是未生成标记——「表里有行」不等于「行里有赏析」，而占位标记两边一致也会通过
+    // 逐字比对，所以标记要单独拦一次。
     host.insert(
         "provider_zero_calls_for_shipped_poem",
-        match shipped_calls {
-            Some(0) => (
-                Verdict::Pass,
+        match (
+            counts["shipped_calls"].as_u64(),
+            counts["released_seed_calls"].as_u64(),
+        ) {
+            (Some(0), Some(0))
+                if counts["released_seed_source"].as_str() == Some("shipped")
+                    && counts["released_seed_text_matches_dataset"].as_bool() == Some(true)
+                    && counts["released_seed_text_has_marker"].as_bool() == Some(false) =>
+            {
+                (
+                    Verdict::Pass,
+                    format!(
+                        "`xtask provider-calls` 两路都实测 0 次调用。\
+                         fixture 那一路：随包首 {}，来源 {}，正文 `{}`（永不发布，证明的是缓存路径）。\
+                         待发布数据集那一路：{} 首，来源 {}，经 `{}` 导入 {} 条后命中，\
+                         正文 {} 字且与 `dataset/appreciations.json` 逐字一致、不含未生成标记，\
+                         首段「{}」",
+                        counts["shipped_poem"].as_str().unwrap_or("?"),
+                        counts["shipped_source"].as_str().unwrap_or("?"),
+                        counts["fixture_text"].as_str().unwrap_or("?"),
+                        counts["released_seed_poem"].as_str().unwrap_or("?"),
+                        counts["released_seed_source"].as_str().unwrap_or("?"),
+                        counts["released_seed_import_path"].as_str().unwrap_or("?"),
+                        counts["released_seed_record_count"].as_u64().unwrap_or(0),
+                        counts["released_seed_text_chars"].as_u64().unwrap_or(0),
+                        counts["released_seed_text_head"].as_str().unwrap_or("?")
+                    ),
+                )
+            }
+            (Some(0), Some(0)) => (
+                Verdict::Fail,
                 format!(
-                    "`xtask provider-calls` 实测 0 次调用，来源 {}；随包首 {}。\
-                     **用的是 fixture 种子**（正文 `{}`），因此本条证明的是缓存路径，不是产品内容",
-                    counts["shipped_source"].as_str().unwrap_or("?"),
-                    counts["shipped_poem"].as_str().unwrap_or("?"),
-                    counts["fixture_text"].as_str().unwrap_or("?")
+                    "两路调用次数都是 0，但待发布数据集那一路的随包命中不成立：\
+                     来源 {}（期望 shipped）、与数据集逐字一致={}、含未生成标记={}。\
+                     零调用若不是来自一次带真实正文的随包命中，本条没有意义",
+                    counts["released_seed_source"].as_str().unwrap_or("?"),
+                    counts["released_seed_text_matches_dataset"]
+                        .as_bool()
+                        .map_or("?".to_owned(), |value| value.to_string()),
+                    counts["released_seed_text_has_marker"]
+                        .as_bool()
+                        .map_or("?".to_owned(), |value| value.to_string())
                 ),
             ),
-            Some(other) => (
+            (Some(fixture), Some(released)) => (
                 Verdict::Fail,
-                format!("随包命中发生了 {other} 次模型调用，期望 0"),
+                format!(
+                    "随包命中发生了模型调用：fixture 那一路 {fixture} 次、\
+                     待发布数据集那一路 {released} 次；两者都应为 0"
+                ),
             ),
-            None => (
+            _ => (
                 Verdict::NotExecuted,
-                format!("{} 里没有 shipped_calls", provider_calls.display()),
+                format!(
+                    "{} 里缺 shipped_calls 或 released_seed_calls",
+                    provider_calls.display()
+                ),
             ),
         },
     );
@@ -350,8 +395,11 @@ pub fn run(
         },
     );
 
-    // 这一条**必须**如实记未执行：本机没有开放权重推理条件，数据集每条正文是未生成标记。
-    // 判 PASS 会让一份占位数据集看起来像产品内容；判 FAIL 会把「没有推理硬件」说成产品缺陷。
+    // 这一条只看清单，与上一条的调用计数**刻意分开**：随包赏析不花钱（零调用）和随包赏析
+    // 有内容（模型输出）是两件事，合成一条会让它们互相顶替。
+    //
+    // 未执行那一支保留着，且不能改成 FAIL：数据集退回未生成状态时，判 PASS 会让占位看起来
+    // 像产品内容，判 FAIL 会把「这台机器没有推理运行时」说成产品缺陷。两者都不是事实。
     host.insert(
         "shipped_dataset_is_model_output",
         if dataset["generation_executed"].as_bool() == Some(true) {
