@@ -28,7 +28,7 @@ OXFMT_ARGS := --ignore-path .oxfmtignore --ignore-path .gitignore .
 # `frontend-test` 必须在门禁里，不是可选补充：自绘标题栏的时序缺陷（StrictMode 双调用下
 # 卸载后写状态、订阅泄漏）与非 Tauri 降级只有 Vitest 验得到，Rust 侧一条都覆盖不到。
 # 不进 GATE 就等于那些断言只在有人手动想起来的时候才跑。
-GATE := fmt-check lint test mcp-conformance frontend-test
+GATE := fmt-check lint test mcp-conformance frontend-test pr-title-check
 
 # 语料门禁跑的样本规模。10k 是方案为 CI 指定的规模：足够大到让索引行为与真实语料同形
 # （两字查询在 19 首上无论怎么查都是零点几毫秒，看不出路径退化），又足够小到能在几秒内跑完。
@@ -47,7 +47,7 @@ FRONTEND_DIST := app/dist/index.html
 
 NPM := npm
 
-.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test mcp-conformance build check ci corpus-gate \
+.PHONY: help fmt fmt-rust fmt-oxfmt fmt-check lint test mcp-conformance pr-title-check build check ci corpus-gate \
 	corpus-artifact bundle clean-install hooks frontend frontend-test
 
 help: ## 列出全部可用目标
@@ -131,6 +131,14 @@ test: ## 跑全工作区测试。不加过滤，doctest 才会被执行
 mcp-conformance: ## 用真实 rmcp 客户端执行 MCP 端到端一致性测试
 	@echo "==> cargo test -p yunjian-mcp --features http --test conformance"
 	@$(CARGO) test -p yunjian-mcp --features http --test conformance
+
+# 自检 PR 标题校验器本身，跑的是真实历史标题（含已经真的丢过版本的那 7 条）与合成用例。
+# **在 GATE 里，不是可选补充**：这个校验器挡的是一类静默失败（标题不合规 → release-please
+# 不报错也不 bump），而一个坏掉的校验器同样会静默放行。判定逻辑只有一份，
+# `.github/workflows/pr-title.yml` 用的就是这个脚本，本地与 CI 不存在两套标准。
+pr-title-check: ## 自检 PR 标题校验器（真实历史 + 合成用例）
+	@echo "==> scripts/check-pr-title.py --self-test"
+	@python3 scripts/check-pr-title.py --self-test
 
 # 语音特性（`--features voice`）刻意不进任何门禁：它会拉起需要 libclang 与
 # 网络下载的原生依赖，且分发物许可与默认构建不同。要验它请显式指定特性。

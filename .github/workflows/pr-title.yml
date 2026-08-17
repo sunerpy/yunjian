@@ -1,0 +1,58 @@
+name: pr-title
+
+# PR 标题门禁。挡的是一类**静默**失败：仓库用 squash 合并，squash 提交的主题就是
+# release-please 唯一能读到的东西；主题不合 Conventional Commits 时它不报错、
+# 不 bump，那个 PR 的全部改动对版本号隐形。
+#
+# 本仓库已经因此丢过 7 次（#78、#81、#89、#92、#94、#104、#108，逐条都是实质 fix）。
+# 判定与逐条诊断都在 `scripts/check-pr-title.py`，允许的 type 集合由它现读
+# `release-please-config.json`，不写第二份清单。
+#
+# **必须与仓库设置 `squash_merge_commit_title = PR_TITLE` 成对存在。**
+# 此前的 `COMMIT_OR_PR_TITLE` 在「分支只有一个提交」时取那个提交的主题、否则取 PR 标题，
+# 于是同一个仓库有两种取值来源，取哪个取决于与发版语义毫无关系的提交数。
+# 只改设置不加门禁 → 把随机性换成「标题写错就静默丢版本」（#27 就是被旧设置偶然救回的
+# 那一例，改成 PR_TITLE 后它会变成第 8 次丢失）。只加门禁不改设置 → 校验的字符串
+# 根本不是最终会被解析的那个。
+#
+# **本工作流目前不是分支保护里的必需检查。** 它红了会显示在 PR 上，但不阻止合并。
+# 把它加进必需检查是一次独立的分支保护变更：加进去的瞬间，所有已开、其 head 上还没有
+# 本检查上报的 PR 会立刻卡住，所以要等在飞的 PR 落地后再单独做，不在本 PR 里顺手改。
+#
+# `edited` 必须订阅：标题改动只发这个事件，缺了它作者改完标题后检查不会重跑。
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+# 标题从事件载荷里读，不调 API，所以只需要 checkout 的读权限。
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: PR 标题
+    # 第二个标签必须全局唯一（GitHub 按 superset 匹配路由 job），并登记进
+    # `.github/actionlint.yaml`——那份清单就是这条唯一性约束的可核对之处。
+    runs-on:
+      - codebuild-yunjian-runner-${{ github.run_id }}-${{ github.run_attempt }}
+      - pr-title-gate
+    steps:
+      - uses: actions/checkout@v4
+
+      # 先自检校验器本身，再拿它判这个 PR 的标题。顺序是刻意的：校验器坏掉时
+      # 「标题通过」这句话没有意义，那种情况必须表现为红而不是绿。
+      # 自检同时也在 `make ci` 的 GATE 里，本地 pre-push 就会跑到。
+      - name: 自检校验器（真实历史 + 合成用例）
+        run: make pr-title-check
+
+      # 标题走 env 传入，**绝不插值进 shell**：PR 标题是外部可控输入，
+      # 直接写进 `run:` 等于把命令注入的口子开在 CI 上。
+      - name: 校验 PR 标题
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/check-pr-title.py --title "$PR_TITLE"

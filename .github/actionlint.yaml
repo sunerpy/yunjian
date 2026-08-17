@@ -22,6 +22,7 @@ self-hosted-runner:
     - corpus-release-build
     - mobile-contract
     - mobile-report
+    - pr-title-gate
     - release-please-gate
     - release-publish
     - release-upload-assets
