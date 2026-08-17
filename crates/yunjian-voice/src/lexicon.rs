@@ -164,6 +164,19 @@ pub enum LexiconError {
     /// 覆盖闭合失败：名册里有多音字没有对应的破读行。
     #[error("朗读名册内 {} 个多音字在 poyin.tsv 里没有对应行：{}", missing.len(), missing.iter().collect::<String>())]
     CoverageGap { missing: BTreeSet<char> },
+    /// 依据与所声明的来源类型不符。与 [`Self::Unlocated`] 拦的不是同一件事：那一种拦
+    /// 「空而存在的引用」，这一种拦「引用成立但类型被冒充」——统计推断写成词谱卷页。
+    #[error("{file} 第 {line} 行的依据与来源 {declared} 不符（{reason}）：{note:?}")]
+    ProvenanceMismatch {
+        file: &'static str,
+        line: usize,
+        declared: &'static str,
+        reason: &'static str,
+        note: String,
+    },
+    /// 覆盖闭合失败：名册里的词牌没有对应的句式行。
+    #[error("朗读名册内 {} 支词牌在 citune_rhythm.tsv 里没有对应行：{}", missing.len(), missing.iter().cloned().collect::<Vec<_>>().join("、"))]
+    TuneCoverageGap { missing: BTreeSet<String> },
 }
 
 /// 依据是否成立：既要有定位符，也要有所据版本。
@@ -218,6 +231,87 @@ fn find_locator(note: &str) -> Option<String> {
 fn has_edition_marker(note: &str) -> bool {
     CITED_FROM_MARKERS.iter().any(|m| note.contains(*m))
         && EDITION_KEYWORDS.iter().any(|k| note.contains(*k))
+}
+
+/// 该定位关键字是否带序数，也就是它是不是一个真的定位符而非顺口一提。
+///
+/// 与 [`find_locator`] 同一个窗口判据，只是限定到指定关键字：`find_locator` 回答「有没有
+/// 任何定位符」，这里回答「有没有卷/页这一种定位符」，后者是词谱依据的硬要求。
+fn has_locator_for(note: &str, keyword: char) -> bool {
+    let chars: Vec<char> = note.chars().collect();
+    chars.iter().enumerate().any(|(index, character)| {
+        *character == keyword
+            && chars[index.saturating_sub(3)..(index + 4).min(chars.len())]
+                .iter()
+                .any(|nearby| ORDINAL_CHARS.contains(nearby) || nearby.is_ascii_digit())
+    })
+}
+
+/// 词谱书名词。写下其中任何一个就是在声称「这条出自一部词谱」。
+const CITUNE_WORK_MARKERS: &[&str] = &["词谱", "詞譜", "词律", "詞律"];
+
+/// 实测口径词。写下它们表示这条是自语料统计得出的。
+const CORPUS_MEASURE_MARKERS: &[&str] = &["实测", "實測", "众数", "眾數"];
+
+/// 依据的**类型**是否与所声明的来源相符。
+///
+/// **这不是 [`located_evidence`] 的重复，删不掉。** 那一条只问「引用能不能被第三方翻到」，
+/// `卷五` 与 `n=135` 都算合格定位符，于是它答不了「这条是词谱还是统计」——而方案对词句读的
+/// 要求恰恰在类型上。判据是双向的：词谱行必须有书名、卷与页，实测行必须有样本量**且不许**
+/// 出现词谱书名或卷页，后一半才是防洗白的那一半。
+///
+/// # Errors
+///
+/// 返回原因分类，调用方据此产出带行号的报错。
+pub fn evidence_matches_source(source: RhythmSource, note: &str) -> Result<(), &'static str> {
+    match source {
+        RhythmSource::CiTune => {
+            if CORPUS_MEASURE_MARKERS
+                .iter()
+                .any(|marker| note.contains(marker))
+                || note.contains("n=")
+            {
+                return Err("词谱依据里出现实测口径，来源类型自相矛盾");
+            }
+            if !CITUNE_WORK_MARKERS
+                .iter()
+                .any(|marker| note.contains(marker))
+            {
+                return Err("词谱依据未写出词谱书名");
+            }
+            if !has_locator_for(note, '卷') {
+                return Err("词谱依据缺卷次");
+            }
+            if !has_locator_for(note, '页') {
+                return Err("词谱依据缺页码");
+            }
+            Ok(())
+        }
+        RhythmSource::CorpusModal => {
+            if CITUNE_WORK_MARKERS
+                .iter()
+                .any(|marker| note.contains(marker))
+            {
+                return Err("实测依据引了词谱书名，等于把统计推断冒充词谱权威");
+            }
+            if has_locator_for(note, '卷') || has_locator_for(note, '页') {
+                return Err("实测依据写了卷次或页码，等于把统计推断冒充词谱权威");
+            }
+            if !note.contains("n=") {
+                return Err("实测依据缺样本量（需形如 n=135）");
+            }
+            if !CORPUS_MEASURE_MARKERS
+                .iter()
+                .any(|marker| note.contains(marker))
+            {
+                return Err("实测依据未写出实测口径");
+            }
+            Ok(())
+        }
+        RhythmSource::CharCount | RhythmSource::Punctuation => {
+            Err("该来源是运行期推得的切分方式，不能作为表内行的来源")
+        }
+    }
 }
 
 /// TSV 的数据行，跳过注释与空行。返回 `(1 起的行号, 各列)`。
@@ -507,6 +601,15 @@ impl CiTunes {
                 reason,
                 note: fields[3].to_owned(),
             })?;
+            evidence_matches_source(source, fields[3]).map_err(|reason| {
+                LexiconError::ProvenanceMismatch {
+                    file: FILE,
+                    line,
+                    declared: source.as_str(),
+                    reason,
+                    note: fields[3].to_owned(),
+                }
+            })?;
             by_tune.insert(
                 fields[0].to_owned(),
                 CiTuneRhythm {
@@ -546,6 +649,36 @@ impl CiTunes {
             .filter(|row| row.source.claims_citune_authority())
             .count()
     }
+
+    /// 已收录的词牌名。
+    #[must_use]
+    pub fn tunes(&self) -> BTreeSet<String> {
+        self.by_tune.keys().cloned().collect()
+    }
+}
+
+/// 覆盖闭合检查：名册里每一支词牌都必须在句式表里有一行。
+///
+/// **分母取名册而不是「宋词三百首的三百首」，因为后者在本仓库里不存在。** 方案要求覆盖
+/// 宋词三百首所含词牌，而该选本的收录名单没有任何随包资产（见 `reading_roster.tsv` 顶部
+/// 的说明），仓库能知道的全部成员就是名册里标了该选本的那些作品。于是这条检查与
+/// [`assert_coverage`] 同形：断言的是闭合而不是百分比——百分比能靠扩大分母变好看，闭合不行。
+///
+/// # Errors
+///
+/// [`LexiconError::TuneCoverageGap`] 列出缺哪些词牌。
+pub fn assert_tune_coverage(tunes: &CiTunes, roster: &Roster) -> Result<(), LexiconError> {
+    let covered = tunes.tunes();
+    let missing: BTreeSet<String> = roster
+        .entries()
+        .iter()
+        .filter_map(|entry| entry.ci_tune.clone())
+        .filter(|tune| !covered.contains(tune))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(LexiconError::TuneCoverageGap { missing })
 }
 
 /// 名册里的一首。
