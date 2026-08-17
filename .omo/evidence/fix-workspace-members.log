@@ -1,0 +1,52 @@
+# fix-workspace-members 验证记录
+
+基线: main@8a589760263cf7edf13dca3a91d7f3baed7e270b
+分支: fix/workspace-member-count
+
+## 修改前红灯
+$ cargo test -p xtask --test workspace_contract
+结果: FAILED（2 failed）
+- workspace_members_match_the_frozen_ten_member_plan_exactly: 实际 11 项，含 crates/yunjian-spike
+- android_spike_builds_from_its_standalone_manifest_into_the_shared_target_dir: spike 尚无独立 [workspace]
+
+## 修改后定向验证
+$ cargo test -p xtask --test workspace_contract
+结果: PASS（2 passed, 0 failed）
+$ cargo test --manifest-path crates/yunjian-spike/Cargo.toml --target-dir target
+结果: PASS（9 passed, 0 failed；doc-tests 0 failed）
+
+## 第 11 成员故障注入
+临时将 crates/yunjian-spike 加回根 [workspace].members，直接执行已编译的精确清单测试。
+结果: EXPECTED-FAIL；actual 为 11 项、expected 为冻结的 10 项。
+随后还原 Cargo.toml 并复跑 workspace_contract：2 passed, 0 failed。
+
+## 最终门禁
+$ npm ci --prefix app && npm run build --prefix app
+结果: PASS（tsc --noEmit 与 vite build）
+$ make fmt
+结果: PASS（cargo fmt 与 oxfmt）
+$ make ci
+结果: PASS（fmt check、clippy -D warnings、workspace tests、MCP conformance、app vitest、PR title self-test）
+$ YUNJIAN_MODEL_DIR=/config/workspace/ProdDir/AI/yunjian/models/cache cargo test --workspace --all-features --no-fail-fast
+结果: PASS；所有执行目标 0 failed。首次未设置缓存根时仅 yunjian-voice streaming 的 5 项因隔离 worktree 缺模型失败；复用主工作树已存在且受版本控制外管理的模型缓存后全部 5 项通过。
+$ cargo metadata --format-version 1 | jq -e '(.workspace_members | length) == 10'
+结果: true
+精确成员（按顺序）:
+1. crates/yunjian-core
+2. crates/yunjian-corpus
+3. crates/yunjian-ai
+4. crates/yunjian-recite
+5. crates/yunjian-voice
+6. crates/yunjian-mcp
+7. crates/yunjian-cli
+8. xtask
+9. crates/yunjian-app
+10. crates/yunjian-mobile
+$ lsp_diagnostics xtask/tests/workspace_contract.rs
+结果: No diagnostics found
+
+## Android spike 构建链
+- crates/yunjian-spike 是独立 workspace，并提交独立 Cargo.lock。
+- buildspec 使用 cargo build --locked --manifest-path crates/yunjian-spike/Cargo.toml。
+- --target-dir "$CODEBUILD_SRC_DIR/target" 保持后续读取 target/$RUST_TARGET/release/libyunjian_spike.so 的路径不变。
+- 本机没有 Android SDK/NDK，未在本机重新生成 APK；契约测试和 spike 宿主单测已验证独立 manifest、锁文件、共享 target 与 JNI 桥逻辑。

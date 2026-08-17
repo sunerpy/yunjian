@@ -2,3 +2,6 @@
 - 2026-08-16：UniFFI callback 不能把一次轮询超时当成终态；必须持续拉取直到核心 operation 报告唯一终态或句柄关闭。
 - 2026-08-16：Android 系统钥匙串之前必须由 Kotlin 使用 `applicationContext` 初始化 JNI 全局引用与 `ndk-context`，且该顺序需要在 Rust 构造入口再次检查。
 - 2026-08-16：生成的 Kotlin/Swift 源码、C header、modulemap、生成脚本和结构测试应一起版本化，才能让“binding 已落地”成为可执行事实而非状态常量声明。
+- 2026-08-17：一次性 Android JNI spike 可保留在仓库但通过自己的 `[workspace]` 与 `Cargo.lock` 脱离产品 workspace；CodeBuild 必须用 `--locked --manifest-path`，并显式 `--target-dir` 回到根 `target/`，才能同时守住 10 成员契约与既有 APK 注入路径。
+- 2026-08-17：workspace 成员门禁应解析根 `Cargo.toml` 的 `[workspace].members` 并逐项比较冻结清单；临时注入第 11 项可证明守卫真会变红，避免注释文本或模糊计数造成假绿。
+- 2026-08-17：隔离 worktree 的 `--all-features` 语音实测要显式把 `YUNJIAN_MODEL_DIR` 指向已有缓存根；未设置时 5 个 streaming 测试因模型缺失失败不代表代码回归，设置后必须重跑并达到 0 failed。
