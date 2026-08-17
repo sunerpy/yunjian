@@ -122,23 +122,49 @@ jobs:
       # 而 `corpus fetch` 要靠一份统一清单同时拿到两者。少了这一步，发布出去的语料没有
       # 任何代码路径能把种子送到用户机器上，「无 key 也有赏析」在净机上就不成立。
       #
-      # **不给 `--endpoint`**：CI 里没有开放权重推理运行时。此时管线、门禁与溯源字段照常
-      # 校验，每条正文写入未生成标记，清单标 `generation_executed=false`。这是如实降级，
-      # 不是失败——但发布说明里必须写清楚，见下面的 `notes`。
+      # ## 为什么是「下载 + 校验」而不是「在这里生成」
       #
-      # 这条降级有一个**下游后果**，2026-08-17 实测确认：移动端首启从
-      # `releases/latest/download/assets_manifest.json` 取种子，所以只要本步骤不带
-      # `--endpoint`，真机上看到的赏析就一直是未生成标记——即便本机的 `dataset/` 里已经有
-      # 一份真赏析。真机报告的 `reading_view_citations_and_ai_appreciation` 会因此 FAIL，
-      # 且那个 FAIL 是对的：用户拿到的确实是占位。
+      # 这一步曾经直接跑 `pregenerate` 且**刻意不给 `--endpoint`**（CI 里没有开放权重推理
+      # 运行时）。那一步如实降级成「每条正文是未生成标记」，而下游照常把它发出去：
+      # `corpus-v0.1.0` 的 `appreciations.json` 因此是 16 条全占位。移动端首启从
+      # `releases/latest/download/assets_manifest.json` 取种子，所以真机上看到的赏析
+      # 一直是占位——2026-08-17 实测确认。
       #
-      # 要发出真赏析，种子必须**先在一台有开放权重运行时的机器上生成**再带进这次发布
-      # （`cargo run -p xtask -- pregenerate --endpoint <URL>`，实测 deepseek-r1:7b CPU 约
-      # 40 秒/条）。在 CI 里现拉一个 7B 权重跑推理不是可行的替代：那既让发布时长失控，
-      # 也让「发布产物由哪一次推理产生」不可追溯。这个改动尚未做，是一次独立决策。
-      - name: 生成随包赏析种子
+      # 在 CI 里现拉一个 7B 权重跑推理不是可行的替代：既让发布时长失控（本机 CPU 实测
+      # 32–66 秒/条，还要先下载几个 GiB 权重），也让「发布产物由哪一次推理产生」不可追溯——
+      # 每次重跑都会得到一份新的、无人看过的正文。
+      #
+      # 于是种子在一台有运行时的机器上**生成一次**，上传到独立的 `appreciation-seed-v*`
+      # Release，指针与摘要写进仓库里的 `dataset/appreciations.lock.toml`。本步骤只按锁
+      # 下载：时长是一次下载，而「这些字节从哪来」由 `git log dataset/appreciations.lock.toml`
+      # 回答。锁不是种子本身，所以「产物不入库」那条规则没有被动摇。
+      #
+      # `xtask/src/main.rs` 有一条断言扫本文件，要求 `verify-seed` 在场且 `pregenerate` 不在。
+      - name: 按种子锁下载随包赏析种子
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cargo run -p xtask --release -- pregenerate \
+          set -euo pipefail
+          SEED_TAG="$(cargo run -p xtask --release --quiet -- \
+            verify-seed --print-seed-tag)"
+          echo "种子 tag：$SEED_TAG"
+          # 发布说明也要写出种子来源，而那一步不该再解析一次锁——锁只应有一个解析器。
+          echo "SEED_TAG=$SEED_TAG" >> "$GITHUB_ENV"
+          gh release download "$SEED_TAG" --dir dataset --clobber \
+            --pattern appreciations.json \
+            --pattern appreciations.json.sha256 \
+            --pattern appreciations.manifest.json
+
+      # 门禁在这里，而不是在生成那一环：`pregenerate` 不带 `--endpoint` 时如实降级是**正确
+      # 行为**（本地开发与管线校验都需要它），把降级产物发给用户才是缺陷。所以
+      # `generation_executed=false` 在本步骤是硬失败。
+      #
+      # 它不采信种子自述的任何字段：覆盖集与每首的 `grounding_digest` 由上面刚建好的
+      # `corpus.db` 用生成期同一个实现重算，逐项相等才放行。披露门禁也在这里接上——
+      # 发布流不再跑 `pregenerate`，那道检查若不重新挂上就整条消失了。
+      - name: 随包赏析种子发布门禁
+        run: |
+          cargo run -p xtask --release -- verify-seed \
             --corpus-db corpus/build/release/corpus.db
 
       # 清单里的下载地址必须指向**本次这个 tag** 的资产。写死 `latest` 会让一次新发布
@@ -211,6 +237,8 @@ jobs:
                 "- \`appreciations.json\`：$(jq -r '.record_count' ../../../dataset/appreciations.manifest.json) 条，模板版本 $(jq -r '.template_version' ../../../dataset/appreciations.manifest.json)" \
                 "- 覆盖集：$(jq -r '.coverage_tags | join("、")' ../../../dataset/appreciations.manifest.json)（筛选途径 $(jq -r '.coverage_selector' ../../../dataset/appreciations.manifest.json)）" \
                 "- 生成模型：$(jq -r '.model' ../../../dataset/appreciations.manifest.json)（许可 $(jq -r '.model_license' ../../../dataset/appreciations.manifest.json)，运行时 $(jq -r '.provider' ../../../dataset/appreciations.manifest.json)）" \
+                "- 权重摘要：\`$(jq -r '.model_digest' ../../../dataset/appreciations.manifest.json)\`" \
+                "- 种子来源：\`${SEED_TAG}\` 这个 Release，指针见 \`dataset/appreciations.lock.toml\` 的 git 历史" \
                 "- **是否真的执行了推理：$(jq -r '.generation_executed' ../../../dataset/appreciations.manifest.json)**" \
                 "$(jq -r 'if .generation_executed then "" else "" end' ../../../dataset/appreciations.manifest.json)" \
                 "$(jq -r 'if .generation_executed | not then "> [!WARNING]\n> 本次发布的种子**不是模型输出**：" + .not_executed_reason + "。每条正文是未生成标记，\n> 管线、门禁与溯源字段照常校验。不要把它当成可供阅读的赏析内容。" else "" end' ../../../dataset/appreciations.manifest.json)" \

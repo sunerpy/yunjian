@@ -40,8 +40,8 @@ use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OpenFlags, params};
 use yunjian_ai::pregenerate::{
     ANTHOLOGY_TAGS, CoverageSelector, DATASET_SCHEMA_VERSION, DatasetManifest,
-    NOT_GENERATED_MARKER, OpenWeightModel, PregeneratedDataset, PregeneratedRecord,
-    ensure_disclosure, sha256_hex,
+    MODEL_DIGEST_HEX_LEN, NOT_GENERATED_MARKER, OpenWeightModel, PregeneratedDataset,
+    PregeneratedRecord, ensure_disclosure, sha256_hex,
 };
 use yunjian_ai::provider::{
     APPRECIATION_TEMPLATE_VERSION, AppreciationProvider, AppreciationRequest,
@@ -67,15 +67,29 @@ const MANIFEST_FILE: &str = "appreciations.manifest.json";
 /// 披露文件名。打包前逐条校验。
 const DISCLOSURE_FILE: &str = "README.md";
 
-pub fn run(
-    corpus_db: PathBuf,
-    limit: Option<usize>,
-    out_dir: Option<PathBuf>,
-    model: String,
-    model_license: String,
-    provider: String,
-    endpoint: Option<String>,
-) -> Result<()> {
+/// 一次预生成的全部输入，与 clap 那个变体一一对应。
+pub struct Request {
+    pub corpus_db: PathBuf,
+    pub limit: Option<usize>,
+    pub out_dir: Option<PathBuf>,
+    pub model: String,
+    pub model_license: String,
+    pub provider: String,
+    pub endpoint: Option<String>,
+    pub seed_tag: Option<String>,
+}
+
+pub fn run(request: Request) -> Result<()> {
+    let Request {
+        corpus_db,
+        limit,
+        out_dir,
+        model,
+        model_license,
+        provider,
+        endpoint,
+        seed_tag,
+    } = request;
     let root = crate::index_spike::repo_root()?;
     let out_dir = out_dir.unwrap_or_else(|| root.join(DATASET_DIR));
 
@@ -101,55 +115,13 @@ pub fn run(
     })?;
     emit(&format!("披露校验通过：{}", disclosure_path.display()));
 
-    crate::prerequisite::require_corpus_db(&corpus_db)?;
-    let source = open_read_only(&corpus_db)
-        .with_context(|| format!("只读打开语料库 {} 失败", corpus_db.display()))?;
-    let corpus_version = source
-        .query_row(
-            "SELECT corpus_version FROM corpus_meta WHERE singleton = 1",
-            [],
-            |row| row.get::<_, String>(0),
-        )
-        .context("读取语料版本失败")?;
-
-    let (selector, mut picked) = resolve_coverage(&source, &corpus_db)?;
-    emit(&format!(
-        "覆盖集：选本 {ANTHOLOGY_TAGS:?}，筛选途径 {}，命中 {} 首",
-        selector.as_str(),
-        picked.len()
-    ));
-    if picked.is_empty() {
-        bail!(
-            "覆盖集为空。语料 {} 的 `poem_tag` 里没有选本标签行，评审名单也解析不出任何作品；\
-             预生成拒绝写出一份空数据集",
-            corpus_db.display()
-        );
-    }
-    if let Some(limit) = limit
-        && picked.len() > limit
-    {
-        picked.truncate(limit);
-        emit(&format!("按 --limit 截到 {} 首", picked.len()));
-    }
-    drop(source);
-
     let workspace = out_dir.join(".work");
-    let subset = workspace.join("subset.db");
-    prepare_workspace(&workspace)?;
-    extract_subset(&corpus_db, &subset, &picked).context("抽取子集语料失败（源库不会被改动）")?;
-    emit(&format!(
-        "子集语料：{}（{} 首）",
-        subset.display(),
-        picked.len()
-    ));
-
-    let handle = CorpusHandle::open(&CorpusConfig {
-        path: Some(subset.clone()),
-        data_dir: workspace.join("data"),
-        archive: None,
-    })
-    .context("打开子集语料失败")?;
-    let client = yunjian_core::Yunjian::new(handle);
+    let resolved = resolve_coverage_requests(&corpus_db, &workspace, &weights.model, limit)?;
+    let ResolvedCoverage {
+        corpus_version,
+        selector,
+        requests,
+    } = &resolved;
 
     let generator = match endpoint.as_deref() {
         Some(endpoint) => Some(Generator::connect(&weights, endpoint)?),
@@ -165,21 +137,26 @@ pub fn run(
         );
     }
 
+    // 权重摘要只在真跑时才有得可取，而这正是它在发布侧充当结构性证据的理由：
+    // 没跑推理的运行时报不出摘要，于是一份占位产物无论怎么写都缺这一项。
+    let model_digest = match (generator.as_ref(), endpoint.as_deref()) {
+        (Some(_), Some(endpoint)) => Some(fetch_model_digest(endpoint, &weights.model)?),
+        _ => None,
+    };
+    if let Some(digest) = model_digest.as_deref() {
+        emit(&format!("运行时自报权重摘要：{digest}"));
+    }
+
     let mut dataset = PregeneratedDataset::new(generation_executed);
     let now = unix_seconds();
-    for stable_id in &picked {
-        let detail = client
-            .poem_detail(yunjian_core::PoemDetailRequest {
-                poem_id: stable_id.clone(),
-            })
-            .with_context(|| format!("读取作品详情 {stable_id} 失败"))?;
-        let request = AppreciationRequest::new(detail.clone(), &weights.model);
+    for request in requests {
+        let stable_id = &request.poem().poem.stable_id;
         let text = match generator.as_ref() {
             Some(generator) => generator.appreciate(request.clone())?,
             None => NOT_GENERATED_MARKER.to_owned(),
         };
         dataset
-            .push(build_record(&detail, &request, &weights, text, now))
+            .push(build_record(request.poem(), request, &weights, text, now))
             .with_context(|| format!("记录 {stable_id} 未通过预生成门禁"))?;
     }
 
@@ -194,12 +171,13 @@ pub fn run(
         model: weights.model.clone(),
         model_license: weights.model_license.clone(),
         provider: weights.provider.clone(),
+        model_digest: model_digest.clone(),
         generation_executed,
         not_executed_reason: (!generation_executed).then(|| {
             "未提供 --endpoint：本机没有可达的开放权重推理运行时，故只跑管道与门禁".to_owned()
         }),
         appreciations_sha256: digest.clone(),
-        corpus_version,
+        corpus_version: corpus_version.clone(),
         built_at: now,
     };
 
@@ -226,8 +204,194 @@ pub fn run(
     emit(&format!("已写出 {}", manifest_path.display()));
     if !generation_executed {
         emit("NOT EXECUTED：真实推理未执行，本产物不是模型输出，不得当成赏析发布");
+        if seed_tag.is_some() {
+            bail!(
+                "给了 --seed-tag 却没有执行推理，因此不会写出种子锁。锁指向的是要发给用户的字节，\
+                 一份占位不得进入发布链路"
+            );
+        }
+        return Ok(());
+    }
+
+    if let Some(tag) = seed_tag.as_deref() {
+        let manifest_digest = sha256_hex(manifest_json.as_bytes());
+        let lock = crate::verify_seed::SeedLock {
+            seed_tag: tag.to_owned(),
+            seed_sha256: digest.clone(),
+            manifest_sha256: manifest_digest,
+            record_count: manifest.record_count,
+            corpus_version: manifest.corpus_version.clone(),
+            template_version: manifest.template_version.clone(),
+            model: manifest.model.clone(),
+            model_license: manifest.model_license.clone(),
+            provider: manifest.provider.clone(),
+            model_digest: model_digest.clone().unwrap_or_default(),
+            generated_at: now,
+        };
+        let lock_path = out_dir.join(crate::verify_seed::LOCK_FILE);
+        lock.write(&lock_path)?;
+        emit(&format!("已写出 {}", lock_path.display()));
+        emit(&format!(
+            "下一步（人工）：把 {DATASET_FILE}、{DATASET_FILE}.sha256 与 {MANIFEST_FILE} \
+             上传到 `{tag}` 这个 Release，再把种子锁提交进仓库。\
+             锁是发布链路唯一认得的指针，上传的字节与锁里的摘要对不上时发布会中止"
+        ));
+    } else {
+        emit(
+            "未给 --seed-tag：不写种子锁。产物留在本机，不进入发布链路——\
+             发布只认锁指向的那份种子",
+        );
     }
     Ok(())
+}
+
+/// 由**待发布语料**解析出的覆盖集与逐首事实块，即种子必须与之吻合的那一组事实。
+pub(crate) struct ResolvedCoverage {
+    pub corpus_version: String,
+    pub selector: CoverageSelector,
+    pub requests: Vec<AppreciationRequest>,
+}
+
+impl ResolvedCoverage {
+    /// 展成 `stable_id -> grounding_digest`，喂给 [`yunjian_ai::pregenerate::ensure_releasable`]。
+    pub fn grounding(&self) -> std::collections::BTreeMap<String, String> {
+        self.requests
+            .iter()
+            .map(|request| {
+                (
+                    request.poem().poem.stable_id.clone(),
+                    request.grounding_digest().to_owned(),
+                )
+            })
+            .collect()
+    }
+}
+
+/// 打开待发布语料，解析覆盖集，并为每一首渲染出 [`AppreciationRequest`]。
+///
+/// **生成与发布校验共用这一个实现。** 若发布侧另写一遍「怎么筛覆盖集、怎么渲染事实块」，
+/// 两份实现一旦漂移，门禁就会去比一个生成期从来不会产生的值——那种红对不上任何真因，
+/// 而更糟的方向是它比得上一个伪造者更容易凑出来的值。
+///
+/// 调用方负责在用完后清理 `workspace`：子集库要在整个 [`AppreciationRequest`] 生命周期里
+/// 都可读，所以本函数不能自己删它。
+pub(crate) fn resolve_coverage_requests(
+    corpus_db: &Path,
+    workspace: &Path,
+    model: &str,
+    limit: Option<usize>,
+) -> Result<ResolvedCoverage> {
+    crate::prerequisite::require_corpus_db(corpus_db)?;
+    let source = open_read_only(corpus_db)
+        .with_context(|| format!("只读打开语料库 {} 失败", corpus_db.display()))?;
+    let corpus_version = source
+        .query_row(
+            "SELECT corpus_version FROM corpus_meta WHERE singleton = 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .context("读取语料版本失败")?;
+
+    let (selector, mut picked) = resolve_coverage(&source, corpus_db)?;
+    emit(&format!(
+        "覆盖集：选本 {ANTHOLOGY_TAGS:?}，筛选途径 {}，命中 {} 首",
+        selector.as_str(),
+        picked.len()
+    ));
+    if picked.is_empty() {
+        bail!(
+            "覆盖集为空。语料 {} 的 `poem_tag` 里没有选本标签行，评审名单也解析不出任何作品；\
+             预生成拒绝写出一份空数据集",
+            corpus_db.display()
+        );
+    }
+    if let Some(limit) = limit
+        && picked.len() > limit
+    {
+        picked.truncate(limit);
+        emit(&format!("按 --limit 截到 {} 首", picked.len()));
+    }
+    drop(source);
+
+    let subset = workspace.join("subset.db");
+    prepare_workspace(workspace)?;
+    extract_subset(corpus_db, &subset, &picked).context("抽取子集语料失败（源库不会被改动）")?;
+    emit(&format!(
+        "子集语料：{}（{} 首）",
+        subset.display(),
+        picked.len()
+    ));
+
+    let handle = CorpusHandle::open(&CorpusConfig {
+        path: Some(subset),
+        data_dir: workspace.join("data"),
+        archive: None,
+    })
+    .context("打开子集语料失败")?;
+    let client = yunjian_core::Yunjian::new(handle);
+
+    let mut requests = Vec::with_capacity(picked.len());
+    for stable_id in &picked {
+        let detail = client
+            .poem_detail(yunjian_core::PoemDetailRequest {
+                poem_id: stable_id.clone(),
+            })
+            .with_context(|| format!("读取作品详情 {stable_id} 失败"))?;
+        requests.push(AppreciationRequest::new(detail, model));
+    }
+
+    Ok(ResolvedCoverage {
+        corpus_version,
+        selector,
+        requests,
+    })
+}
+
+/// 向本地运行时问「你加载的权重摘要是什么」。
+///
+/// **必须显式关掉代理。** 本机 `no_proxy` 里逗号后带空格时 `" 127.0.0.1"` 匹配不上，
+/// 于是一个发往 localhost 的请求会被送进死代理然后挂死；那个症状（永不返回、无 stderr）
+/// 读起来像运行时没起来，而运行时其实好着。用一个显式无代理的 agent 把这条歧义直接去掉。
+fn fetch_model_digest(endpoint: &str, model: &str) -> Result<String> {
+    let url = format!("{}/api/tags", endpoint.trim_end_matches('/'));
+    let agent = ureq::Agent::new_with_config(
+        ureq::Agent::config_builder()
+            .proxy(None)
+            .timeout_global(Some(std::time::Duration::from_secs(30)))
+            .build(),
+    );
+    let body = agent
+        .get(&url)
+        .call()
+        .with_context(|| format!("向 {url} 查询权重清单失败"))?
+        .body_mut()
+        .read_to_string()
+        .with_context(|| format!("读取 {url} 响应体失败"))?;
+    let tags: serde_json::Value =
+        serde_json::from_str(&body).with_context(|| format!("解析 {url} 的响应失败"))?;
+    let entries = tags["models"]
+        .as_array()
+        .with_context(|| format!("{url} 的响应里没有 `models` 数组"))?;
+    let digest = entries
+        .iter()
+        .find(|entry| entry["name"].as_str() == Some(model))
+        .and_then(|entry| entry["digest"].as_str())
+        .with_context(|| {
+            let known = entries
+                .iter()
+                .filter_map(|entry| entry["name"].as_str())
+                .collect::<Vec<_>>();
+            format!("运行时没有加载权重 `{model}`；它报得出的是 {known:?}")
+        })?
+        .trim_start_matches("sha256:")
+        .to_ascii_lowercase();
+    if digest.len() != MODEL_DIGEST_HEX_LEN {
+        bail!(
+            "运行时报的权重摘要 `{digest}` 不是 {MODEL_DIGEST_HEX_LEN} 位十六进制；\
+             无法用它回答「这份产物由哪个权重产生」"
+        );
+    }
+    Ok(digest)
 }
 
 fn build_record(
