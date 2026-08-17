@@ -2,11 +2,11 @@
 #
 # 种子（`appreciations.json`）由一台装有开放权重运行时的机器生成一次，
 # 上传到 `seed_tag` 这个 Release；发布流按本文件下载并校验，不在 CI 里跑推理。
-# 因此「发布出去的赏析由哪一次推理产生」由本文件的 git 历史回答。
+# 本文件的 git 历史回答「哪组声明与字节被选中发布」，不证明正文作者来源。
 #
 # 由 `cargo run -p xtask -- pregenerate --endpoint <URL> --seed-tag <TAG>` 写出，
-# 由 `cargo run -p xtask -- verify-seed` 校验。手改本文件不会让伪造的种子通过：
-# 门禁会拿待发布语料重算覆盖集与每首的事实块摘要。
+# 由 `cargo run -p xtask -- verify-seed` 校验摘要、结构、覆盖与披露一致性。
+# 同一执行方可同步伪造正文与全部声明，因此校验通过不构成模型来源证明。
 
 seed_tag = "appreciation-seed-v1"
 seed_sha256 = "18aa82cd6cdf0a480f14cf216673ce864b4fc9ec15e3f49de95f676eb9ae4287"

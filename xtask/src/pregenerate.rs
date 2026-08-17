@@ -137,8 +137,8 @@ pub fn run(request: Request) -> Result<()> {
         );
     }
 
-    // 权重摘要只在真跑时才有得可取，而这正是它在发布侧充当结构性证据的理由：
-    // 没跑推理的运行时报不出摘要，于是一份占位产物无论怎么写都缺这一项。
+    // 权重摘要是运行时自报值，只在连接运行时的路径上采集。它能让清单与锁对同一声明
+    // 达成一致，但同一执行方可以伪造该值，因此不能证明正文由这份权重生成。
     let model_digest = match (generator.as_ref(), endpoint.as_deref()) {
         (Some(_), Some(endpoint)) => Some(fetch_model_digest(endpoint, &weights.model)?),
         _ => None,
@@ -388,7 +388,7 @@ fn fetch_model_digest(endpoint: &str, model: &str) -> Result<String> {
     if digest.len() != MODEL_DIGEST_HEX_LEN {
         bail!(
             "运行时报的权重摘要 `{digest}` 不是 {MODEL_DIGEST_HEX_LEN} 位十六进制；\
-             无法用它回答「这份产物由哪个权重产生」"
+             无法把它作为清单与锁之间可互校的权重标识"
         );
     }
     Ok(digest)
