@@ -23,9 +23,15 @@ use crate::verify_sources::emit;
 
 mod full;
 mod full_criteria;
+mod ios_project;
+mod provenance;
 
 #[cfg(test)]
-pub(crate) use full::{FULL_DECLARED, build_unexecuted_full_report, validate_full_report_json};
+pub(crate) use full::{
+    FULL_DECLARED, build_unexecuted_full_report, read_full_report, validate_full_report_json,
+};
+#[cfg(test)]
+pub(crate) use provenance::verify as verify_provenance;
 
 pub(super) fn run_full(root: &Path, platform: Platform) -> Result<()> {
     full::run(root, platform)

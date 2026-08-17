@@ -1,0 +1,35 @@
+{
+  "configurations": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "Acceptance",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": false,
+    "language": "zh-Hans",
+    "region": "CN",
+    "testExecutionOrdering": "lexical",
+    "testTimeoutsEnabled": false
+  },
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:Yunjian.xcodeproj",
+        "identifier": "YunjianUITests",
+        "name": "YunjianUITests"
+      }
+    },
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:Yunjian.xcodeproj",
+        "identifier": "YunjianAppTests",
+        "name": "YunjianAppTests"
+      }
+    }
+  ],
+  "version": 1
+}

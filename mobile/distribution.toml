@@ -1,5 +1,22 @@
+# 移动分发契约。
+#
+# ## 这份配置描述**被选中的那条分支**
+#
+# binding verdict 是 `uniffi_native`（`docs/reports/mobile-spike.json` 的 `verdict`，由判据②在
+# 物理 Pixel 8 上实测 109.849 秒 > 60 秒阈值机械选出）。因此：
+#
+# - Android 是原生 Kotlin/Compose 工程 `mobile/android`，由 gradle 构建，Rust 侧由 `cargo-ndk`
+#   交叉编译；**没有** `crates/yunjian-app/gen/android`；
+# - iOS 是 SwiftUI 工程 `mobile/ios`，由 `xcodegen` 生成工程、`xcodebuild` 归档；**没有**
+#   `crates/yunjian-app/gen/apple`。
+#
+# `tauri_generated_project` 两项记录的是**另一条分支**的落点，`xtask` 会断言它们在
+# `uniffi_native` 下确实不存在——「哪条分支被选中」因此在配置里可判定，而不是靠读注释。
+# 曾经这里写的是 `cargo tauri android build …` 与 `cargo tauri ios build …`，那是
+# tauri_mobile 分支的命令；一份描述错分支的配置会让 `mobile-size.json` 看起来已交付。
+
 schema_version = 1
-binding_verdict = "undetermined"
+binding_verdict = "uniffi_native"
 shared_ui = "app"
 universal_apk_default = false
 apk_ceiling_bytes = 83886080
@@ -9,15 +26,17 @@ first_play_upload = "manual"
 
 [android]
 project = "mobile/android"
-generated_project = "crates/yunjian-app/gen/android"
+tauri_generated_project = "crates/yunjian-app/gen/android"
 min_sdk = 26
 abis = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"]
 formats = ["apk", "aab"]
-build_command = "cargo tauri android build --ci --split-per-abi --apk --aab --target aarch64 armv7 i686 x86_64"
-native_build_note = "ANDROID_NDK_HOME must point to a complete NDK; cc-rs needs target C/C++ compilers, not only a Cargo linker"
+# 工程没有 `splits { abi { … } }`，所以「每 ABI 一个 APK」靠**分别构建**取得：
+# 一次 `-Pyunjian.abis=<单个 ABI>` 出一个只含该 ABI 的 APK。AAB 天然多 ABI，一次出。
+build_command = "cd mobile/android && for abi in arm64-v8a armeabi-v7a x86 x86_64; do gradle -Pyunjian.abis=$abi :app:assembleRelease; done && gradle -Pyunjian.abis=arm64-v8a,armeabi-v7a,x86,x86_64 :app:bundleRelease"
+native_build_note = "ANDROID_NDK_HOME must point to a complete NDK r26+ and cargo-ndk must be installed; cc-rs needs target C/C++ compilers, not only a Cargo linker. i686-linux-android has no upstream sherpa-onnx prebuilt (see crates/yunjian-voice/build.rs PREBUILT_TARGETS), so a voice-enabled x86 APK requires building sherpa-onnx from source"
 
 [ios]
 project = "mobile/ios"
-generated_project = "crates/yunjian-app/gen/apple"
-build_command = "cargo tauri ios build --ci --export-method app-store-connect"
+tauri_generated_project = "crates/yunjian-app/gen/apple"
+build_command = "cd mobile/ios && xcodegen generate && xcodebuild archive -scheme Yunjian -destination 'generic/platform=iOS' -archivePath build/Yunjian.xcarchive && xcodebuild -exportArchive -archivePath build/Yunjian.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath build/export"
 archive_kind = "xcarchive_or_ipa"
