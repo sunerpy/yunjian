@@ -9,8 +9,8 @@
 # 门禁会拿待发布语料重算覆盖集与每首的事实块摘要。
 
 seed_tag = "appreciation-seed-v1"
-seed_sha256 = "862e284851b3fb123b530b8b1bbae5d76d1ace0330a3c1652d48b757041cf922"
-manifest_sha256 = "98c08c0f0b8d27a96b5634d870a1391ffffd22976cceeceb1e6b42b0e615b2bb"
+seed_sha256 = "18aa82cd6cdf0a480f14cf216673ce864b4fc9ec15e3f49de95f676eb9ae4287"
+manifest_sha256 = "af4f0e0e418651084c894bbfc3cba311c6c4bdb05434605c021528287bb7dd02"
 record_count = 16
 corpus_version = "0.1.0"
 template_version = "1.0.0"
@@ -18,4 +18,4 @@ model = "deepseek-r1:7b"
 model_license = "MIT"
 provider = "ollama"
 model_digest = "755ced02ce7befdb13b7ca74e1e4d08cddba4986afdb63a480f2c93d3140383f"
-generated_at = 1786980935
+generated_at = 1786988342
