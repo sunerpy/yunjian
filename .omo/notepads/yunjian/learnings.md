@@ -238,3 +238,31 @@ archive/path 才走 legacy），全新 `first-run-root` 要下 221 MiB + 解压 
 load average 11+ 时解压到 157 MiB 报 tmp 打不开。原树同 commit 不设该 env 时是 PASS。
 **是环境变量切换了代码路径，不是产品回归** —— 但这也说明统一资产路径的首启在高负载下
 比 legacy 路径脆，值得单独查。
+
+### 九、净机报告：判据改了但报告没重生，是自查逮住的
+
+**上一轮我改了 `clean_install_report.rs` 的判据却没重生报告**，而仓库里的
+`docs/reports/clean-install-provider-calls.json` 一直是旧版（无 `released_seed_*` 字段）——
+上次 `provider-calls` 的输出被我写到了 `/config/work/`，仓库那份从未刷新。
+**「代码改了」不等于「产物跟着改了」**，这一族与本轮修的三处「表里有行 ≠ 行里有赏析」同源：
+都是把一个中间步骤的成功读成了最终事实。
+
+### 十、净机联网段在本机跑不起来，而两条捷径都必须拒绝
+
+实测：`ubuntu:24.04` 里 curl、wget、ca-certificates **都不在场**，`install.sh` 在
+`detect_downloader` 就中止，`install_script_installs` FAIL + 其后 8 条连锁 NOT EXECUTED。
+**镜像 digest 与 2026-08-14 那份 PASS 的报告完全相同**，所以差异不在镜像；
+08-14 为什么能 PASS 我**没查出来**（`git log -S apt-get` 在 Makefile 与 scripts/ 零命中，
+transcript 与报告里也无装包记录）。**这条我不编答案。**
+
+两条捷径都被拒绝，理由写进模块文档：容器里 `apt-get install curl` 让掉的正是「净」这个
+性质（被我们改造过的容器验不了「用户在干净机器上按 README 装得上」）；改 `install.sh`
+自带下载器则是**为了让验收变绿而放宽产品对环境的要求**，等于把门禁谈掉。
+
+**判据的可验证性不该依赖端到端跑。** 把零调用裁决抽成 `zero_call_verdict` 并配 9 条只吃
+合成计数的测试后，判据的每个分支都能被证明会红，而这件事不再需要 docker + 本地镜像 +
+完整安装。注入验证：去掉三条新增 match guard 条件后 **4 条立刻变红**（占位标记、逐字比对、
+来源退化，以及「只靠逐字比对会放占位过去」那条），恢复后 9 passed。
+
+一条顺带测得的判据设计：**缺 `released_seed_calls` 记 NOT EXECUTED 而不是 FAIL**。
+旧版计数文件没有这个键，读成 FAIL 会把「用旧工具跑的」说成「产品坏了」。

@@ -8,5 +8,17 @@
   "shipped_poem": "00001539ed2f02b5",
   "cold_poem": "0000168330a10ebb",
   "fixture_seed": true,
-  "fixture_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）"
+  "fixture_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）",
+  "released_seed_calls": 0,
+  "released_seed_source": "shipped",
+  "released_seed_poem": "062f574ab2986a9b",
+  "released_seed_text_matches_dataset": true,
+  "released_seed_text_has_marker": false,
+  "released_seed_text_chars": 190,
+  "released_seed_text_head": "《春夜喜雨》是唐代诗人杜甫的一首咏春诗。此诗以简洁明快的语言，描绘了春雨的细腻变化及其对万物的滋润作用。诗中“好雨知时节…",
+  "released_seed_record_count": 16,
+  "released_seed_generation_executed": true,
+  "released_seed_model": "deepseek-r1:7b",
+  "released_seed_model_license": "MIT",
+  "released_seed_import_path": "AppreciationCache::replace_shipped_seed"
 }

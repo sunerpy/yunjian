@@ -193,3 +193,71 @@ worktree `/config/work/yunjian-pregen`（`/config` 独立 1.4T 盘，剩 510G；
     $ make fmt && make ci
     门禁通过：fmt-check lint test mcp-conformance frontend-test pr-title-check
     前端 36 files / 428 tests passed
+
+## 九、净机报告重生的真实边界（追加，2026-08-17 21:xx）
+
+自查发现漏了一项：上轮只改了 `clean_install_report.rs` 的判据代码，**没有重生报告核实**，
+而仓库里的 `docs/reports/clean-install-provider-calls.json` 仍是**旧版**（无 `released_seed_*`
+字段）——上次我把输出写到了 `/config/work/`。这正是这条 todo 逮住的东西。
+
+### 计数文件已重生（宿主段可就地跑）
+
+    $ xtask provider-calls --corpus-db corpus/build/release/corpus.db
+    待发布数据集：16 条，模板 1.0.0，语料 0.1.0，generation_executed=true
+    已按 replace_shipped_seed 导入 16 条随包行（全新 profile）
+    随包命中：0 次调用（来源 shipped）；冷诗：1 次；重复后累计 1 次
+    待发布数据集：0 次调用（来源 shipped），正文 190 字、与数据集逐字一致=true、
+      含未生成标记=false
+    已写出 docs/reports/clean-install-provider-calls.json
+
+新文件里 12 个 `released_seed_*` 字段齐备（`released_seed_calls=0`、
+`released_seed_source=shipped`、`..._text_matches_dataset=true`、`..._text_has_marker=false`、
+`..._text_chars=190`、`..._import_path=AppreciationCache::replace_shipped_seed`）。
+
+### 联网段跑不起来，且我拒绝绕过
+
+宿主段三条断言（两个 checksum + 统一清单解析）的输入已全部备好：
+`/config/work/release-stage/` 里有语料 gz、种子、两份 `.sha256` 与统一清单；
+本地镜像 `http://172.17.0.1:18075` 也起了（`v0.1.0/` 带自建 tar.gz + sha256，
+`corpus-v0.1.0/` 带四件工件），profile 用容器清空到 0 条目，联网容器真的跑了：
+
+    [FAIL] install_script_installs — install.sh 非零退出：error: 需要 curl 或 wget 之一来下载发布产物
+    [NOT EXECUTED] search_before_fetch_exits_3 — 没有可执行文件，后续断言无法执行
+    …其后 8 条连锁 NOT EXECUTED
+
+**实测容器内容，不推断**：
+
+    $ docker run --rm ubuntu:24.04 sh -c 'for c in curl wget ca-certificates; do …'
+    curl: 缺   wget: 缺   ca-certificates: 缺
+
+镜像 digest 与 2026-08-14 那份报告记录的**完全相同**
+（`sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea`），
+所以差异不在镜像。08-14 那次为什么 PASS，我**没有查出来**——`git log -S apt-get` 在
+Makefile 与 scripts/ 上零命中，transcript 与报告里也没有装包记录。这条我不编答案。
+
+**两条捷径都被我拒绝**，理由写进了模块文档：
+- 容器里 `apt-get install curl` —— 让掉的正是「净」这个性质，一个被我们改造过的容器
+  验不了「用户在干净机器上按 README 装得上」；
+- 改 `install.sh` 自带下载器 —— 产品对用户环境的要求是它的一部分，为了让验收变绿
+  而放宽要求等于把门禁谈掉。
+
+### 改用可执行断言证明判据本身（9 条，注入验证过）
+
+判据抽成 `zero_call_verdict`，配 9 条只吃**合成计数**的测试。这不是替代净机跑，
+是让「判据每一次改动都有人证明它真的会红」这件事不依赖 docker + 本地镜像 + 完整安装。
+
+    test result: ok. 9 passed; 0 failed
+
+覆盖：两路零调用且正文为真 → PASS 且判词同时点名两路；占位标记 → FAIL 且点名
+`含未生成标记=true`；**逐字一致但含标记仍 FAIL**（两边都是占位时比对会通过）；
+正文与数据集不同 → FAIL；来源退化成 generated → FAIL；任一路有调用 → FAIL 且报两路次数；
+缺 `released_seed_calls`（旧版计数文件）→ NOT EXECUTED 而非 FAIL；
+`generation_executed=false` 时本条仍 PASS（那条由 `shipped_dataset_is_model_output` 承担）；
+断言集里零调用断言恰好一条且在 Host 段。
+
+**注入验证**：把三条新增条件从 match guard 里去掉后
+
+    test result: FAILED. 5 passed; 4 failed
+
+红的正是占位标记、逐字比对、来源退化，以及「只靠逐字比对会放占位过去」那条。
+恢复后 9 passed。**这组断言是 load-bearing 的。**
