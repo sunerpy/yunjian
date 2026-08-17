@@ -492,6 +492,268 @@ fn main() -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    /// 遍历仓库时跳过的目录：里面没有本仓库的调用点，且 `target/` 有近百 GiB。
+    const SKIPPED_DIRS: [&str; 5] = ["target", "node_modules", ".git", "dist", "build"];
+
+    /// 一行里出现这些 token 就换了一条命令，`run` 的上下文随之作废。
+    const SHELL_SEPARATORS: [&str; 4] = ["&&", "||", ";", "|"];
+
+    /// clap 真实认得的子命令名（含别名）。
+    ///
+    /// 刻意**问 clap 而不是解析 `Commands` 枚举的源码文本**：用户敲下的那个名字由 clap 的
+    /// 改名规则（`CorpusBuild` → `corpus-build`）决定，源码里的变体名只是它的输入。
+    /// 问 clap 等于问真相，且顺带免疫「注释里提到的变体名被当成数据」这类误判。
+    fn known_subcommands() -> std::collections::BTreeSet<String> {
+        use clap::CommandFactory;
+        Cli::command()
+            .get_subcommands()
+            .flat_map(|sub| {
+                std::iter::once(sub.get_name().to_string())
+                    .chain(sub.get_all_aliases().map(str::to_string))
+            })
+            .collect()
+    }
+
+    /// 从一段命令文本里抽出所有被调用的 xtask 子命令名。
+    ///
+    /// 按 token 走状态机而不是找字符串前缀，是因为同一件事在仓库里有四种写法：
+    /// `cargo run -p xtask -- x`、`$(CARGO) run -p xtask -- x`、
+    /// `cargo run -p xtask --release -- x`、`cargo run --package xtask -- x`。
+    /// 找前缀要为每种写法立一个常量，漏一种就是静默漏扫。
+    ///
+    /// **必须要求 `run` 出现过**：`cargo test -p xtask corpus_package` 里 `corpus_package`
+    /// 是测试名过滤器，不是子命令。把它当子命令会让这条断言在一条完全正确的命令上变红，
+    /// 而那种红没有信息量，只会训练人忽略它。
+    fn invoked_subcommands(text: &str) -> Vec<String> {
+        enum State {
+            Idle,
+            AwaitSeparator,
+            AwaitName,
+        }
+
+        let mut found = Vec::new();
+        let mut state = State::Idle;
+        let mut saw_run = false;
+        let mut previous = "";
+
+        for token in text.split_whitespace() {
+            if SHELL_SEPARATORS.contains(&token) {
+                state = State::Idle;
+                saw_run = false;
+                previous = token;
+                continue;
+            }
+            match state {
+                State::AwaitName => {
+                    // TOML / YAML 里命令是带引号的字符串，按空白切出来的 token 会粘着
+                    // 结尾那个 `"`。不剥掉的话 `verify-models"` 找不到，于是一条完全正确
+                    // 的配置被判成「引用了不存在的子命令」——假红同样是缺陷。
+                    let name = token.trim_matches(|c| matches!(c, '"' | '\'' | '`' | ',' | ';'));
+                    // `-- --help` 是没有子命令的合法调用，不是引用。
+                    if !name.is_empty() && !name.starts_with('-') {
+                        found.push(name.to_string());
+                    }
+                    state = State::Idle;
+                    saw_run = false;
+                }
+                State::AwaitSeparator if token == "--" => state = State::AwaitName,
+                State::AwaitSeparator => {}
+                State::Idle => {
+                    if token == "run" {
+                        saw_run = true;
+                    } else if token == "xtask" {
+                        if previous == "cargo" {
+                            // `cargo xtask <子命令>`：别名形态，下一个 token 就是子命令。
+                            state = State::AwaitName;
+                        } else if saw_run && (previous == "-p" || previous == "--package") {
+                            state = State::AwaitSeparator;
+                        }
+                    }
+                }
+            }
+            previous = token;
+        }
+        found
+    }
+
+    /// 去掉 `#` 起始的注释，但不动引号里的 `#`。
+    ///
+    /// **不剔注释这条断言就是错的，而且是两个方向都错。** `mobile/device-farm.toml` 第 50 行
+    /// 的注释刻意记着一个**已被删掉**的子命令名（那是这次修复的历史记录），Makefile 与
+    /// 工作流里也有注释提到 xtask 命令。扫原文会把这些历史记录判成缺陷（假红），
+    /// 而 Makefile 里真正的调用一旦被注释掉又会被漏掉（假绿）。
+    fn strip_hash_comments(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        for line in text.lines() {
+            let bytes = line.as_bytes();
+            let mut cut = line.len();
+            let mut quote: Option<u8> = None;
+            for (index, byte) in bytes.iter().enumerate() {
+                match quote {
+                    Some(open) if *byte == open => quote = None,
+                    Some(_) => {}
+                    None if *byte == b'"' || *byte == b'\'' => quote = Some(*byte),
+                    None if *byte == b'#' => {
+                        cut = index;
+                        break;
+                    }
+                    None => {}
+                }
+            }
+            // `cut` 只落在 ASCII 的 `#` 上或行尾，因此这个切片不会切断多字节字符。
+            out.push_str(&line[..cut]);
+            out.push('\n');
+        }
+        out
+    }
+
+    /// 把行尾续行接起来，让 `-- <子命令>` 不会被换行切散。
+    fn join_continuations(text: &str) -> String {
+        text.replace("\\\n", " ")
+    }
+
+    fn repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("从 xtask/ 推出仓库根目录")
+            .to_path_buf()
+    }
+
+    fn collect_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", dir.display()));
+        for entry in entries {
+            let path = entry.expect("读取目录项失败").path();
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if path.is_dir() {
+                if !SKIPPED_DIRS.contains(&name.as_str()) {
+                    collect_files(&path, found);
+                }
+            } else if name == "Makefile"
+                || path
+                    .extension()
+                    .is_some_and(|ext| ext == "toml" || ext == "yml" || ext == "yaml")
+            {
+                found.push(path);
+            }
+        }
+    }
+
+    #[test]
+    fn the_reference_extractor_reads_every_spelling_and_ignores_test_filters() {
+        assert_eq!(
+            invoked_subcommands("cargo run -p xtask -- verify-models"),
+            ["verify-models"]
+        );
+        assert_eq!(
+            invoked_subcommands("$(CARGO) run -p xtask --release -- corpus-build --scale 10k"),
+            ["corpus-build"]
+        );
+        assert_eq!(
+            invoked_subcommands("cargo run --package xtask -- verify-sources --offline"),
+            ["verify-sources"]
+        );
+        assert_eq!(
+            invoked_subcommands("cargo xtask verify-icons"),
+            ["verify-icons"]
+        );
+        assert_eq!(
+            invoked_subcommands(
+                "cd mobile/android && gradle assemble && cargo run -p xtask -- verify-icons"
+            ),
+            ["verify-icons"]
+        );
+        assert!(
+            invoked_subcommands("cargo test -p xtask corpus_package").is_empty(),
+            "`cargo test -p xtask <过滤器>` 不是子命令调用；判成调用会在正确命令上变红"
+        );
+        assert!(
+            invoked_subcommands("cargo build -p xtask --release").is_empty(),
+            "没有 `--` 分隔符就没有子命令"
+        );
+        assert!(
+            invoked_subcommands("cargo run -p xtask -- --help").is_empty(),
+            "`-- --help` 是没有子命令的合法调用，不是一次引用"
+        );
+        assert_eq!(
+            invoked_subcommands("build_command = \"cargo run -p xtask -- verify-models\""),
+            ["verify-models"],
+            "TOML 值的收尾引号必须剥掉，否则一条正确的配置会被判成引用了不存在的子命令"
+        );
+    }
+
+    #[test]
+    fn the_comment_stripper_keeps_history_from_impersonating_a_live_invocation() {
+        // `mobile/device-farm.toml` 第 50 行的形状：注释里记着一个已被删掉的子命令。
+        let history = "# 此前这里写的是 cargo run -p xtask -- mobile-package\n\
+                       build_command = \"cargo run -p xtask -- verify-models\"\n";
+        let live = invoked_subcommands(&strip_hash_comments(history));
+        assert_eq!(
+            live,
+            ["verify-models"],
+            "注释里的历史记录不得被当成调用，真实调用不得被漏掉：{live:?}"
+        );
+        let quoted = strip_hash_comments("a = \"x #1 y\" # 说明");
+        assert!(
+            quoted.contains("#1"),
+            "引号里的 `#` 被误判成注释起点：{quoted}"
+        );
+        assert!(!quoted.contains("说明"), "引号外的注释未被剔除：{quoted}");
+    }
+
+    /// 配置与构建入口里引用的每个 xtask 子命令都必须真实存在。
+    ///
+    /// # 这条守的是哪一次真实失败
+    ///
+    /// `mobile/device-farm.toml` 的 `[android_full].build_command` 末段一度是
+    /// `cargo run -p xtask -- mobile-package`，而 `Commands` 里从来没有过这个子命令。
+    /// 配置本身看起来是完整的：`enabled = true`、设备池 ARN 真实、产物路径也都对。
+    /// 于是 **Android 真机验收无法从干净检出复现**，而已落盘的十条 PASS 又都是真的——
+    /// 「报告存在」与「报告可复现」被这一行悄悄拆开了，且没有任何测试会因此变红。
+    ///
+    /// # 为什么扫这三类文件
+    ///
+    /// 它们是 xtask 子命令被**调用**的全部落点：TOML 配置（Device Farm、分发）、
+    /// `Makefile` 的门禁配方、工作流的 `run:` 段。文档里的命令是说明而不是调用，
+    /// 说明写错不会让任何流程跑不通，不该由这条断言判红。
+    #[test]
+    fn every_xtask_subcommand_referenced_by_a_config_or_build_entrypoint_really_exists() {
+        let known = known_subcommands();
+        let mut files = Vec::new();
+        collect_files(&repo_root(), &mut files);
+        assert!(
+            !files.is_empty(),
+            "一份文件都没扫到，说明遍历本身坏了；零命中的扫描是最典型的假绿"
+        );
+
+        let mut references = 0usize;
+        for file in &files {
+            let text = std::fs::read_to_string(file)
+                .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", file.display()));
+            let commands = join_continuations(&strip_hash_comments(&text));
+            for name in invoked_subcommands(&commands) {
+                references += 1;
+                assert!(
+                    known.contains(&name),
+                    "{} 引用了 xtask 子命令 `{name}`，而 clap 认得的只有 {known:?}。\
+                     配置里写一个不存在的子命令不会让任何测试变红，却让这条命令所属的流程\
+                     无法从干净检出复现——要么实现它，要么把配置改成真实存在的命令",
+                    file.display()
+                );
+            }
+        }
+
+        assert!(
+            references > 0,
+            "没有扫到任何 xtask 子命令调用。若这是真的，这条断言应当连同理由一起删除；\
+             更可能的是调用写法变了而 invoked_subcommands 没跟上，那样它会永远绿"
+        );
+    }
+
     #[test]
     fn corpus_measure_uses_the_shipped_fixture_directories_by_default() {
         let cli = Cli::try_parse_from(["xtask", "corpus-measure", "--scale", "10k"])

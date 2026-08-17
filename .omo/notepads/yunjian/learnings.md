@@ -266,3 +266,108 @@ transcript 与报告里也无装包记录）。**这条我不编答案。**
 
 一条顺带测得的判据设计：**缺 `released_seed_calls` 记 NOT EXECUTED 而不是 FAIL**。
 旧版计数文件没有这个键，读成 FAIL 会把「用旧工具跑的」说成「产品坏了」。
+## [2026-08-17] 我第六次否掉自己：todo 41 不是「需用户提供 endpoint」，本机就能跑
+
+**我此前反复把它报成待用户决策**（「本机无开放权重推理运行时，`generation_executed=false`，
+需用户提供 endpoint」），并据此让 F1 记 todo 41/75 两条 FAIL、F4 记阻塞 1。**这个判断是错的。**
+
+**实际情况**（我逐步实测）：
+
+1. `xtask/src/pregenerate.rs:271` 的 `Generator::connect` 走的是 **Ollama `base_url`** ——
+   `DEFAULT_MODEL = "deepseek-r1:7b"`、`DEFAULT_MODEL_LICENSE = "MIT"`、`DEFAULT_PROVIDER = "ollama"`
+2. **不需要 GPU**。本机 61 GiB 内存，只要生成 **16 条**
+3. `ollama` 可以**免 root 免 systemd** 装：官方 `install.sh` 要 root，但 GitHub release
+   的 tarball 解开就能跑（`./bin/ollama serve` + `OLLAMA_MODELS` 指向 `/config`）
+4. **实测冒烟：39 秒出 66 字中文赏析**，质量可用
+   （「展现了边塞的壮丽景象与历史厚重感，通过描绘明月与关河的对比…」）
+
+**下载地址的坑**：`https://ollama.com/download/ollama-linux-amd64.tgz` 返回 **404**
+（size=9 字节），真实资产在 GitHub releases 且是 **`.tar.zst`** 不是 `.tgz`：
+`ollama-linux-amd64.tar.zst`（1355 MiB）。**我第一次 tar 报 `Child returned status 2`
+读起来像归档损坏，实际是下载到了 9 字节的 404 页面。**
+判据：`ls -lh` 看体积，或 `file` 看类型，不要直接怀疑归档格式。
+
+**为什么这个误判值得记**：我把「本机没有 X」当成了「需要用户提供 X」，
+而中间少了一步——**「X 能不能装上」**。这与「能不能软件模拟」是同一条判据
+（音频那次一条 `pactl load-module module-sine` 即解；托盘那次缺的不是硬件
+而是总线上的一个名字）。**「本机没有」不等于「本机不能有」。**
+
+**这是「验证而非采信」第十三次生效，第六次否掉的是我自己的判断。**
+
+## [2026-08-17] rpath 与「build script 刻意不做别的事」不冲突；F3 的两条缺口只有一条是真的
+
+### 一、rpath 为什么可以进 build script
+
+`crates/yunjian-app/build.rs` 的文件头写着「刻意不做别的事……build script 的失败诊断远比
+一条测试断言难读」。补 rpath 看起来违反它，实际不违反，判据是**那条原则拒绝的是什么**：
+它拒绝的是「能用一条断言完成、却被塞进 build script」的**校验**工作（图标校验、权限扩充）。
+rpath 不属于这一类，两条理由缺一不可：
+
+1. **没有「用断言替代」这个选项。** 链接参数只能由 build script 经 `cargo:rustc-link-arg-*`
+   交给 cargo，且必须由**二进制所属的包**发（`cargo:rustc-link-arg` 不从 rlib 依赖传递到
+   最终链接步骤）。`yunjian-voice` 替它发是无效的。
+2. **这段代码不产生需要诊断的失败。** 只读两个环境变量再打印一行，没有 I/O、没有校验、
+   没有可 panic 的路径——「诊断难读」这个代价根本不会发生。
+
+所以判据不是「build script 里能不能放东西」，而是「这件事有没有别的落点」＋「它会不会制造
+难读的失败」。这个区别写进了 build.rs 的文件头，否则下一个人会以为原则被违反了。
+
+**顺带测得一件 cli 注释没写的事**：`libonnxruntime.so` 也必须与二进制同目录。
+`libsherpa-onnx-c-api.so` 自己带 `RPATH=$ORIGIN`（预编译产物自带），所以只要与它同目录即可
+被解析；漏拷时报 `libonnxruntime.so: cannot open shared object file`，与缺 rpath 的报错**同形
+但主体不同**，容易读成 rpath 没生效。
+
+### 二、`mobile-package` 的处置：不实现、不改配置
+
+**F3 命中的是解释这次修复的注释，不是活的配置行。** PR #110 引入
+`cargo run -p xtask -- mobile-package`，PR #114（`a9ca77e`）已把它换成 run full-acceptance-29
+逐条实测过的 `gradle + cp + zip` 序列；现存唯一文本命中是第 50 行刻意留下的历史记录。
+判据是 `git show 36f3181/a9ca77e -- mobile/device-farm.toml`，不是 grep 计数。
+
+**「报告存在 ≠ 报告可复现」这条本身是对的，缺口也真的存在过**——只是它在 a9ca77e 就被
+关掉了，而**关闭它的那行注释让缺口在文本层看起来仍然存在**。这是「解释一条规则的文字命中
+这条规则」的第六次，且第一次是以**假红**的形式出现（前五次都是假绿）：同一个机制缺陷，
+方向可以反过来。
+
+### 三、两条断言各自的机制，以及为什么都必须剔注释
+
+- **rpath 契约**（`xtask/tests/workspace_contract.rs`）：先从 `[workspace].members` 筛出
+  「有 bin 且某个 feature 值含 `yunjian-voice/voice`」的包，要求这个集合**恰好等于**
+  必需集 ∪ 免除集（免除要写理由：`xtask` 只在 cargo 下跑，`yunjian-mobile` 唯一 bin 是
+  `uniffi-bindgen`、移动端加载 cdylib 不经 rpath）。**集合相等而非「必需集都合格」**是关键：
+  新增一个能开 voice 的二进制包时它两边都不在，断言逼人做一次决定。再对必需集逐份 build.rs
+  要求两条 `-bins` link-arg 与 `CARGO_FEATURE_VOICE` 分流，并**禁止 `-bin=<name>` 形式**
+  （只作用于点名的那一个，改名或加 bin 时静默漏掉）。
+- **子命令引用**（`xtask/src/main.rs` 的 tests）：扫 `*.toml`/`Makefile`/`*.yml`，按 token
+  走状态机抽出被调用的子命令名，逐个问 **clap** 是否认得。**问 clap 而不是解析 `Commands`
+  源码文本**：用户敲的名字由 clap 的改名规则（`CorpusBuild` → `corpus-build`）决定，源码里的
+  变体名只是输入；问 clap 顺带免疫「注释里提到的变体名被当成数据」。
+  **必须要求 `run` 出现过**，否则 `cargo test -p xtask corpus_package` 的测试名过滤器会被
+  当成子命令，在一条完全正确的命令上变红——那种红没有信息量，只会训练人忽略它。
+  实测扫描面 18 处调用 / 12 个子命令，分布在 Makefile(9)、corpus-release.yml(5)、
+  mobile.yml(3)、corpus.yml(1)；零命中守卫防「写法变了而 marker 没跟上」。
+
+**两条都必须剔注释，且注入验证证明了这一步是 load-bearing 的**：去掉 `strip_hash_comments`
+后第 50 行的历史注释立刻被判成活调用（假红）；删掉 `$ORIGIN` 发射只留文件头散文时，
+不剔注释的朴素 `contains` 会依然为真（假绿）。
+
+### 四、我自己在这次里被自己的夹具逮到一次
+
+抽出的子命令名粘着 TOML 的收尾引号（`verify-models"`），于是 `known.contains` 为假——
+**一条完全正确的配置会被判成「引用了不存在的子命令」**。仓库当前恰好没有带引号的 xtask 调用
+（18 处全在 Makefile 与 YAML 的裸命令里），所以真实扫描是绿的，**这个缺陷只有夹具能暴露**。
+教训：写「扫真实文件」的断言时，必须另配一条**只吃合成输入**的测试来证明抽取器本身正确；
+真实文件恰好不覆盖某个形态时，那个形态的 bug 会一直躺着，直到有人写出那种形态并被假红拦住。
+
+### 五、基线数字重测，没有采信交接
+
+交接说全量 1317，我用同一段聚合脚本 stash 掉改动后重测 `main` 得 **1318 passed / 0 failed /
+9 ignored**；1318 + 6 条新测试 = 1324，算术闭合。差 1 不影响结论，但**「验证而非采信」在这里
+第十三次生效**——若直接采信 1317，1324 就会对不上 6，我会去找一个不存在的问题。
+
+### 六、磁盘纪律：不建 worktree 也是一个选项
+
+交接强调 worktree 必须在 `/config`（`/tmp` 所在的 `/dev/root` 只剩 16 GiB，一个 `target/`
+就 92 GiB，爆盘的失败形态是 `LLVM ERROR: IO failure on output stream` + `Bus error`，
+**读起来像编译器崩溃**）。这次改动只涉及 3 个文件，直接在原树分支即可，省掉一份 92 GiB
+`target/` 的重建——**「隔离」的成本要和收益比，3 个文件的改动不值一次全量重建。**
