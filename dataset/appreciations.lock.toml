@@ -1,0 +1,21 @@
+# 随包赏析种子锁。**这不是种子本身**，而是指向种子的指针与摘要。
+#
+# 种子（`appreciations.json`）由一台装有开放权重运行时的机器生成一次，
+# 上传到 `seed_tag` 这个 Release；发布流按本文件下载并校验，不在 CI 里跑推理。
+# 因此「发布出去的赏析由哪一次推理产生」由本文件的 git 历史回答。
+#
+# 由 `cargo run -p xtask -- pregenerate --endpoint <URL> --seed-tag <TAG>` 写出，
+# 由 `cargo run -p xtask -- verify-seed` 校验。手改本文件不会让伪造的种子通过：
+# 门禁会拿待发布语料重算覆盖集与每首的事实块摘要。
+
+seed_tag = "appreciation-seed-v1"
+seed_sha256 = "862e284851b3fb123b530b8b1bbae5d76d1ace0330a3c1652d48b757041cf922"
+manifest_sha256 = "98c08c0f0b8d27a96b5634d870a1391ffffd22976cceeceb1e6b42b0e615b2bb"
+record_count = 16
+corpus_version = "0.1.0"
+template_version = "1.0.0"
+model = "deepseek-r1:7b"
+model_license = "MIT"
+provider = "ollama"
+model_digest = "755ced02ce7befdb13b7ca74e1e4d08cddba4986afdb63a480f2c93d3140383f"
+generated_at = 1786980935

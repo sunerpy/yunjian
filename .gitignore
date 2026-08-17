@@ -52,6 +52,10 @@ Thumbs.db
 # 「未生成」标记（清单里 `generation_executed=false`）。把那种形态提交进仓库，
 # 迟早会有人把它当成真实赏析读。真实产物作为 release 资产随语料工件一同发布。
 # 人工维护的 `dataset/README.md`（披露文件）不在此列，它必须入库。
+#
+# `dataset/appreciations.lock.toml` **也必须入库**，且刻意不在下面这几行里：它不是产物，
+# 而是指向产物的指针与摘要（三十行 TOML）。发布流只认它，所以「线上那些赏析由哪一次推理
+# 产生」正是由它的 git 历史回答——把它一起忽略掉，可追溯性就没有落点了。
 /dataset/appreciations.json
 /dataset/appreciations.json.sha256
 /dataset/appreciations.manifest.json
