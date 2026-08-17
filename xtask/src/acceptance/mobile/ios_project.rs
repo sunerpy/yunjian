@@ -56,6 +56,19 @@ const GENERATED_MODULEMAP: &str =
 const ANDROID_TAGS: &str = "mobile/android/app/src/main/java/top/onethinker/yunjian/TestTags.kt";
 const IOS_TAGS: &str = "mobile/ios/Yunjian/TestTags.swift";
 
+const VOICE_CAPTURE: &str = "mobile/ios/Yunjian/VoiceCapture.swift";
+const ANDROID_VIEW_MODEL: &str =
+    "mobile/android/app/src/main/java/top/onethinker/yunjian/MainViewModel.kt";
+
+/// 停用 session 的调用与它必须带的选项。**逐字取自 Apple 文档**，不凭记忆写：
+/// `func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions = []) throws`，
+/// 选项 `notifyOthersOnDeactivation` 且文档明载它只在停用时有效。
+const SESSION_DEACTIVATION_CALL: &str = "setActive(false";
+const SESSION_RESUME_OPTION: &str = ".notifyOthersOnDeactivation";
+const SESSION_ACTIVATION_HELPER: &str = "activateRecordingSession";
+const SESSION_DEACTIVATION_HELPER: &str = "deactivateRecordingSession";
+const FRAME_QUEUE_TYPE: &str = "final class FrameQueue";
+
 /// iOS 侧必须真的调到的绑定符号。
 ///
 /// 每一个都从 `YunjianMobile.swift` 里核对存在，**不凭记忆写**：UniFFI 会把 Rust 的
@@ -185,7 +198,299 @@ pub(crate) fn verify(root: &Path) -> Result<()> {
     verify_test_methods(root)?;
     verify_measurement_key_coverage(root)?;
     verify_test_plan(root)?;
+    verify_voice_capture_contract(root)?;
     Ok(())
+}
+
+/// `mobile/ios/Yunjian/VoiceCapture.swift` 的两条运行期契约。
+///
+/// # 为什么这两条值得一条会红的断言
+///
+/// 两者都是 F2 第三轮在**没有 Xcode** 的前提下读出来的真实运行风险：编译能过、静态门禁全绿，
+/// 而真机上表现为「录完一轮之后别的应用没声了」和「说了三秒只录到一秒」。这类缺陷不会被任何
+/// 现有断言碰到，只能靠人读代码发现——除非把它变成文本层可判定的东西。
+///
+/// 1. **`AVAudioSession` 必须在所有出口停用。** 只 `engine.stop()` 不 `setActive(false)`，
+///    已激活的录音 session 会继续占用系统音频策略；后果落在别的应用上，所以本应用自己的
+///    验收永远量不到它。
+/// 2. **一轮的时长必须由采样率换算，不能用「回调次数 × 假定帧长」近似。** iOS 的 tap 按
+///    **设备**采样率交付，`bufferSize` 还只是建议值；在常见的 44.1/48 kHz 上「30 帧」是
+///    约 1 秒而不是 3 秒。重采样只改采样率不改源时长，补不回缺掉的两秒。
+fn verify_voice_capture_contract(root: &Path) -> Result<()> {
+    let source = read(root, VOICE_CAPTURE)?;
+    // 判据一律建立在**剔掉注释之后**的代码上。这个文件的头部散文逐字写着
+    // `setActive(false)`、`notifyOthersOnDeactivation` 与两个辅助函数名（它们在解释这条
+    // 契约），所以只判原文时把调用整行删掉仍然全绿——本仓库已经栽过五次
+    // 「解释一条规则的文字命中这条规则」。
+    let swift = strip_swift_line_comments(&source);
+    verify_session_is_deactivated(&swift)?;
+    verify_round_duration_is_derived(&swift)?;
+    verify_round_duration_parity(root, &swift)?;
+    Ok(())
+}
+
+/// 去掉 Swift 的行注释（含 `///` 文档注释），但不动字符串字面量里的 `//`。
+///
+/// 与 `xtask/tests/workspace_contract.rs` 的 `strip_line_comments` 同形态。**没有共用一份
+/// 实现**是因为那份住在集成测试 target 里，而这里是 `xtask` 的 bin target——xtask 没有 lib
+/// target，两者无法互相 `use`。共用需要先给 xtask 加 lib，那是另一件事。两份各自带一条
+/// 「散文不得冒充调用」的反例测试，防止其中任何一份退化。
+fn strip_swift_line_comments(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    for line in source.lines() {
+        let bytes = line.as_bytes();
+        let mut cut = line.len();
+        let mut in_string = false;
+        let mut escaped = false;
+        let mut index = 0;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                } else if byte == b'"' {
+                    in_string = false;
+                }
+            } else if byte == b'"' {
+                in_string = true;
+            } else if byte == b'/' && bytes.get(index + 1) == Some(&b'/') {
+                cut = index;
+                break;
+            }
+            index += 1;
+        }
+        // `cut` 只落在 ASCII 的 `/` 上或行尾，因此这个切片不会切断多字节字符。
+        out.push_str(&line[..cut]);
+        out.push('\n');
+    }
+    out
+}
+
+/// 每一次激活都要配一次停用，而且停用要写在 `defer` 里。
+///
+/// 判据是**配对计数**而不是「文件里有没有出现 setActive(false)」：后者在「加了第二条采集
+/// 路径但忘了给它停用」时依然为真，而那正是这类泄漏最常见的引入方式。
+fn verify_session_is_deactivated(swift: &str) -> Result<()> {
+    if !swift.contains(SESSION_DEACTIVATION_CALL) {
+        bail!(
+            "`{VOICE_CAPTURE}` 里没有 `{SESSION_DEACTIVATION_CALL}`：\
+             只 `engine.stop()` 不停用 AVAudioSession，已激活的录音 session 会继续占用\
+             系统音频策略，后果落在别的应用上——本应用自己的验收永远量不到它"
+        );
+    }
+    if !swift.contains(SESSION_RESUME_OPTION) {
+        bail!(
+            "`{VOICE_CAPTURE}` 停用 session 时没有带 `{SESSION_RESUME_OPTION}`：\
+             不带这个选项时被打断的其他应用不会收到可以恢复的通知，表现为「录完一轮之后\
+             别的应用没声了」"
+        );
+    }
+
+    let activations = call_sites(swift, SESSION_ACTIVATION_HELPER);
+    let deactivations = deferred_call_sites(swift, SESSION_DEACTIVATION_HELPER);
+    if activations == 0 {
+        bail!(
+            "`{VOICE_CAPTURE}` 里找不到 `{SESSION_ACTIVATION_HELPER}()` 的调用点：\
+             这条断言靠「激活次数 == 停用次数」配对，找不到激活点说明它已经量不到东西了"
+        );
+    }
+    if activations != deactivations {
+        bail!(
+            "`{VOICE_CAPTURE}` 激活 session {activations} 次，但只有 {deactivations} 处 \
+             `defer {{ {SESSION_DEACTIVATION_HELPER}() }}`。每一次激活都要配一次停用，\
+             而且必须写在 `defer` 里——写在函数末尾的话，中途 `return` 的降级路径\
+             （无输入设备、engine 启动失败）会把 session 留在激活状态"
+        );
+    }
+    Ok(())
+}
+
+/// 一轮的帧数必须由目标时长与采样率换算出来，不能是字面量。
+fn verify_round_duration_is_derived(swift: &str) -> Result<()> {
+    let declaration = declaration_line(swift, "framesPerRound")
+        .ok_or_else(|| anyhow::anyhow!("`{VOICE_CAPTURE}` 里找不到 `framesPerRound` 的声明"))?;
+    for token in ["roundSeconds", "sampleRate", "frameSamples"] {
+        if !declaration.contains(token) {
+            bail!(
+                "`{VOICE_CAPTURE}` 的 `framesPerRound` 声明里没有 `{token}`：\
+                 它必须由「目标时长 × 采样率 ÷ 每帧采样数」算出来。写成字面量时\
+                 「30 帧 ≈ 3 秒」只在 16 kHz、每帧 1600 采样这一种组合下成立，\
+                 而 iOS 的 tap 按**设备**采样率交付，改任一个常量都会静默改掉一轮的真实时长。\
+                 实际声明：`{declaration}`"
+            );
+        }
+    }
+    if declaration_line(swift, "silenceProbeFrames").is_some() {
+        bail!(
+            "`{VOICE_CAPTURE}` 还留着 `silenceProbeFrames`：静音探测的长度也要按时长记\
+             （`silenceProbeSeconds`），按回调次数记会随设备采样率漂移，\
+             而名字里的「3 帧 ≈ 300 ms」在 48 kHz 上是约 100 ms"
+        );
+    }
+    if declaration_line(swift, "silenceProbeSeconds").is_none() {
+        bail!("`{VOICE_CAPTURE}` 里找不到 `silenceProbeSeconds`：静音探测长度必须按时长声明");
+    }
+
+    // 帧长必须由 16 kHz 目标帧长决定，而不是由 tap 交付的缓冲长度决定——这是「30 帧只有
+    // 1 秒」的真正根因：tap 按设备采样率交付，直接把回调缓冲当成一帧就等于把帧长交给设备。
+    let queue = type_body(swift, FRAME_QUEUE_TYPE)
+        .ok_or_else(|| anyhow::anyhow!("`{VOICE_CAPTURE}` 里找不到 `{FRAME_QUEUE_TYPE}` 的定义"))?;
+    if !queue.contains("frameSamples") {
+        bail!(
+            "`{VOICE_CAPTURE}` 的 `{FRAME_QUEUE_TYPE}` 不认识 `frameSamples`，\
+             说明它按 tap 交付的缓冲长度往外给帧。tap 按**设备**采样率交付且 `bufferSize` \
+             只是建议值，那样一帧的时长由设备决定：48 kHz 下 1600 采样是 33 ms 而不是 \
+             100 ms，一轮 30 帧就只有约 1 秒。队列必须自己按目标帧长切分重采样后的流"
+        );
+    }
+    Ok(())
+}
+
+/// 两个平台一轮采集的**时长**必须相同，各自从自己的常量算出来。
+///
+/// 这条是 `verify_tag_parity` 的同形态：十条判据两侧共用，而「一轮多长」直接决定
+/// `total_ms` 与「是否开口／停顿」的读数。两侧算出不同的毫秒数时，同名断言在量不同的东西。
+fn verify_round_duration_parity(root: &Path, swift: &str) -> Result<()> {
+    let kotlin = read(root, ANDROID_VIEW_MODEL)?;
+    let android_rate = kotlin_int(&kotlin, "SAMPLE_RATE")?;
+    let android_frame = kotlin_int(&kotlin, "FRAME_SAMPLES")?;
+    let android_frames_per_round = kotlin_int(&kotlin, "FRAMES_PER_ROUND")?;
+    let ios_rate = swift_number(swift, "sampleRate")?;
+    let ios_frame = swift_number(swift, "frameSamples")?;
+    let ios_round_seconds = swift_number(swift, "roundSeconds")?;
+
+    if (ios_rate - f64::from(android_rate)).abs() > f64::EPSILON {
+        bail!(
+            "采样率两侧不同：Android {android_rate}，iOS {ios_rate}；\
+             宿主侧按同一个采样率解读 `total_ms`"
+        );
+    }
+    if (ios_frame - f64::from(android_frame)).abs() > f64::EPSILON {
+        bail!("每帧采样数两侧不同：Android {android_frame}，iOS {ios_frame}");
+    }
+
+    let android_ms = f64::from(android_frames_per_round) * f64::from(android_frame) * 1000.0
+        / f64::from(android_rate);
+    let ios_ms = ios_round_seconds * 1000.0;
+    if (android_ms - ios_ms).abs() > 1.0 {
+        bail!(
+            "一轮采集的时长两侧不同：Android {android_ms} ms\
+             （{android_frames_per_round} 帧 × {android_frame} 采样 ÷ {android_rate} Hz），\
+             iOS {ios_ms} ms（roundSeconds = {ios_round_seconds}）。\
+             十条判据两侧共用，一轮多长直接决定 `total_ms` 与「是否开口／停顿」的读数"
+        );
+    }
+    Ok(())
+}
+
+/// 某个标识符被**调用**的次数（不含它自己的定义行）。
+fn call_sites(source: &str, name: &str) -> usize {
+    source
+        .lines()
+        .filter(|line| !line.contains("func ") && calls(line, name))
+        .count()
+}
+
+/// 某个标识符出现在 `defer` 里的次数。
+fn deferred_call_sites(source: &str, name: &str) -> usize {
+    source
+        .lines()
+        .filter(|line| line.contains("defer") && calls(line, name))
+        .count()
+}
+
+/// 这一行有没有调用 `name()`，**按标识符边界判**。
+///
+/// 边界判定不是讲究：`deactivateRecordingSession()` 的字面里含有
+/// `activateRecordingSession()`，用朴素 `contains` 数激活点会把每一处停用也数成一次激活，
+/// 于是「激活次数 == 停用次数」在真的配平时反而失败。实测踩到过这一条。
+fn calls(line: &str, name: &str) -> bool {
+    let needle = format!("{name}(");
+    let mut rest = line;
+    while let Some(at) = rest.find(&needle) {
+        let preceded_by_identifier = rest[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|ch| ch.is_alphanumeric() || ch == '_');
+        if !preceded_by_identifier {
+            return true;
+        }
+        rest = &rest[at + needle.len()..];
+    }
+    false
+}
+
+/// `static let name...` / `static var name...` 的整行声明。
+fn declaration_line<'a>(source: &'a str, name: &str) -> Option<&'a str> {
+    source.lines().map(str::trim).find(|line| {
+        (line.starts_with("static let ") || line.starts_with("static var "))
+            && line
+                .split_whitespace()
+                .nth(2)
+                .is_some_and(|token| token.trim_end_matches(':') == name)
+    })
+}
+
+/// 一个 Swift 类型定义的正文（从声明行到与它同缩进的收尾花括号）。
+fn type_body<'a>(source: &'a str, declaration: &str) -> Option<&'a str> {
+    let start = source.find(declaration)?;
+    let rest = &source[start..];
+    let mut depth = 0usize;
+    let mut entered = false;
+    for (offset, ch) in rest.char_indices() {
+        match ch {
+            '{' => {
+                depth += 1;
+                entered = true;
+            }
+            '}' => {
+                depth -= 1;
+                if entered && depth == 0 {
+                    return Some(&rest[..=offset]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn kotlin_int(source: &str, name: &str) -> Result<u32> {
+    let literal = source
+        .lines()
+        .map(str::trim)
+        .find_map(|line| {
+            line.strip_prefix("const val ")?
+                .strip_prefix(name)?
+                .trim_start()
+                .strip_prefix('=')
+                .map(str::trim)
+        })
+        .with_context(|| format!("`{ANDROID_VIEW_MODEL}` 里找不到 `const val {name}`"))?;
+    parse_number(literal)
+        .and_then(|value| u32::try_from(value as i64).ok())
+        .with_context(|| format!("`{name}` 的取值 `{literal}` 不是整数字面量"))
+}
+
+fn swift_number(source: &str, name: &str) -> Result<f64> {
+    let declaration = declaration_line(source, name)
+        .with_context(|| format!("`{VOICE_CAPTURE}` 里找不到 `{name}` 的声明"))?;
+    let literal = declaration
+        .split_once('=')
+        .map(|(_, tail)| tail.trim())
+        .with_context(|| format!("`{name}` 的声明 `{declaration}` 没有取值"))?;
+    parse_number(literal).with_context(|| format!("`{name}` 的取值 `{literal}` 不是数字字面量"))
+}
+
+/// `16_000` / `1_600` / `3` / `0.3` → f64。分隔下划线是两种语言共有的写法。
+fn parse_number(literal: &str) -> Option<f64> {
+    literal
+        .trim_end_matches([',', ';'])
+        .replace('_', "")
+        .parse()
+        .ok()
 }
 
 /// 两个平台的界面标识必须逐字相同。
@@ -455,5 +760,172 @@ mod tests {
     #[test]
     fn the_ten_xcuitest_methods_carry_the_test_prefix() {
         verify_test_methods(&root()).expect("十个方法都必须带 test 前缀，否则一个都不会跑");
+    }
+
+    #[test]
+    fn the_shipped_voice_capture_closes_both_runtime_contracts() {
+        verify_voice_capture_contract(&root())
+            .expect("VoiceCapture 必须停用 session，并按采样率换算一轮时长");
+    }
+
+    /// 注入：删掉停用调用。这是 2026-08-18 之前的实际状态（F2 第三轮读出来的那一条）。
+    #[test]
+    fn dropping_the_session_deactivation_is_reported() {
+        let shipped = strip_swift_line_comments(
+            &read(&root(), VOICE_CAPTURE).expect("读取 VoiceCapture.swift"),
+        );
+        // 连辅助函数的函数体一起删掉，才是 F2 之前那个「文件里根本没有 setActive(false)」
+        // 的状态；只删调用点会留着函数体，那时先命中的是配对计数那条判词。
+        let without: String = shipped
+            .lines()
+            .filter(|line| {
+                !calls(line, SESSION_DEACTIVATION_HELPER)
+                    && !line.contains(SESSION_DEACTIVATION_CALL)
+            })
+            .map(|line| format!("{line}\n"))
+            .collect();
+        assert!(
+            without.contains(SESSION_ACTIVATION_HELPER),
+            "注入的前提是激活调用还在，否则这条反例证明不了停用被漏掉"
+        );
+        let error =
+            verify_session_is_deactivated(&without).expect_err("漏掉 setActive(false) 必须判红");
+        assert!(
+            error.to_string().contains("setActive(false"),
+            "判词必须点出缺的是停用：{error}"
+        );
+    }
+
+    /// 注入：停用还在，但从 `defer` 里挪到函数末尾。降级路径的提前 `return` 会绕过它。
+    #[test]
+    fn moving_the_deactivation_out_of_defer_is_reported() {
+        let shipped = strip_swift_line_comments(
+            &read(&root(), VOICE_CAPTURE).expect("读取 VoiceCapture.swift"),
+        );
+        let moved = shipped.replace(
+            &format!("defer {{ {SESSION_DEACTIVATION_HELPER}() }}"),
+            &format!("{SESSION_DEACTIVATION_HELPER}()"),
+        );
+        assert_ne!(moved, shipped, "注入没有真的改到源码");
+        assert!(
+            moved.contains(SESSION_DEACTIVATION_CALL),
+            "前提：这种漂移下「文件里有没有 setActive(false)」判据依然为真，\
+             所以它证明了配对计数比存在性检查更强"
+        );
+        let error = verify_session_is_deactivated(&moved).expect_err("停用不在 defer 里必须判红");
+        assert!(
+            error.to_string().contains("defer"),
+            "判词必须点出它得写在 defer 里：{error}"
+        );
+    }
+
+    /// 注入：把一轮帧数改回字面量 30。这正是「30 帧 ≈ 3 秒」那条错近似。
+    #[test]
+    fn a_literal_frame_count_per_round_is_reported() {
+        let shipped = strip_swift_line_comments(
+            &read(&root(), VOICE_CAPTURE).expect("读取 VoiceCapture.swift"),
+        );
+        let literal: String = shipped
+            .lines()
+            .map(|line| {
+                if line.trim().starts_with("static var framesPerRound") {
+                    "    static let framesPerRound: Int = 30\n".to_owned()
+                } else {
+                    format!("{line}\n")
+                }
+            })
+            .collect();
+        assert_ne!(literal, shipped, "注入没有真的改到 framesPerRound 的声明");
+        let error =
+            verify_round_duration_is_derived(&literal).expect_err("一轮帧数写成字面量必须判红");
+        let message = error.to_string();
+        assert!(
+            message.contains("framesPerRound") && message.contains("30 帧"),
+            "判词必须点出它为什么不成立：{message}"
+        );
+    }
+
+    /// 注入：让队列不再按目标帧长切分，即把帧长交回给设备采样率。
+    #[test]
+    fn a_frame_queue_that_does_not_resplit_is_reported() {
+        let shipped = strip_swift_line_comments(
+            &read(&root(), VOICE_CAPTURE).expect("读取 VoiceCapture.swift"),
+        );
+        let body = type_body(&shipped, FRAME_QUEUE_TYPE).expect("仓库里必须有 FrameQueue");
+        assert!(
+            body.contains("frameSamples"),
+            "前提：现行 FrameQueue 确实按目标帧长切分"
+        );
+        let unsplit = shipped.replace(body, "final class FrameQueue { }");
+        let error =
+            verify_round_duration_is_derived(&unsplit).expect_err("队列不按目标帧长切分必须判红");
+        assert!(
+            error
+                .to_string()
+                .contains(FRAME_QUEUE_TYPE.trim_start_matches("final class ")),
+            "判词必须点名 FrameQueue：{error}"
+        );
+    }
+
+    /// 注入：让 iOS 的一轮时长与 Android 分叉。
+    #[test]
+    fn a_round_duration_that_diverges_from_android_is_reported() {
+        let shipped = strip_swift_line_comments(
+            &read(&root(), VOICE_CAPTURE).expect("读取 VoiceCapture.swift"),
+        );
+        let diverged = shipped.replace(
+            "static let roundSeconds: Double = 3",
+            "static let roundSeconds: Double = 1",
+        );
+        assert_ne!(diverged, shipped, "注入没有真的改到 roundSeconds");
+        let error =
+            verify_round_duration_parity(&root(), &diverged).expect_err("两侧一轮时长不同必须判红");
+        assert!(
+            error.to_string().contains("3000") && error.to_string().contains("1000"),
+            "判词必须把两侧的毫秒数都报出来：{error}"
+        );
+    }
+
+    /// 散文不得冒充调用——与 `workspace_contract.rs` 那条同一个理由。
+    #[test]
+    fn the_swift_comment_stripper_does_not_let_prose_impersonate_a_call() {
+        let prose_only = "/// 结束时必须 setActive(false, options: [.notifyOthersOnDeactivation])。\n\
+                          enum VoiceCapture {}\n";
+        assert!(
+            prose_only.contains(SESSION_DEACTIVATION_CALL),
+            "前提：注释原文确实命中标记，否则这条反例没有意义"
+        );
+        let stripped = strip_swift_line_comments(prose_only);
+        assert!(
+            !stripped.contains(SESSION_DEACTIVATION_CALL),
+            "剔注释之后散文不得再命中标记，否则调用被删掉时断言仍会通过：{stripped}"
+        );
+        assert!(
+            verify_session_is_deactivated(&stripped).is_err(),
+            "只剩散文时必须判红"
+        );
+
+        let with_url = "let a = \"https://example.invalid/x\" // 说明\n";
+        let stripped = strip_swift_line_comments(with_url);
+        assert!(
+            stripped.contains("https://example.invalid/x"),
+            "字符串里的 `//` 被误判成注释：{stripped}"
+        );
+        assert!(!stripped.contains("说明"), "行尾注释未被剔除：{stripped}");
+    }
+
+    /// 标识符边界：`deactivateRecordingSession()` 不得被数成一次 `activateRecordingSession()`。
+    #[test]
+    fn a_longer_identifier_is_not_counted_as_a_call_to_its_suffix() {
+        let line = "        defer { deactivateRecordingSession() }";
+        assert!(calls(line, SESSION_DEACTIVATION_HELPER));
+        assert!(
+            !calls(line, SESSION_ACTIVATION_HELPER),
+            "朴素 contains 会把停用数成激活，于是配平的代码反而判红——实测踩过"
+        );
+        assert!(calls(
+            "        try activateRecordingSession()",
+            SESSION_ACTIVATION_HELPER
+        ));
     }
 }

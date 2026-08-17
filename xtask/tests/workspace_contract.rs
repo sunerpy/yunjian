@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 const EXPECTED_WORKSPACE_MEMBERS: [&str; 10] = [
@@ -128,13 +128,195 @@ const RPATH_EXCUSED_MEMBERS: [(&str, &str); 2] = [
     ),
 ];
 
-/// 每个必需成员的 build.rs 都要发的链接参数，按目标 OS 分。
+/// 发一条 rpath 的字符串前缀。**取到它之后剩下的整段就是 rpath 值本身。**
 ///
-/// 取值即执行机制：删掉任一行，下面的断言会点名是哪个包缺了哪条。
-const REQUIRED_LINK_ARGS: [&str; 2] = [
-    "cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN",
-    "cargo:rustc-link-arg-bins=-Wl,-rpath,@loader_path",
+/// 这个「取值而非包含」的差别是本节全部意义所在：`contains` 判据下
+/// `-rpath,$ORIGIN/app-only-drift` 与 `-rpath,$ORIGIN` 无法区分（后者是前者的前缀），
+/// 而按前缀切出值之后它们是两个不同的字符串。
+const RPATH_EMISSION_PREFIX: &str = "cargo:rustc-link-arg-bins=-Wl,-rpath,";
+
+/// 两份 build script 必须发出的**规范 rpath 计划**：目标 OS → 该 OS 下发出的 rpath。
+///
+/// 取值即执行机制。这张表同时锁住三件事，任何一件漂移都点名变红：
+///
+/// 1. 每个 OS 拿到的**值**（`$ORIGIN` 而不是 `$ORIGIN/lib`）；
+/// 2. 哪些 OS 会拿到（`android` 与 `linux` 同待遇，`ios` 与 `macos` 同待遇）；
+/// 3. 表里**没有的 OS 一条也不发**——Windows 走兜底分支，而它必须一条也不发：DLL 在 exe
+///    同目录被搜索，`-Wl,-rpath` 对 MSVC 链接器根本不是合法参数。
+const EXPECTED_RPATH_PLAN: [(&str, &str); 4] = [
+    ("linux", "$ORIGIN"),
+    ("android", "$ORIGIN"),
+    ("macos", "@loader_path"),
+    ("ios", "@loader_path"),
 ];
+
+/// 一份 build script 的 rpath 计划：目标 OS → 该 OS 下会被发出的 rpath 集合。
+///
+/// 只有真的发了东西的 OS 才会成为键，所以「发射跑到兜底分支里去了」会表现为多出一个
+/// `_` 键，而不是静默通过。
+type RpathPlan = BTreeMap<String, BTreeSet<String>>;
+
+fn expected_rpath_plan() -> RpathPlan {
+    let mut plan = RpathPlan::new();
+    for (os, rpath) in EXPECTED_RPATH_PLAN {
+        plan.entry(os.to_owned())
+            .or_default()
+            .insert(rpath.to_owned());
+    }
+    plan
+}
+
+/// 从**已剔注释**的 build script 代码里解析出它的 rpath 计划。
+///
+/// # 为什么必须解析而不能只查子串包含
+///
+/// 这条断言叫「等价」，而在 2026-08-18 之前它做的事是「两侧各自含某个子串」。实测过六种
+/// 单侧漂移在那个判据下全部 1 passed（见
+/// `the_rpath_plan_parser_tells_a_single_sided_drift_from_the_canonical_source` 里逐条列出的
+/// 六种），其中最坏的一种是**把两个平台的 rpath 整体对调**：Linux 拿到 `@loader_path`
+/// （ld.so 不认）、macOS 拿到 `$ORIGIN`（dyld 不认），两个平台的发布产物都退回到
+/// 「链接了 .so 却没有可用 rpath」这个原始故障，而守卫一声不响。
+///
+/// # 解析不出来的形状一律判红
+///
+/// 这个解析器只认「`match` 的分支模式是字符串字面量或 `_`、分支体用花括号界定、rpath 由
+/// 字面量 `println!` 发出」这一种形状。换成 `format!` 拼串、抽成辅助函数、加分支守卫，
+/// 都会让它解析不到发射或直接 panic——**方向是红，不是绿**。这是刻意的：一个能被重写绕过
+/// 的守卫等于没有守卫。
+fn parse_rpath_plan(member: &str, code: &str) -> RpathPlan {
+    let mut plan = RpathPlan::new();
+    let mut attributed = 0usize;
+    // 当前所在的 match 分支模式；`None` 表示不在任何分支体内。
+    let mut arm: Option<Vec<String>> = None;
+    // 当前分支体内还没闭合的花括号层数。
+    let mut depth = 0usize;
+
+    for (index, line) in code.lines().enumerate() {
+        let number = index + 1;
+        let trimmed = line.trim();
+
+        if depth == 0 {
+            if let Some((head, tail)) = trimmed.split_once("=>") {
+                let patterns = parse_arm_patterns(member, number, head);
+                let opened = tail.matches('{').count();
+                let closed = tail.matches('}').count();
+                assert!(
+                    opened > 0,
+                    "{member}/build.rs:{number} 的 match 分支没有用花括号界定分支体。\
+                     解析器靠花括号确定「这条发射属于哪个 OS」，无花括号的单表达式分支\
+                     无法可靠界定，因此判红而不是猜"
+                );
+                assert!(
+                    opened >= closed,
+                    "{member}/build.rs:{number} 的花括号在同一行里闭合多于打开，形状无法解析"
+                );
+                for rpath in emissions_in(member, number, tail) {
+                    attributed += 1;
+                    for pattern in &patterns {
+                        plan.entry(pattern.clone())
+                            .or_default()
+                            .insert(rpath.clone());
+                    }
+                }
+                depth = opened - closed;
+                arm = if depth == 0 { None } else { Some(patterns) };
+                continue;
+            }
+            assert!(
+                !trimmed.contains(RPATH_EMISSION_PREFIX),
+                "{member}/build.rs:{number} 在 match 分支之外发 rpath，无法把它归属到具体 \
+                 目标 OS。无条件发射会让 Windows 也拿到 `-Wl,-rpath`，那对 MSVC 链接器不是\
+                 合法参数"
+            );
+            continue;
+        }
+
+        let patterns = arm.clone().unwrap_or_else(|| {
+            panic!("{member}/build.rs:{number} 解析器状态不一致：在分支体内却没有模式")
+        });
+        for rpath in emissions_in(member, number, trimmed) {
+            attributed += 1;
+            for pattern in &patterns {
+                plan.entry(pattern.clone())
+                    .or_default()
+                    .insert(rpath.clone());
+            }
+        }
+        depth = (depth + trimmed.matches('{').count()).saturating_sub(trimmed.matches('}').count());
+        if depth == 0 {
+            arm = None;
+        }
+    }
+
+    assert_eq!(
+        depth, 0,
+        "{member}/build.rs 的花括号没有闭合，解析器与源码形状不匹配"
+    );
+    // 兜底自检：解析器自己漏掉一条发射，会让下面的计划比对在残缺数据上通过。
+    assert_eq!(
+        code.matches(RPATH_EMISSION_PREFIX).count(),
+        attributed,
+        "{member}/build.rs 里有 rpath 发射没有被归属到任何 match 分支。\
+         解析器与源码形状已经不匹配，此时的计划比对是在残缺数据上做的，不可采信"
+    );
+    plan
+}
+
+/// `"linux" | "android"` → `["linux", "android"]`；`_` → `["_"]`。
+fn parse_arm_patterns(member: &str, number: usize, head: &str) -> Vec<String> {
+    let head = head.trim();
+    assert!(
+        !head.contains(" if "),
+        "{member}/build.rs:{number} 的 match 分支带守卫。带守卫时「哪个 OS 拿到哪条 rpath」\
+         不再由模式决定，解析器无从判定，因此判红"
+    );
+    if head == "_" {
+        return vec!["_".to_owned()];
+    }
+    let patterns: Vec<String> = head
+        .split('|')
+        .map(|part| {
+            let part = part.trim();
+            let literal = part
+                .strip_prefix('"')
+                .and_then(|rest| rest.strip_suffix('"'))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{member}/build.rs:{number} 的 match 模式 `{part}` 不是字符串字面量\
+                         也不是 `_`。这里比对的是 CARGO_CFG_TARGET_OS 的取值，只认这两种形状"
+                    )
+                });
+            assert!(
+                !literal.contains('"'),
+                "{member}/build.rs:{number} 的 match 模式 `{part}` 形状异常"
+            );
+            literal.to_owned()
+        })
+        .collect();
+    assert!(
+        !patterns.is_empty(),
+        "{member}/build.rs:{number} 的 match 分支没有解析出任何模式"
+    );
+    patterns
+}
+
+/// 取出一段文本里每一条 rpath 发射的**值**（前缀之后到字符串字面量收尾之间的整段）。
+fn emissions_in(member: &str, number: usize, text: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(RPATH_EMISSION_PREFIX) {
+        let tail = &rest[at + RPATH_EMISSION_PREFIX.len()..];
+        let end = tail.find('"').unwrap_or_else(|| {
+            panic!(
+                "{member}/build.rs:{number} 的 rpath 发射没有收尾的引号，\
+                 无法切出它到底发了哪条路径"
+            )
+        });
+        values.push(tail[..end].to_owned());
+        rest = &tail[end..];
+    }
+    values
+}
 
 /// 去掉 Rust 源码的行注释，但不动字符串字面量里的 `//`。
 ///
@@ -219,6 +401,135 @@ fn the_comment_stripper_does_not_let_prose_impersonate_an_emission() {
     assert!(!stripped.contains("说明"), "行尾注释未被剔除：{stripped}");
 }
 
+/// 六种**实测过能让旧判据假绿**的单侧漂移，解析器必须逐条把它们与规范形状区分开。
+///
+/// 这条测试是 2026-08-18 那次注入验证的常驻形态。当时对 `crates/yunjian-app/build.rs`
+/// 逐个施加下面六种改法、精确运行
+/// `every_distributed_voice_binary_emits_an_equivalent_rpath`，**六次全部 1 passed**——
+/// 因为旧判据只问「代码里有没有出现这两个子串」，而这六种改法都保留了那两个子串。
+///
+/// 每一条都先断言「旧判据确实会放它过去」，再断言「新判据的计划与规范计划不同」。少了前一半，
+/// 这组反例就证明不了新判据更强。
+#[test]
+fn the_rpath_plan_parser_tells_a_single_sided_drift_from_the_canonical_source() {
+    let canonical = r#"
+    match std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default().as_str() {
+        "linux" | "android" => {
+            println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN");
+        }
+        "macos" | "ios" => {
+            println!("cargo:rustc-link-arg-bins=-Wl,-rpath,@loader_path");
+        }
+        _ => {}
+    }
+"#;
+    assert_eq!(
+        parse_rpath_plan("<canonical>", canonical),
+        expected_rpath_plan(),
+        "前提：规范形状必须解析成规范计划，否则下面的反例比对没有基准"
+    );
+
+    let linux_emission = "println!(\"cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN\");";
+    let macos_emission = "println!(\"cargo:rustc-link-arg-bins=-Wl,-rpath,@loader_path\");";
+    let drifts: Vec<(&str, String)> = vec![
+        (
+            "Linux 的 rpath 加了后缀（旧判据下 `$ORIGIN` 仍是它的前缀）",
+            canonical.replace("-rpath,$ORIGIN\"", "-rpath,$ORIGIN/app-only-drift\""),
+        ),
+        (
+            "macOS 的 rpath 加了后缀（`@loader_path` 仍是它的前缀）",
+            canonical.replace("-rpath,@loader_path\"", "-rpath,@loader_path/Frameworks\""),
+        ),
+        (
+            "分支丢掉了 android，Android 产物拿不到 rpath",
+            canonical.replace("\"linux\" | \"android\"", "\"linux\""),
+        ),
+        (
+            "两个平台的 rpath 整体对调，两侧产物都退回原始故障",
+            canonical
+                .replace(linux_emission, "__SWAP__")
+                .replace(macos_emission, linux_emission)
+                .replace("__SWAP__", macos_emission),
+        ),
+        (
+            "Windows 也被发了 rpath，而那对 MSVC 链接器不是合法参数",
+            canonical.replace(
+                "        _ => {}",
+                &format!("        \"windows\" => {{\n            {linux_emission}\n        }}\n        _ => {{}}"),
+            ),
+        ),
+        (
+            "Linux 分支多发了一条搜索路径，两侧不再等价",
+            canonical.replace(
+                linux_emission,
+                &format!(
+                    "{linux_emission}\n            println!(\"cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN/../lib\");"
+                ),
+            ),
+        ),
+    ];
+
+    for (label, drifted) in drifts {
+        assert_ne!(drifted, canonical, "漂移没有真的改到源码：{label}");
+        assert!(
+            drifted.contains("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN")
+                && drifted.contains("cargo:rustc-link-arg-bins=-Wl,-rpath,@loader_path"),
+            "前提不成立：这种漂移在旧的「只查子串包含」判据下并不假绿，\
+             那它证明不了新判据更强——{label}"
+        );
+        assert_ne!(
+            parse_rpath_plan("<drifted>", &drifted),
+            expected_rpath_plan(),
+            "解析出的计划与规范计划相同，说明新判据同样漏掉了这种漂移：{label}"
+        );
+    }
+}
+
+/// 解析器碰到自己不认识的形状时必须 panic，而不是解析出一份空计划静默放行。
+///
+/// 这条守的是「绕过守卫的最省力办法」：把 `println!` 换成拼串或抽成辅助函数，让含
+/// `contains` 的判据和只按字面量取值的解析器都找不到发射。方向必须是红。
+#[test]
+fn the_rpath_plan_parser_refuses_a_shape_it_cannot_attribute() {
+    let outside_the_match = r#"
+    println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN");
+    match std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default().as_str() {
+        _ => {}
+    }
+"#;
+    let panicked = std::panic::catch_unwind(|| parse_rpath_plan("<x>", outside_the_match));
+    assert!(
+        panicked.is_err(),
+        "match 之外的无条件发射必须判红：那会让 Windows 也拿到 `-Wl,-rpath`"
+    );
+
+    let guarded = r#"
+    match std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default().as_str() {
+        other if other == "linux" => {
+            println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN");
+        }
+        _ => {}
+    }
+"#;
+    let panicked = std::panic::catch_unwind(|| parse_rpath_plan("<x>", guarded));
+    assert!(
+        panicked.is_err(),
+        "带守卫的分支必须判红：那时哪个 OS 拿到哪条 rpath 不再由模式决定"
+    );
+
+    let indirect = r#"
+    match std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default().as_str() {
+        "linux" | "android" => emit("$ORIGIN"),
+        _ => {}
+    }
+"#;
+    let panicked = std::panic::catch_unwind(|| parse_rpath_plan("<x>", indirect));
+    assert!(
+        panicked.is_err(),
+        "无花括号的单表达式分支必须判红：解析器无从界定这条发射属于哪个 OS"
+    );
+}
+
 #[test]
 fn every_voice_capable_binary_crate_is_either_required_to_emit_rpath_or_excused() {
     let root = repo_root();
@@ -251,6 +562,7 @@ fn every_voice_capable_binary_crate_is_either_required_to_emit_rpath_or_excused(
 #[test]
 fn every_distributed_voice_binary_emits_an_equivalent_rpath() {
     let root = repo_root();
+    let mut plans: Vec<(&str, RpathPlan)> = Vec::new();
     for member in RPATH_REQUIRED_MEMBERS {
         let build_script = root.join(member).join("build.rs");
         let source = std::fs::read_to_string(&build_script).unwrap_or_else(|error| {
@@ -272,19 +584,36 @@ fn every_distributed_voice_binary_emits_an_equivalent_rpath() {
             "{member}/build.rs 没有按 CARGO_FEATURE_VOICE 分流。不开 voice 的构建不链接 \
              sherpa-onnx，给它发 rpath 是无来由地改变纯 MIT 产物的链接行为"
         );
-        for link_arg in REQUIRED_LINK_ARGS {
-            assert!(
-                code.contains(link_arg),
-                "{member}/build.rs 的代码里没有发 `{link_arg}`。\
-                 注意这里判的是**剔掉注释之后**的代码：文件头的散文提到过 \
-                 `cargo:rustc-link-arg`，只判原文会在发射整行被删掉时依然通过"
-            );
-        }
         assert!(
             !code.contains("cargo:rustc-link-arg=") && !code.contains("cargo:rustc-link-arg-bin="),
             "{member}/build.rs 用了非 `-bins` 形式的 link-arg。rpath 要覆盖该包的每个可执行\
              文件，`cargo:rustc-link-arg-bin=<name>` 只作用于点名的那一个，改名或加二进制\
              时会静默漏掉"
+        );
+
+        // 判的是**剔掉注释之后**的代码：文件头的散文提到过 `cargo:rustc-link-arg`，
+        // 只判原文会在发射整行被删掉时依然通过。
+        plans.push((member, parse_rpath_plan(member, &code)));
+    }
+
+    let (first_member, first_plan) = &plans[0];
+    for (member, plan) in &plans[1..] {
+        assert_eq!(
+            first_plan, plan,
+            "{first_member} 与 {member} 对同一个 CARGO_CFG_TARGET_OS 发出的 rpath 不同。\
+             这条断言的名字是「等价」，兑现它的正是这一步：两份 build.rs 是被 \
+             `cargo:rustc-link-arg` 不经 rlib 传递这件事逼出来的重复，重复必须不许漂移。\
+             单侧漂移的代价是那一侧的发布产物在用户机器上以 `cannot open shared object \
+             file` 起不来，而 cargo test 因为自带 LD_LIBRARY_PATH 一片绿"
+        );
+    }
+
+    let expected = expected_rpath_plan();
+    for (member, plan) in &plans {
+        assert_eq!(
+            plan, &expected,
+            "{member}/build.rs 的 rpath 计划偏离规范。两侧一起漂到同一个错值时上面那条\
+             等价断言是绿的，只有这条能拦住；`_`（含 Windows）必须一条也不发"
         );
     }
 }
