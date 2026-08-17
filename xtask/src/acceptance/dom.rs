@@ -33,6 +33,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
+use yunjian_ai::pregenerate::NOT_GENERATED_MARKER;
 
 use super::webdriver::{self, Session};
 use super::{Collector, Verdict};
@@ -668,14 +669,23 @@ fn shipped_appreciation(driver: &Session) -> Outcome {
             if source != "随包预生成" {
                 missing.push("随包来源标注 `ai-source`（应为「随包预生成」）");
             }
+            // 未生成标记要单列一条，不能并进「正文为空」：占位标记是**非空**字符串，
+            // 空正文那条检查放它过去。此前这里没有这条检查，判词改用一句写死的散文
+            // 「正文当前是随包数据集里的未生成标记」交代——那句话在数据集换成真赏析之后
+            // 就成了假话，而它读起来仍像一条实测结论。判据必须从实测正文算出来。
+            if body_text.contains(NOT_GENERATED_MARKER) {
+                missing.push("赏析正文仍是未生成标记（随包数据集不是模型输出）");
+            }
             if missing.is_empty() {
                 Outcome::pass(format!(
                     "未配置任何 API key 下打开「{TITLE}」，`ai-source` 为「{source}」\
                      （命中随包表，非现场生成），标签为「{label_text}」，\
-                     并带未审校说明「{}」；正文首段为「{}」。\
-                     **正文当前是随包数据集里的未生成标记**，\
-                     即本条证明的是渲染与标注链路成立，不是生成能力成立",
+                     并带未审校说明「{}」；正文 {} 字、不含未生成标记，首段为「{}」。\
+                     渲染与标注链路成立，且用户看到的是随包数据集里那段模型输出本身；\
+                     「那份数据集确实由开放权重模型生成」由净机报告的 \
+                     `shipped_dataset_is_model_output` 按清单单独判",
                     one_line(&badge_text),
+                    body_text.chars().count(),
                     clip(&body_text, 40)
                 ))
             } else {

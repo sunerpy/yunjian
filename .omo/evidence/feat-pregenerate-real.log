@@ -1,0 +1,263 @@
+# feat(dataset)：随包赏析换成真实模型输出 —— 执行记录
+
+分支 `feat/pregenerate-real-appreciations`，基线 `a9ca77e`。
+worktree `/config/work/yunjian-pregen`（`/config` 独立 1.4T 盘，剩 510G；
+`/tmp` 所在 `/dev/root` 只剩 16G，一个 target/ 就爆）。
+
+## 一、推理运行时（交接已装好，本轮只核实）
+
+    $ curl -sS http://127.0.0.1:11434/api/version
+    {"version":"0.32.14"}
+
+权重 `deepseek-r1:7b`，MIT，与 `DEFAULT_MODEL` / `DEFAULT_MODEL_LICENSE` 逐字一致。
+
+## 二、第一次全量生成（16 条，暴露前导空白）
+
+    $ xtask pregenerate --corpus-db corpus/build/release/corpus.db \
+        --endpoint http://127.0.0.1:11434/
+    == 随包赏析数据集预生成 ==
+    开放权重配置：model=deepseek-r1:7b license=MIT runtime=ollama
+    披露校验通过：dataset/README.md
+    覆盖集：选本 ["唐诗三百首","宋词三百首","千家诗","古诗文名篇"]，筛选途径 poem_tag，命中 16 首
+    子集语料：dataset/.work/subset.db（16 首）
+    生成模式：调用本地开放权重运行时
+    已写出 dataset/appreciations.json（16 条，sha256 1b0543ad…）
+
+实测耗时：18:47 起，19:04 完，约 17 分钟；Ollama 侧 16 次 `POST /api/chat`，
+单条 32–66 秒（`serve.log` 逐条 200）。
+
+**质检发现缺陷**：16/16 条正文以 `\n\n` 开头。
+
+    $ python3 -c "... print(repr(d[0]['text'][:20]))"
+    '\n\n《春夜喜雨》是唐代诗人杜甫的一首七言'
+
+推理型权重的思维块被运行时摘掉后留下的空行。不是内容，带进随包表就是详情页
+赏析面板顶上一段空白。在 `Generator::appreciate` 收敛（trim 后再收下，判据与它
+自己的空正文检查一致）。
+
+## 三、第二次全量生成（修正后，作为交付物）
+
+    已写出 dataset/appreciations.json（16 条，sha256 9d91d67f9062a148e6e8b940559aa40a0b141a65f814b8c6cb51aba13625432a）
+
+核实：
+
+    $ python3 …
+    generation_executed True | license MIT | model deepseek-r1:7b | provider ollama | count 16
+    条数 16 占位 0 前导空白 0
+    字数区间 187 - 506
+    $ sha256sum appreciations.json;  cat appreciations.json.sha256
+    9d91d67f…  appreciations.json        # 两者一致
+
+逐条（stable_id / 作者《题目》/ 字数 / 是否含标记）：
+
+    062f574ab2986a9b 杜甫《春夜喜雨》 190 False
+    16ce857dfcf69524 李白《黃鶴樓送孟浩然之廣陵》 … False
+    1eecef3c7ae3cf0b 王昌龄《出塞》 246 False
+    24796487ac569f31 李白《靜夜思》 … False
+    2b35cbc5eda82a5b 张继《枫桥夜泊》 … False
+    2d8dfeabc22ca7fa 李白《早发白帝城》 … False
+    2e9c0c392b42c423 張繼《楓橋夜泊》 … False
+    4ca0da34be4f5091 苏轼《念奴娇·赤壁怀古》 504 False
+    613196814b0de892 杜甫《春望》 … False
+    69a4e1eacff20c57 李白《早發白帝城》 … False
+    6dcb3a3e00c58889 王之渙《登鸛雀樓》 … False
+    700e49fe355c194c 李白《早发白帝城》 … False
+    784aa6eef2a562b7 李白《静夜思》 … False
+    a6481c9c64d89370 李白《黄鹤楼送孟浩然之广陵》 … False
+    d8d2347de0af606e 王安石《元日》 … False
+    efa3965da5f647af 蘇軾《題西林壁》 … False
+
+质量抽查见 PR 正文。三条已知瑕疵（不阻塞，随包 README 已披露 AI 生成、未审校）：
+`timely` / `daylight` 两处中英混写，以及一条把「提供的 fact grounding」这个提示词
+内部概念写进了正文。
+
+## 四、随包库的正式灌入链路（走既有命令，未手写 SQL）
+
+链路是两步，都在 xtask/CLI 里：
+
+    $ xtask assets-manifest \
+        --corpus-manifest corpus/build/package/manifest.json \
+        --seed-manifest dataset/appreciations.manifest.json \
+        --seed dataset/appreciations.json \
+        --base-url file:///config/work/release-stage \
+        --out /config/work/release-stage/assets_manifest.json
+    == 统一资产清单合成 ==
+    语料：…/yunjian-corpus-0.1.0.db.gz（schema 2，corpus 0.1.0）
+    种子：…/appreciations.json（模板 1.0.0，16 条）
+    数据集：generation_executed=true（正文是模型输出）
+
+    $ YUNJIAN_ASSETS_MANIFEST=…/assets_manifest.json yunjian assets fetch
+    语料：~/.local/share/yunjian/corpus/corpus.db（版本 0.1.0）
+    随包赏析：语料版本 0.1.0 · 模板版本 1.0.0 · 16 条 · stale 0 条
+
+落库核实（**看正文，不只看行数**）：
+
+    灌入前: 16 行 / 16 条占位
+    灌入后: 16 行 /  0 条占位 / stale 0 / 正文 187–506 字
+    meta:   1|0.1.0|1.0.0|16
+
+内部实现是 `AppreciationCache::replace_shipped_seed`（单一事务先 DELETE 再插，
+兼容矩阵与逐条开放权重门禁都过一遍），用户自费的 `appreciation_cache` 不受影响。
+
+## 五、桌面真机验收
+
+排障两条，都不是产品缺陷：
+
+1. **`no_proxy` 里逗号后带空格**，`" 127.0.0.1"` 匹配不上，于是
+   WebKitWebDriver 的 automation 连接被送进 `http://127.0.0.1:1080` 挂死。
+   症状是 `POST /session` 永不返回、driver 仍在运行、stderr 为空 ——
+   与「`TAURI_WEBVIEW_AUTOMATION` 没设」完全同形。判定方法：
+   `env -u http_proxy -u https_proxy … curl --noproxy '*'` 立刻拿到 sessionId。
+2. **`/tmp/.X99-lock` 残留**（只清 socket 不清 lock）。Xvfb 报「server already
+   running」被 xtask 读成「15 秒内 :99 仍不可连接」。
+
+排掉后：
+
+    PASS shipped_appreciation_without_key
+      未配置任何 API key 下打开「出塞」，`ai-source` 为「随包预生成」，标签「AI 赏析」，
+      带未审校说明「AI 生成，未经人工审校」；正文 242 字、不含未生成标记，
+      首段为「《出塞》是唐代诗人王昌龄的一首边塞主题的诗作。此诗通过描绘秦汉时期边塞的冷酷与征…」
+    汇总 PASS 16 FAIL 1 NOT EXECUTED 3
+
+**截图实际打开看过** `docs/reports/desktop-qa/shipped-appreciation.png`：
+赏析面板里是三段成文赏析，顶部「AI 赏析」+「AI 生成，未经人工审校」徽标，
+下一行「模型 deepseek-r1:7b / 提示词模板 1.0.0 / 来源 随包预生成」，
+底部「本结果含 AI 生成内容，未经人工审校，可能存在事实、典故或格律错漏，请独立核验」，
+与上方「历代集评」卡片在视觉上分区（虚线框 + 独立标题）。
+
+那条 FAIL 是 `corpus_first_run_materialization`，与本改动无关：设
+`YUNJIAN_ASSETS_MANIFEST` 后首启走统一资产同步而不是 legacy 路径，全新
+`first-run-root` 要下 221 MiB + 解压 4.4 GiB，本机 load average 11+ 时解压到
+157 MiB 报 tmp 打不开。原树同 commit 不设该 env 时这条是 PASS。
+
+## 六、移动端：判据补齐，缺口如实暴露
+
+先核实**为什么不能靠重跑真机拿到 PASS**：
+
+    $ gh release download corpus-v0.1.0 -p appreciations.json
+    $ python3 … 线上 Release 种子：16 条，占位 16
+    首条正文: '<<未生成：本条不是模型输出，需开放权重模型推理>>'
+
+移动端首启走 `AssetResolver::discover` → `releases/latest/download/assets_manifest.json`，
+真机上无从注入 env。所以真机重跑必然仍显示占位，**除非先发一次 Release**，而本任务
+明令不发版。
+
+处置：把缺陷从「静默 PASS」变成「可见 FAIL」。宿主侧判据加 `Rule::Excludes`，
+要求 `appreciation_text` 不含未生成标记；iOS harness 补回传 `appreciation_text`
+（Android 早就有）。
+
+注入验证 —— 在**旧真机测量日志**上重算判据，它逮住了：
+
+    FAIL reading_view_citations_and_ai_appreciation
+      appreciation_text=<<未生成：本条不是模型输出，需开放权重模型推理>> 不满足
+      不含 `<<未生成：本条不是模型输出，需开放权重模型推理>>`；
+      实测 api_key_configured=false appreciation_shown=true disclosure_says_unreviewed=true …
+
+`appreciation_shown=true` 与 `disclosure_says_unreviewed=true` 同时成立 —— 这正是
+旧判据放它过去的原因：未生成标记是**合法非空字符串**，存在性判据一律放行。
+
+`xtask/tests` 的 `ios_project` 断言在我漏补 iOS 侧回传时先逮了我一次：
+「iOS harness 报不出这些必需测量键：reading_view_citations_and_ai_appreciation::appreciation_text」。
+
+## 七、净机报告「provider 零调用」判据的改正
+
+原判据只量 fixture 种子那一路，理由写在模块文档里：数据集当时是占位，用它量会得到
+「零调用成立、用户看到了赏析不成立」的假 PASS。**那个前提已经不成立**，但两路都要留：
+
+- fixture 那一路证明**缓存路径**（正文与产品内容无关，数据集换代后仍是同一条确定性实验）；
+- 待发布数据集那一路证明**要发出去的那份工件**零调用，且正文与数据集逐字一致、不含标记。
+
+后一路刻意走运行期导入路径 `replace_shipped_seed` 而不是就地 INSERT ——
+手写 SQL 造出来的行只能证明「表里有行」，证不了「发布链路会把这些行灌成这样」。
+两路各用一个全新 profile：`replace_shipped_seed` 会清空随包表，共用一个 profile
+会让后跑那一路把前一路的行删掉。
+
+    $ xtask provider-calls --corpus-db corpus/build/release/corpus.db
+    待发布数据集：16 条，模板 1.0.0，语料 0.1.0，generation_executed=true
+    fixture 首：00001539ed2f02b5；冷诗：0000168330a10ebb；数据集首：062f574ab2986a9b
+    已按 replace_shipped_seed 导入 16 条随包行（全新 profile）
+    随包命中：0 次调用（来源 shipped）；冷诗：1 次（来源 generated）；重复后累计 1 次
+    待发布数据集：0 次调用（来源 shipped），正文 190 字、与数据集逐字一致=true、
+      含未生成标记=false；首段「《春夜喜雨》是唐代诗人杜甫的一首咏春诗。…」
+    EXIT=0
+
+`pick_two` 同时补了「冷诗必须不在数据集覆盖集里」：否则导入待发布种子那一路会把
+冷诗变成随包命中，「恰好一次调用」莫名变成零次。
+
+**「零调用」与「正文是模型输出」仍是两条断言**：本子命令不替 `generation_executed`
+下裁决，那条由 `shipped_dataset_is_model_output` 按清单单独判。合成一条会让
+「随包不花钱」与「随包有内容」互相顶替。
+
+## 八、门禁
+
+    $ make fmt && make ci
+    门禁通过：fmt-check lint test mcp-conformance frontend-test pr-title-check
+    前端 36 files / 428 tests passed
+
+## 九、净机报告重生的真实边界（追加，2026-08-17 21:xx）
+
+自查发现漏了一项：上轮只改了 `clean_install_report.rs` 的判据代码，**没有重生报告核实**，
+而仓库里的 `docs/reports/clean-install-provider-calls.json` 仍是**旧版**（无 `released_seed_*`
+字段）——上次我把输出写到了 `/config/work/`。这正是这条 todo 逮住的东西。
+
+### 计数文件已重生（宿主段可就地跑）
+
+    $ xtask provider-calls --corpus-db corpus/build/release/corpus.db
+    待发布数据集：16 条，模板 1.0.0，语料 0.1.0，generation_executed=true
+    已按 replace_shipped_seed 导入 16 条随包行（全新 profile）
+    随包命中：0 次调用（来源 shipped）；冷诗：1 次；重复后累计 1 次
+    待发布数据集：0 次调用（来源 shipped），正文 190 字、与数据集逐字一致=true、
+      含未生成标记=false
+    已写出 docs/reports/clean-install-provider-calls.json
+
+新文件里 12 个 `released_seed_*` 字段齐备（`released_seed_calls=0`、
+`released_seed_source=shipped`、`..._text_matches_dataset=true`、`..._text_has_marker=false`、
+`..._text_chars=190`、`..._import_path=AppreciationCache::replace_shipped_seed`）。
+
+### 联网段跑不起来，且我拒绝绕过
+
+宿主段三条断言（两个 checksum + 统一清单解析）的输入已全部备好：
+`/config/work/release-stage/` 里有语料 gz、种子、两份 `.sha256` 与统一清单；
+本地镜像 `http://172.17.0.1:18075` 也起了（`v0.1.0/` 带自建 tar.gz + sha256，
+`corpus-v0.1.0/` 带四件工件），profile 用容器清空到 0 条目，联网容器真的跑了：
+
+    [FAIL] install_script_installs — install.sh 非零退出：error: 需要 curl 或 wget 之一来下载发布产物
+    [NOT EXECUTED] search_before_fetch_exits_3 — 没有可执行文件，后续断言无法执行
+    …其后 8 条连锁 NOT EXECUTED
+
+**实测容器内容，不推断**：
+
+    $ docker run --rm ubuntu:24.04 sh -c 'for c in curl wget ca-certificates; do …'
+    curl: 缺   wget: 缺   ca-certificates: 缺
+
+镜像 digest 与 2026-08-14 那份报告记录的**完全相同**
+（`sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea`），
+所以差异不在镜像。08-14 那次为什么 PASS，我**没有查出来**——`git log -S apt-get` 在
+Makefile 与 scripts/ 上零命中，transcript 与报告里也没有装包记录。这条我不编答案。
+
+**两条捷径都被我拒绝**，理由写进了模块文档：
+- 容器里 `apt-get install curl` —— 让掉的正是「净」这个性质，一个被我们改造过的容器
+  验不了「用户在干净机器上按 README 装得上」；
+- 改 `install.sh` 自带下载器 —— 产品对用户环境的要求是它的一部分，为了让验收变绿
+  而放宽要求等于把门禁谈掉。
+
+### 改用可执行断言证明判据本身（9 条，注入验证过）
+
+判据抽成 `zero_call_verdict`，配 9 条只吃**合成计数**的测试。这不是替代净机跑，
+是让「判据每一次改动都有人证明它真的会红」这件事不依赖 docker + 本地镜像 + 完整安装。
+
+    test result: ok. 9 passed; 0 failed
+
+覆盖：两路零调用且正文为真 → PASS 且判词同时点名两路；占位标记 → FAIL 且点名
+`含未生成标记=true`；**逐字一致但含标记仍 FAIL**（两边都是占位时比对会通过）；
+正文与数据集不同 → FAIL；来源退化成 generated → FAIL；任一路有调用 → FAIL 且报两路次数；
+缺 `released_seed_calls`（旧版计数文件）→ NOT EXECUTED 而非 FAIL；
+`generation_executed=false` 时本条仍 PASS（那条由 `shipped_dataset_is_model_output` 承担）；
+断言集里零调用断言恰好一条且在 Host 段。
+
+**注入验证**：把三条新增条件从 match guard 里去掉后
+
+    test result: FAILED. 5 passed; 4 failed
+
+红的正是占位标记、逐字比对、来源退化，以及「只靠逐字比对会放占位过去」那条。
+恢复后 9 passed。**这组断言是 load-bearing 的。**

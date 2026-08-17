@@ -13,6 +13,23 @@
 //!
 //! 沿用 todo 67：**零 FAIL 且零 NOT EXECUTED**。任何一条未执行都让它变 `false`，
 //! 并在报告顶部显著列出未执行项。它**不能**被读成「这个产品在所有环境上都过了」。
+//!
+//! # 联网段当前在本机跑不起来，且不该用装包绕过
+//!
+//! 2026-08-17 实测：`ubuntu:24.04`（digest `sha256:561618e2…`，与 2026-08-14 那份报告
+//! 记录的**同一个**）里 curl、wget、ca-certificates **都不在场**，于是 `install.sh` 在
+//! `detect_downloader` 就中止（「需要 curl 或 wget 之一来下载发布产物」），
+//! `install_script_installs` FAIL，其后八条连锁 NOT EXECUTED。
+//!
+//! **不能在容器里 `apt-get install curl` 绕过**：那让掉的正是「净」这个性质 ——
+//! 一个被我们改造过的容器验不了「用户在一台干净机器上按 README 装得上」。
+//! 同理也不能把 `install.sh` 改成自带下载器：产品对用户环境的要求是它的一部分，
+//! 为了让验收变绿而放宽要求等于把门禁谈掉。
+//!
+//! 所以宿主段那三条断言（两个 checksum 与统一清单解析）可以就地重算，而联网/断网段
+//! 需要一个**自带 curl 或 wget 的净机**。`provider_zero_calls_for_shipped_poem` 的每个
+//! 分支因此另配了一组只吃合成计数的注入测试（见本文件末尾）：判据的每一次改动都必须有人
+//! 证明它真的会红，而这件事不该依赖一次要 docker + 本地镜像 + 完整安装的端到端跑。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -300,29 +317,9 @@ pub fn run(
         },
     );
 
-    let shipped_calls = counts["shipped_calls"].as_u64();
     host.insert(
         "provider_zero_calls_for_shipped_poem",
-        match shipped_calls {
-            Some(0) => (
-                Verdict::Pass,
-                format!(
-                    "`xtask provider-calls` 实测 0 次调用，来源 {}；随包首 {}。\
-                     **用的是 fixture 种子**（正文 `{}`），因此本条证明的是缓存路径，不是产品内容",
-                    counts["shipped_source"].as_str().unwrap_or("?"),
-                    counts["shipped_poem"].as_str().unwrap_or("?"),
-                    counts["fixture_text"].as_str().unwrap_or("?")
-                ),
-            ),
-            Some(other) => (
-                Verdict::Fail,
-                format!("随包命中发生了 {other} 次模型调用，期望 0"),
-            ),
-            None => (
-                Verdict::NotExecuted,
-                format!("{} 里没有 shipped_calls", provider_calls.display()),
-            ),
-        },
+        zero_call_verdict(&counts, &provider_calls),
     );
 
     host.insert(
@@ -350,8 +347,11 @@ pub fn run(
         },
     );
 
-    // 这一条**必须**如实记未执行：本机没有开放权重推理条件，数据集每条正文是未生成标记。
-    // 判 PASS 会让一份占位数据集看起来像产品内容；判 FAIL 会把「没有推理硬件」说成产品缺陷。
+    // 这一条只看清单，与上一条的调用计数**刻意分开**：随包赏析不花钱（零调用）和随包赏析
+    // 有内容（模型输出）是两件事，合成一条会让它们互相顶替。
+    //
+    // 未执行那一支保留着，且不能改成 FAIL：数据集退回未生成状态时，判 PASS 会让占位看起来
+    // 像产品内容，判 FAIL 会把「这台机器没有推理运行时」说成产品缺陷。两者都不是事实。
     host.insert(
         "shipped_dataset_is_model_output",
         if dataset["generation_executed"].as_bool() == Some(true) {
@@ -474,6 +474,81 @@ pub fn run(
     // 报告本身生成成功即退出 0：**报告是产物，不是门禁**。有 FAIL 时报告要能被读到，
     // 让人看见失败在哪；用非零码替代报告只会把信息丢掉。
     Ok(())
+}
+
+/// 裁决「随包命中零次模型调用」。
+///
+/// **两路都要成立**：fixture 那一路证明缓存路径被读到（正文与产品内容无关，因此数据集
+/// 换代后它仍是同一条确定性实验），待发布数据集那一路证明**要发出去的那份工件**在运行期
+/// 也零调用。少了后者，这条 PASS 可能是靠一份永不发布的 fixture 撑起来的；少了前者，
+/// 数据集一换内容这条实验就跟着漂。
+///
+/// **本条不替 `generation_executed` 下裁决**：那是 `shipped_dataset_is_model_output` 的事。
+/// 这里只要求返回正文不是未生成标记——「表里有行」不等于「行里有赏析」，而两边都是占位
+/// 标记时逐字比对**也会通过**，所以标记必须单独拦一次。
+///
+/// 抽成独立函数是为了能被下面那组注入测试直接喂进合成计数：真跑一次净机验收要 docker、
+/// 本地镜像与一次完整安装，而这条判据的每一个分支都必须有人证明它真的会红。
+fn zero_call_verdict(counts: &serde_json::Value, provider_calls: &Path) -> (Verdict, String) {
+    match (
+        counts["shipped_calls"].as_u64(),
+        counts["released_seed_calls"].as_u64(),
+    ) {
+        (Some(0), Some(0))
+            if counts["released_seed_source"].as_str() == Some("shipped")
+                && counts["released_seed_text_matches_dataset"].as_bool() == Some(true)
+                && counts["released_seed_text_has_marker"].as_bool() == Some(false) =>
+        {
+            (
+                Verdict::Pass,
+                format!(
+                    "`xtask provider-calls` 两路都实测 0 次调用。\
+                     fixture 那一路：随包首 {}，来源 {}，正文 `{}`（永不发布，证明的是缓存路径）。\
+                     待发布数据集那一路：{} 首，来源 {}，经 `{}` 导入 {} 条后命中，\
+                     正文 {} 字且与 `dataset/appreciations.json` 逐字一致、不含未生成标记，\
+                     首段「{}」",
+                    counts["shipped_poem"].as_str().unwrap_or("?"),
+                    counts["shipped_source"].as_str().unwrap_or("?"),
+                    counts["fixture_text"].as_str().unwrap_or("?"),
+                    counts["released_seed_poem"].as_str().unwrap_or("?"),
+                    counts["released_seed_source"].as_str().unwrap_or("?"),
+                    counts["released_seed_import_path"].as_str().unwrap_or("?"),
+                    counts["released_seed_record_count"].as_u64().unwrap_or(0),
+                    counts["released_seed_text_chars"].as_u64().unwrap_or(0),
+                    counts["released_seed_text_head"].as_str().unwrap_or("?")
+                ),
+            )
+        }
+        (Some(0), Some(0)) => (
+            Verdict::Fail,
+            format!(
+                "两路调用次数都是 0，但待发布数据集那一路的随包命中不成立：\
+                 来源 {}（期望 shipped）、与数据集逐字一致={}、含未生成标记={}。\
+                 零调用若不是来自一次带真实正文的随包命中，本条没有意义",
+                counts["released_seed_source"].as_str().unwrap_or("?"),
+                counts["released_seed_text_matches_dataset"]
+                    .as_bool()
+                    .map_or("?".to_owned(), |value| value.to_string()),
+                counts["released_seed_text_has_marker"]
+                    .as_bool()
+                    .map_or("?".to_owned(), |value| value.to_string())
+            ),
+        ),
+        (Some(fixture), Some(released)) => (
+            Verdict::Fail,
+            format!(
+                "随包命中发生了模型调用：fixture 那一路 {fixture} 次、\
+                 待发布数据集那一路 {released} 次；两者都应为 0"
+            ),
+        ),
+        _ => (
+            Verdict::NotExecuted,
+            format!(
+                "{} 里缺 shipped_calls 或 released_seed_calls",
+                provider_calls.display()
+            ),
+        ),
+    }
 }
 
 fn verify_checksum(dir: &Path, name: &str) -> (Verdict, String) {
@@ -663,4 +738,195 @@ fn sha256_hex(content: &[u8]) -> String {
             let _ = write!(out, "{byte:02x}");
             out
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 一份实测通过的两路计数。各条测试从它派生，只改要验的那一个字段。
+    fn passing_counts() -> serde_json::Value {
+        serde_json::json!({
+            "shipped_calls": 0,
+            "cold_calls": 1,
+            "cold_calls_after_repeat": 1,
+            "shipped_source": "shipped",
+            "cold_source": "generated",
+            "shipped_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）",
+            "shipped_poem": "00001539ed2f02b5",
+            "cold_poem": "0000168330a10ebb",
+            "fixture_seed": true,
+            "fixture_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）",
+            "released_seed_calls": 0,
+            "released_seed_source": "shipped",
+            "released_seed_poem": "062f574ab2986a9b",
+            "released_seed_text_matches_dataset": true,
+            "released_seed_text_has_marker": false,
+            "released_seed_text_chars": 190,
+            "released_seed_text_head": "《春夜喜雨》是唐代诗人杜甫的一首咏春诗。",
+            "released_seed_record_count": 16,
+            "released_seed_generation_executed": true,
+            "released_seed_model": "deepseek-r1:7b",
+            "released_seed_model_license": "MIT",
+            "released_seed_import_path": "AppreciationCache::replace_shipped_seed",
+        })
+    }
+
+    fn verdict_of(counts: &serde_json::Value) -> (Verdict, String) {
+        zero_call_verdict(
+            counts,
+            Path::new("docs/reports/clean-install-provider-calls.json"),
+        )
+    }
+
+    #[test]
+    fn two_zero_call_paths_with_real_body_pass_and_the_detail_names_both() {
+        let (verdict, detail) = verdict_of(&passing_counts());
+        assert_eq!(
+            verdict,
+            Verdict::Pass,
+            "两路都零调用且正文为真时应 PASS：{detail}"
+        );
+        // 判词必须同时点名两路，否则读报告的人无法分辨这条 PASS 是靠哪一路成立的。
+        for needle in [
+            "两路都实测 0 次调用",
+            "fixture 那一路",
+            "待发布数据集那一路",
+            "AppreciationCache::replace_shipped_seed",
+            "逐字一致、不含未生成标记",
+        ] {
+            assert!(detail.contains(needle), "判词缺「{needle}」：{detail}");
+        }
+    }
+
+    /// **这条是本次改正的核心**：旧判据只看 `shipped_calls`，于是一份正文是占位标记的
+    /// 待发布数据集也能拿到 PASS —— 「随包不花钱」成立而「随包有内容」不成立。
+    #[test]
+    fn a_placeholder_body_in_the_released_seed_fails_even_though_both_paths_are_zero_call() {
+        let mut counts = passing_counts();
+        counts["released_seed_text_has_marker"] = serde_json::json!(true);
+        let (verdict, detail) = verdict_of(&counts);
+        assert_eq!(
+            verdict,
+            Verdict::Fail,
+            "待发布数据集正文是未生成标记时必须 FAIL，否则占位会拿到一条零调用 PASS：{detail}"
+        );
+        assert!(
+            detail.contains("含未生成标记=true"),
+            "判词必须点名是标记那一项不合，而不是笼统说随包命中不成立：{detail}"
+        );
+    }
+
+    /// 逐字比对与标记检查**都要**：两边都是占位时它们逐字相同，比对会通过。
+    #[test]
+    fn the_literal_comparison_alone_would_let_a_placeholder_through() {
+        let mut counts = passing_counts();
+        counts["released_seed_text_matches_dataset"] = serde_json::json!(true);
+        counts["released_seed_text_has_marker"] = serde_json::json!(true);
+        assert_eq!(
+            verdict_of(&counts).0,
+            Verdict::Fail,
+            "逐字一致但含标记仍须 FAIL；否则占位数据集与占位随包行互相印证成一条 PASS"
+        );
+    }
+
+    #[test]
+    fn a_body_that_differs_from_the_dataset_fails() {
+        let mut counts = passing_counts();
+        counts["released_seed_text_matches_dataset"] = serde_json::json!(false);
+        let (verdict, detail) = verdict_of(&counts);
+        assert_eq!(
+            verdict,
+            Verdict::Fail,
+            "正文与数据集不同必须 FAIL：{detail}"
+        );
+        assert!(
+            detail.contains("与数据集逐字一致=false"),
+            "判词要点名是哪一项不合：{detail}"
+        );
+    }
+
+    /// 零调用若不是来自随包命中就没有意义：来源退化成 generated 时那个 0 是假的。
+    #[test]
+    fn a_zero_that_did_not_come_from_a_shipped_hit_fails() {
+        let mut counts = passing_counts();
+        counts["released_seed_source"] = serde_json::json!("generated");
+        let (verdict, detail) = verdict_of(&counts);
+        assert_eq!(
+            verdict,
+            Verdict::Fail,
+            "来源不是 shipped 必须 FAIL：{detail}"
+        );
+        assert!(
+            detail.contains("期望 shipped"),
+            "判词要写明期望值：{detail}"
+        );
+    }
+
+    #[test]
+    fn a_model_call_on_either_path_fails_and_the_detail_reports_both_numbers() {
+        for (fixture, released) in [(1_u64, 0_u64), (0, 1), (2, 3)] {
+            let mut counts = passing_counts();
+            counts["shipped_calls"] = serde_json::json!(fixture);
+            counts["released_seed_calls"] = serde_json::json!(released);
+            let (verdict, detail) = verdict_of(&counts);
+            assert_eq!(
+                verdict,
+                Verdict::Fail,
+                "fixture={fixture} released={released} 时必须 FAIL：{detail}"
+            );
+            assert!(
+                detail.contains(&format!("fixture 那一路 {fixture} 次"))
+                    && detail.contains(&format!("待发布数据集那一路 {released} 次")),
+                "判词必须同时报两路的次数，否则看不出是哪一路花了钱：{detail}"
+            );
+        }
+    }
+
+    /// 缺键记 NOT EXECUTED 而不是 FAIL：**旧版计数文件没有 `released_seed_calls`**，
+    /// 把它读成 FAIL 会把「用旧工具跑的」说成「产品坏了」。
+    #[test]
+    fn a_counts_file_without_the_released_seed_path_is_not_executed() {
+        let mut counts = passing_counts();
+        let object = counts.as_object_mut().expect("合成计数应是对象");
+        object.remove("released_seed_calls");
+        let (verdict, detail) = verdict_of(&counts);
+        assert_eq!(
+            verdict,
+            Verdict::NotExecuted,
+            "缺 released_seed_calls 应记未执行：{detail}"
+        );
+        assert!(
+            detail.contains("released_seed_calls"),
+            "判词要点名缺的是哪个键：{detail}"
+        );
+    }
+
+    /// `generation_executed` 由 `shipped_dataset_is_model_output` 单独裁决，本条不看它 ——
+    /// 合成一条会让「随包不花钱」与「随包有内容」互相顶替。
+    #[test]
+    fn this_assertion_does_not_read_generation_executed() {
+        let mut counts = passing_counts();
+        counts["released_seed_generation_executed"] = serde_json::json!(false);
+        assert_eq!(
+            verdict_of(&counts).0,
+            Verdict::Pass,
+            "本条只看调用次数与正文；清单的 generation_executed 由另一条断言承担"
+        );
+    }
+
+    /// 断言集里必须有且只有一条零调用断言，且它在宿主段。
+    #[test]
+    fn the_zero_call_assertion_is_declared_exactly_once_in_the_host_phase() {
+        let matched: Vec<_> = DECLARED
+            .iter()
+            .filter(|declared| declared.id == "provider_zero_calls_for_shipped_poem")
+            .collect();
+        assert_eq!(matched.len(), 1, "零调用断言应恰好声明一条");
+        assert_eq!(
+            matched[0].phase,
+            Phase::Host,
+            "它的依据是宿主侧实测数字，不该从容器观测文件读"
+        );
+    }
 }

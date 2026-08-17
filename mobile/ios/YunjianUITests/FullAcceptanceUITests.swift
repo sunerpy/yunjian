@@ -181,6 +181,15 @@ final class FullAcceptanceUITests: XCTestCase {
                 let disclosure = app.staticTexts[TestTags.readingAppreciationDisclosure]
                 AcceptanceReport.measure(assertion, "appreciation_poem_id", poemId)
                 AcceptanceReport.measure(assertion, "appreciation_shown", true)
+                // 正文本身必须回传，与 Android 侧同一个键、同一个截断长度。
+                // `appreciation_shown` 只说明那个节点存在，说不出节点里是什么：随包数据集
+                // 未生成时正文是 `<<未生成：…>>` 这个**合法非空字符串**，存在性判据会放它
+                // 过去。「不含未生成标记」那条判据在宿主侧（`full_criteria.rs`），这里只报值。
+                AcceptanceReport.measure(
+                    assertion,
+                    "appreciation_text",
+                    String(app.staticTexts[TestTags.readingAppreciation].label.prefix(60))
+                )
                 // 「明确标注、未经人工审校」——标注必须真的说出那句话，不是「有一段小字」。
                 AcceptanceReport.measure(
                     assertion,

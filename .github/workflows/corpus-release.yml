@@ -125,6 +125,17 @@ jobs:
       # **不给 `--endpoint`**：CI 里没有开放权重推理运行时。此时管线、门禁与溯源字段照常
       # 校验，每条正文写入未生成标记，清单标 `generation_executed=false`。这是如实降级，
       # 不是失败——但发布说明里必须写清楚，见下面的 `notes`。
+      #
+      # 这条降级有一个**下游后果**，2026-08-17 实测确认：移动端首启从
+      # `releases/latest/download/assets_manifest.json` 取种子，所以只要本步骤不带
+      # `--endpoint`，真机上看到的赏析就一直是未生成标记——即便本机的 `dataset/` 里已经有
+      # 一份真赏析。真机报告的 `reading_view_citations_and_ai_appreciation` 会因此 FAIL，
+      # 且那个 FAIL 是对的：用户拿到的确实是占位。
+      #
+      # 要发出真赏析，种子必须**先在一台有开放权重运行时的机器上生成**再带进这次发布
+      # （`cargo run -p xtask -- pregenerate --endpoint <URL>`，实测 deepseek-r1:7b CPU 约
+      # 40 秒/条）。在 CI 里现拉一个 7B 权重跑推理不是可行的替代：那既让发布时长失控，
+      # 也让「发布产物由哪一次推理产生」不可追溯。这个改动尚未做，是一次独立决策。
       - name: 生成随包赏析种子
         run: |
           cargo run -p xtask --release -- pregenerate \

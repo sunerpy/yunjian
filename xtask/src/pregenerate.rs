@@ -294,10 +294,15 @@ impl Generator {
             .runtime
             .block_on(self.provider.appreciate(request))
             .context("开放权重运行时生成赏析失败")?;
-        if appreciation.text.trim().is_empty() {
+        let text = appreciation.text.trim();
+        if text.is_empty() {
             bail!("运行时返回了空赏析；空正文不得进入随包数据集");
         }
-        Ok(appreciation.text)
+        // 剥掉首尾空白而不是原样收下：推理型权重（deepseek-r1 一类）的思维块被运行时摘掉后
+        // 会留下前导空行，实测 16/16 条都以 `\n\n` 开头。那不是内容，是剥离留下的痕迹，
+        // 带进随包表就成了详情页赏析面板顶上一段空白。判据与本函数自己的空正文检查一致：
+        // 既然「trim 后为空」算没有内容，trim 掉的那部分就不是内容。
+        Ok(text.to_owned())
     }
 }
 
