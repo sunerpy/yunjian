@@ -379,3 +379,112 @@ rpath 不属于这一类，两条理由缺一不可：
 - `corpus-release.yml` 在下载辅助种子前要求其 Release 为非 draft 的 prerelease；语料 Release 创建或重挂时显式设为 `latest`，发布后通过 REST `releases/latest` 复核 tag，并下载用户可见的种子与清单重新核对摘要和固定 tag URL。
 - 已发布 `corpus-v0.1.0` 的资产仍未改写：该操作会改变现有用户下载内容，属于外部高风险变更，必须获得用户明确确认后单独执行。
 - 移动 QA 报告的十条截图链接应相对 `docs/reports/` 写为 `mobile-qa/*.png`；修前 `lychee --offline docs/ README.md` 为 10 errors，修后为 0 errors。
+
+## 2026-08-18 四份机器报告在冻结的 cf274e8 上一次性重跑（收尾序列第 3 步）
+
+**四份全部绑定 `cf274e8`，一次跑完，期间零产品代码改动。** 最终分布：
+
+| 报告 | SHA | PASS | FAIL | NOT EXECUTED |
+| --- | --- | ---: | ---: | ---: |
+| `desktop-qa-2026-08-18.json` | cf274e8 | 18 | 1 | 1 |
+| `mobile-qa-2026-08-18.json` | cf274e8 | 9（Android） | 1 | 10（iOS 全部） |
+| `mobile-spike.json` | cf274e8 | 2 | 1 | 1 |
+| `clean-install-2026-08-17.json` | cf274e8 | 6 | 1 | 10 |
+
+**收尾顺序约束被证实是对的**：四份产生于同一次代码冻结，`main` 未前进，因此 PR #114 的
+git-free 溯源断言（`the_committed_mobile_report_still_describes_the_current_sources`）在
+报告提交后**首次真正通过**——它比对的是 10 条受保护路径的内容摘要，而不是 SHA 字符串。
+全量从 1362 升到 **1365 passed / 0 failed / 9 ignored**。
+
+### 每条非 PASS 的具体理由
+
+**桌面（1 FAIL / 1 NOT EXECUTED）**
+- `shipped_appreciation_without_key` **FAIL**——赏析正文是
+  `<<未生成：本条不是模型输出，需开放权重模型推理>>`。根因不是产品：用户数据目录
+  `~/.local/share/yunjian/appreciations.json` 摘要是 `e1db6926…`（旧占位），
+  仓库 `dataset/appreciations.json` 是 `18aa82cd…`（真赏析）。应用按
+  `releases/latest/download/assets_manifest.json` 取种子，而 `latest` 指向
+  `corpus-v0.1.0`，其 `appreciation_seed` 仍是旧占位。**改它属于改写已发布 Release，需用户确认。**
+- `voice_round_succeeds_end_to_end` **NOT EXECUTED**——桌面按 2026-08-10 许可裁决不编译
+  `voice`。这是产品事实，不该消除。截图 `voice-degradation.png` 实拍到判词
+  「本版本未编译语音 —— …已切换到打字练习。打字练习的评分与语音练习共用同一个内核，功能完整。」
+
+**移动真机（1 FAIL / iOS 10 NOT EXECUTED）**
+- `reading_view_citations_and_ai_appreciation` **FAIL**——与桌面同一根因，
+  且**在真机上实拍到了**：Pixel 8 上《春夜喜雨》正文正常，赏析段是占位标记，
+  下方标「本段由 deepseek-r1:7b 生成，未经人工审校（来源：shipped）」。
+  交接预告的形态成立，如实记录，未为让它 PASS 而动任何东西。
+- iOS 10 条 **NOT EXECUTED**——本机 Linux，无 macOS/Xcode。`ios_full.enabled=false`，
+  `blocked_reason` 已写明。
+
+**mobile-spike（1 FAIL / 1 NOT EXECUTED）**
+- `corpus_materialization` **FAIL**——`duration_seconds=109.849` ≥ 60 秒阈值。数字未变。
+- `ios_testflight_submission` **NOT EXECUTED**——用户已决定不发商店，此条永不会有测量值。
+
+**净机（1 FAIL / 10 NOT EXECUTED）**
+- `install_script_installs` **FAIL**——`ubuntu:24.04` 里 curl / wget / ca-certificates
+  **三者都没有**（实测 `docker run` 逐个 `command -v`），`install.sh` 按设计以退出码 2 报
+  「需要 curl 或 wget 之一」。其后 10 条因「没有可执行文件」连锁 NOT EXECUTED。
+  **这与 `feat-pregenerate-real.log` 记的是同一形态**，镜像 digest 与 08-14 那份报告
+  逐字节相同（`sha256:561618e2…`），所以差异不在镜像；08-14 为什么 PASS 仍未查出。
+  两条捷径仍拒绝：容器里 `apt-get install curl` 让掉的正是「净」，改 `install.sh` 自带
+  下载器等于把产品对用户环境的要求谈掉。
+- `shipped_dataset_is_model_output` **从 NOT EXECUTED 转 PASS**——`generation_executed`
+  确实变成了 `true`（模型 deepseek-r1:7b / MIT / ollama）。这是交接要我核实的那一项。
+
+### 发现但按规定未修的缺陷（两条，都是 harness）
+
+1. **`mobile-qa-*.md` 生成器仍写坏链。** `full.rs:31` 的 `SCREENSHOT_DIR` 是
+   `"docs/reports/mobile-qa"`，`:734` 直接 `format!("[`{path}`]({path})")`，于是链接从
+   `docs/reports/` 再起算一次，解析到 `docs/reports/docs/reports/mobile-qa/...`。
+   实测新报告 `lychee --offline` **10 errors**。
+   **PR #118/#119 修的是 08-17 那个文件，不是生成器**——所以每次重跑都会重新打开这条。
+   它不在 `make ci` 六道之内（`GATE := fmt-check lint test mcp-conformance frontend-test
+   pr-title-check`），CI 仍绿。守着 08-17 的那条测试
+   （`committed_mobile_qa_screenshot_links_resolve_from_the_report_directory`）**硬编码文件名**，
+   因此对新报告零覆盖——**这正是「守着产物而不是守着生成它的代码」的代价**。
+2. **`mobile-spike.json` 的 `physical_devices` 仍是 `[]`。** 不是漂移，是
+   `mobile.rs:456` 写死 `build_report(platform, preflight, Vec::new(), &device)` —— 第三个
+   实参就是空 vec，而同一份报告的判据 measurement 里明明有 `device_model=Pixel 8`、
+   `os_build=15/35`。F1 指出的「麦克风判据声称 Android+iOS 却只记录 Pixel 8」同源：
+   spike 的 Android 与 iOS 共用一条判据，而 iOS 侧永远没有测量值。
+
+### 这一轮真正踩到的四个坑（都不指向真因）
+
+1. **AppImage 打包失败读起来像 linuxdeploy 崩了。** 真因是 `appimagetool` 要从 GitHub 下
+   `type2-runtime/runtime-x86_64`，而**直连返回 302 但 S3 连不上**（`curl` 挂 136 秒后
+   timeout）。判据：报错里出现 `Failed to download runtime: server returned status code 0`
+   就是网络，不是工具。解法是**先把 runtime 下到本地再用 `LDAI_RUNTIME_FILE` 指过去**
+   （这个环境变量名是从 `linuxdeploy-plugin-appimage` 的 ELF 里 `strings` 出来的，不是猜的：
+   `LDAI_RUNTIME_FILE`、`LDAI_SIGN`、`LDAI_UPD_INFO` 一族）。
+2. **Device Farm 的 S3 上传必须走代理，而 `devicefarm` API 调用必须不走。** 同一个脚本里
+   两种网络策略：`aws devicefarm` 直连正常，`curl -T` 到
+   `prod-us-west-2-uploads.s3.dualstack.us-west-2.amazonaws.com` 直连**永远 timeout**
+   （试过 `-4` 强制 IPv4，仍 30 秒超时；而带代理立刻 200）。第一次我把整个脚本 unset 代理，
+   于是卡在上传，**失败形态是 `curl: (28) Failed to connect ... after 136347 ms`，读起来像
+   S3 挂了**。所以给 `curl` 那一行**单独**前置 `https_proxy=...`。
+3. **`gradle` 在 mise 下装了四个版本却没有全局默认**，`gradle --version` 报
+   `No version is set for shim: gradle`。`mise use -g gradle@8.13` 一条即得
+   （notepad 早记过这条，我核了才用）。
+4. **`chmod` 会进 git diff。** 我给拷回来的截图 `chmod 664`，而仓库里 `docs/reports/mobile-qa/`
+   全是 `100755`，于是两张与本次无关的旧图（`device-farm-launch-2026-08-15/16.png`）
+   只因 mode 变化就出现在 diff 里（`Bin x -> x bytes` + `old mode 100755 / new mode 100644`）。
+   已 `chmod 755` 复原。**判据：`git diff --stat` 显示字节数前后相同却仍算改动时，先看 mode。**
+
+### Device Farm 实际消耗
+
+一次 run（`refresh-cf274e8-full`，Pixel 8）**20.25 设备分钟**，`COMPLETED / PASSED`，
+3 个 suite 全绿。比上次 16.04 分钟多约 4 分钟（首启物化本次实测 862.348 秒）。
+**注意 spike 那份没有再起 run**：它读的是本地 `device-farm-android-measurements.log`
+（08-16 那次的回传），只有 SHA 与生成日期随本次重跑刷新——测量值本身仍是那次真机的。
+**这一点必须在报告里如实成立**，我核了它确实没有伪造设备身份（`physical_devices=[]` 反而
+诚实地表明本次没有新设备接入）。
+
+### 「验证而非采信」第十五次生效
+
+交接说桌面历史最好是「19 PASS / 0 FAIL / 1 NOT EXECUTED」。我这次是 **18 PASS / 1 FAIL**。
+差的那一条不是回归，而是**判据变严了**：08-16 那次 `shipped_appreciation_without_key`
+PASS，是因为当时的用户数据目录里放的是 fixture 种子；PR #118 把随包种子锁指向
+`appreciation-seed-v1` 之后，这条开始真的去比对「正文是不是占位标记」。
+**如果我采信「历史最好 19 PASS」并去追那 1 条，我会去修一个不存在的回归**——
+而真正的事实是「已发布 Release 的种子还是旧的」，那是一次需要用户确认的外部变更。

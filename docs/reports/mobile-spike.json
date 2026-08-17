@@ -2,8 +2,8 @@
   "schema_version": 1,
   "set": "spike",
   "requested_platform": "android",
-  "generated_date": "2026-08-16",
-  "commit_sha": "08fd34382505204229b95a2bf4654ff0e0aee623",
+  "generated_date": "2026-08-18",
+  "commit_sha": "cf274e869872dca20bc324c96b4944397a4ed581",
   "host_os_build": "Ubuntu 24.04.4 LTS / Linux 6.17.0-1019-aws",
   "physical_devices": [],
   "preflight": {
