@@ -371,3 +371,11 @@ rpath 不属于这一类，两条理由缺一不可：
 就 92 GiB，爆盘的失败形态是 `LLVM ERROR: IO failure on output stream` + `Bus error`，
 **读起来像编译器崩溃**）。这次改动只涉及 3 个文件，直接在原树分支即可，省掉一份 92 GiB
 `target/` 的重建——**「隔离」的成本要和收益比，3 个文件的改动不值一次全量重建。**
+
+## 2026-08-18 F2 第三轮修复
+
+- 采用方案 A：`verify-seed` 只证明种子、清单、锁、覆盖、事实块与披露彼此一致；同一执行方能同步伪造正文和全部声明，因此门禁不得声称“真实模型输出”。未增加由同一执行方控制、不能提升来源可信度的第二套签名密钥。
+- 将 `/config/atk-evidence.json` 逐字节固化为 `xtask/src/verify_seed_forged_seed.fixture`（SHA-256 `583923943c0a65c39c8a90f3834fed00c73412181afe56753adcfab61a91ab87`）；回归证明零模型调用样本能通过一致性结构判据，成功摘要必须主动披露“不证明正文由该模型或任何模型生成”。夹具使用 `.fixture`，避免 `make fmt` 重写 JSON 字节。
+- `corpus-release.yml` 在下载辅助种子前要求其 Release 为非 draft 的 prerelease；语料 Release 创建或重挂时显式设为 `latest`，发布后通过 REST `releases/latest` 复核 tag，并下载用户可见的种子与清单重新核对摘要和固定 tag URL。
+- 已发布 `corpus-v0.1.0` 的资产仍未改写：该操作会改变现有用户下载内容，属于外部高风险变更，必须获得用户明确确认后单独执行。
+- 移动 QA 报告的十条截图链接应相对 `docs/reports/` 写为 `mobile-qa/*.png`；修前 `lychee --offline docs/ README.md` 为 10 errors，修后为 0 errors。

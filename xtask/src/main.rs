@@ -837,6 +837,78 @@ mod tests {
              实际调用到的是 {invoked:?}",
             path.display()
         );
+
+        let seed_release_check = text
+            .find("gh release view \"$SEED_TAG\" --json tagName,isDraft,isPrerelease")
+            .expect("下载种子前必须读取辅助 Release 的 draft/prerelease 状态");
+        let seed_download = text
+            .find("gh release download \"$SEED_TAG\"")
+            .expect("发布流必须按锁下载种子");
+        assert!(
+            seed_release_check < seed_download,
+            "必须先证明辅助种子 Release 是 prerelease，再下载其资产"
+        );
+        assert!(
+            text[seed_release_check..seed_download].contains(".isPrerelease == true"),
+            "辅助种子 Release 若不是 prerelease 会抢占 releases/latest，必须在下载前硬失败"
+        );
+    }
+
+    /// 用户入口固定读取 `releases/latest/download/assets_manifest.json`，所以辅助种子 Release
+    /// 不能成为 latest，而语料发布完成后必须用 REST 语义验证 latest 确实是本次 tag。
+    #[test]
+    fn corpus_release_owns_latest_and_rechecks_the_user_seed_bytes() {
+        let path = repo_root().join(".github/workflows/corpus-release.yml");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", path.display()));
+        let publish = text.find("gh release create").expect("应有发布步骤");
+        let latest_check = text
+            .find("releases/latest\" > latest-release.json")
+            .expect("发布后必须通过 REST 读取 latest Release");
+        assert!(latest_check > publish, "latest 复核必须发生在发布之后");
+        for needle in [
+            "gh release edit \"$TAG\" --prerelease=false --latest",
+            "--latest \\",
+            ".tag_name == $tag and .draft == false and .prerelease == false",
+            "--pattern 'appreciations.json'",
+            "--pattern 'appreciations.json.sha256'",
+            "--pattern 'assets_manifest.json'",
+            "../corpus/build/package/appreciations.json.sha256",
+            "releases/download/${TAG}/appreciations.json",
+        ] {
+            assert!(
+                text.contains(needle),
+                "{} 缺少 latest/用户种子链契约 `{needle}`",
+                path.display()
+            );
+        }
+    }
+
+    #[test]
+    fn committed_mobile_qa_screenshot_links_resolve_from_the_report_directory() {
+        let report = repo_root().join("docs/reports/mobile-qa-2026-08-17.md");
+        let text = std::fs::read_to_string(&report)
+            .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", report.display()));
+        let parent = report.parent().expect("报告路径应有父目录");
+        let targets = text
+            .split("](")
+            .skip(1)
+            .filter_map(|rest| rest.split_once(')').map(|(target, _)| target))
+            .filter(|target| target.ends_with(".png"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(targets.len(), 10, "报告应保留十条 Android 截图证据");
+        for target in targets {
+            assert!(
+                !target.starts_with("docs/reports/"),
+                "Markdown 相对链接从报告目录解析，重复写 docs/reports 会形成坏链：{target}"
+            );
+            assert!(
+                parent.join(target).is_file(),
+                "报告截图链接不存在：{}",
+                parent.join(target).display()
+            );
+        }
     }
 
     #[test]

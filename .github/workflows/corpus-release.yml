@@ -148,6 +148,10 @@ jobs:
           SEED_TAG="$(cargo run -p xtask --release --quiet -- \
             verify-seed --print-seed-tag)"
           echo "种子 tag：$SEED_TAG"
+          gh release view "$SEED_TAG" --json tagName,isDraft,isPrerelease > seed-release.json
+          jq -e --arg tag "$SEED_TAG" \
+            '.tagName == $tag and .isDraft == false and .isPrerelease == true' \
+            seed-release.json > /dev/null
           # 发布说明也要写出种子来源，而那一步不该再解析一次锁——锁只应有一个解析器。
           echo "SEED_TAG=$SEED_TAG" >> "$GITHUB_ENV"
           gh release download "$SEED_TAG" --dir dataset --clobber \
@@ -216,9 +220,11 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" ./*.db.gz ./*.db.gz.sha256 manifest.json \
               appreciations.json appreciations.json.sha256 assets_manifest.json --clobber
+            gh release edit "$TAG" --prerelease=false --latest
           else
             gh release create "$TAG" ./*.db.gz ./*.db.gz.sha256 manifest.json \
               appreciations.json appreciations.json.sha256 assets_manifest.json \
+              --latest \
               --title "语料工件 $TAG" \
               --notes "$(printf '%s\n' \
                 "由 \`xtask corpus-package\` 产出，六条中止断言全部通过。" \
@@ -268,6 +274,10 @@ jobs:
           set -euo pipefail
           gh release view "$TAG" --json isDraft,tagName,assets > release.json
           jq -e --arg tag "$TAG" '.tagName == $tag and .isDraft == false' release.json > /dev/null
+          gh api "repos/${GITHUB_REPOSITORY}/releases/latest" > latest-release.json
+          jq -e --arg tag "$TAG" \
+            '.tag_name == $tag and .draft == false and .prerelease == false' \
+            latest-release.json > /dev/null
           jq -r '.assets[].name' release.json | LC_ALL=C sort > remote-assets.txt
           cat remote-assets.txt
           for want in \
@@ -281,7 +291,15 @@ jobs:
           done
           mkdir -p verify && cd verify
           gh release download "$TAG" --pattern '*.db.gz' --pattern '*.db.gz.sha256' \
-            --pattern 'manifest.json' --clobber
+            --pattern 'manifest.json' --pattern 'appreciations.json' \
+            --pattern 'appreciations.json.sha256' --pattern 'assets_manifest.json' --clobber
           sha256sum -c ./*.db.gz.sha256
+          sha256sum -c ./appreciations.json.sha256
           test "$(stat -c%s ./*.db.gz)" = "$(jq -r '.size_bytes' manifest.json)"
           test "$(cut -d' ' -f1 <./*.db.gz.sha256)" = "$(jq -r '.sha256' manifest.json)"
+          test "$(cut -d' ' -f1 <./appreciations.json.sha256)" \
+            = "$(jq -r '.appreciation_seed.sha256' assets_manifest.json)"
+          test "$(cut -d' ' -f1 <./appreciations.json.sha256)" \
+            = "$(cut -d' ' -f1 <../corpus/build/package/appreciations.json.sha256)"
+          test "$(jq -r '.appreciation_seed.url' assets_manifest.json)" \
+            = "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/appreciations.json"

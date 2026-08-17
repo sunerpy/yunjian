@@ -23,10 +23,10 @@
 //! 锁**不是**种子本身，所以 `.gitignore` 里「产物不入库」那条规则没有被动摇：入库的是
 //! 一份三十行的指针，发出去的字节仍然只存在于 Release 资产里。
 //!
-//! # 不可伪造性建立在「重算」而不是「相信」上
+//! # 能证明的是「一致」，不是「谁生成」
 //!
-//! 锁里的每个字段都可以被手写，`generation_executed: true` 也可以。所以本子命令不采信任何
-//! 自述字段，而是把能重算的都重算一遍：
+//! 锁里的每个字段都可以被手写，`generation_executed: true` 也可以。所以本子命令把能重算的
+//! 一致性判据都重算一遍：
 //!
 //! 1. 种子与清单的字节摘要必须等于锁里那两行——锁在 git 里，改它要留一次提交；
 //! 2. 覆盖集与每首的 `grounding_digest` 由**这次刚建好的语料**经
@@ -35,10 +35,9 @@
 //! 3. 其余逐条判据交给 [`ensure_releasable`]，包括占位标记、正文长度下界、正文互不重复、
 //!    权重摘要在场，以及生成期那套逐条门禁。
 //!
-//! 结论如实说清楚：这套东西**不是**密码学证明。没有可信签名方时，「这段文字出自某个 7B
-//! 权重」本身无法被证明。它做到的是把最便宜的伪造形态逐个堵死——倒一份占位、把一段话复制
-//! 16 份、写一堆存根、换一份对不上语料的旧种子——并让剩下那条路（真的把整条渲染管线跑通，
-//! 然后逐首手写赏析）贵到与「老实生成」不是同一个量级。
+//! 结论如实说清楚：这套东西**不是**来源证明。没有独立可信的见证方时，同一个执行方可以手写
+//! 正文，再同步改清单、锁和摘要，使所有一致性判据通过；运行时自报的权重摘要也不能证明正文
+//! 由该权重生成。它能拦占位、重复、短文、覆盖或事实块漂移，不能据此输出「真实模型输出」。
 
 use std::path::{Path, PathBuf};
 
@@ -114,11 +113,11 @@ impl SeedLock {
              #\n\
              # 种子（`appreciations.json`）由一台装有开放权重运行时的机器生成一次，\n\
              # 上传到 `seed_tag` 这个 Release；发布流按本文件下载并校验，不在 CI 里跑推理。\n\
-             # 因此「发布出去的赏析由哪一次推理产生」由本文件的 git 历史回答。\n\
+             # 本文件的 git 历史回答「哪组声明与字节被选中发布」，不证明正文作者来源。\n\
              #\n\
              # 由 `cargo run -p xtask -- pregenerate --endpoint <URL> --seed-tag <TAG>` 写出，\n\
-             # 由 `cargo run -p xtask -- verify-seed` 校验。手改本文件不会让伪造的种子通过：\n\
-             # 门禁会拿待发布语料重算覆盖集与每首的事实块摘要。\n\
+             # 由 `cargo run -p xtask -- verify-seed` 校验摘要、结构、覆盖与披露一致性。\n\
+             # 同一执行方可同步伪造正文与全部声明，因此校验通过不构成模型来源证明。\n\
              \n\
              {body}"
         );
@@ -287,16 +286,30 @@ pub fn run(
         .map(|record| record.text.chars().count())
         .min()
         .unwrap_or_default();
-    emit(&format!(
-        "门禁通过：{} 条真实模型输出（最短正文 {shortest} 字），\
-         权重 {}（摘要 {}，许可 {}，运行时 {}）",
+    emit(&success_summary(&records, &manifest, &lock, shortest));
+    Ok(())
+}
+
+/// 只报告本命令实际验证过的事实。
+///
+/// 摘要、覆盖、字段与披露一致，不能推出正文由声明的模型生成。把成功文案集中在这里，
+/// 是为了让攻击回归能直接守住这条语义边界，而不必截获 stdout。
+fn success_summary(
+    records: &[PregeneratedRecord],
+    manifest: &DatasetManifest,
+    lock: &SeedLock,
+    shortest: usize,
+) -> String {
+    format!(
+        "门禁通过：{} 条记录的摘要、结构、覆盖与披露一致（最短正文 {shortest} 字）；\
+         清单声明模型 {}、权重摘要 {}、许可 {}、运行时 {}。\
+         此结果不证明正文由该模型或任何模型生成",
         records.len(),
         manifest.model,
         lock.model_digest,
         manifest.model_license,
         manifest.provider
-    ));
-    Ok(())
+    )
 }
 
 #[cfg(test)]
@@ -342,6 +355,77 @@ mod tests {
         assert!(
             error.to_string().contains("signed_by"),
             "拒绝理由应点名那个多出来的键：{error}"
+        );
+    }
+
+    /// F2 第三轮给出的攻击样本没有调用模型，却能由同一执行方把正文、清单、锁与摘要一起
+    /// 伪造到结构门禁全部通过。方案 A 接受这个不可消除的边界，但禁止成功文案把「一致」
+    /// 夸大成「真实模型输出」。
+    #[test]
+    fn forged_seed_can_pass_consistency_checks_without_proving_model_authorship() {
+        const FORGED: &[u8] = include_bytes!("verify_seed_forged_seed.fixture");
+        assert_eq!(
+            sha256_hex(FORGED),
+            "583923943c0a65c39c8a90f3834fed00c73412181afe56753adcfab61a91ab87",
+            "夹具必须逐字节等于 /config/atk-evidence.json，不能换成更容易通过的合成样本"
+        );
+        let records: Vec<PregeneratedRecord> =
+            serde_json::from_slice(FORGED).expect("攻击样本应可解析");
+        let first = records.first().expect("攻击样本不应为空");
+        let seed_digest = sha256_hex(FORGED);
+        let manifest = DatasetManifest {
+            schema_version: yunjian_ai::pregenerate::DATASET_SCHEMA_VERSION,
+            template_version: first.template_version.clone(),
+            coverage_tags: yunjian_ai::pregenerate::ANTHOLOGY_TAGS
+                .iter()
+                .map(|tag| (*tag).to_owned())
+                .collect(),
+            coverage_selector: "reviewed_roster".to_owned(),
+            record_count: records.len(),
+            model: first.model.clone(),
+            model_license: first.model_license.clone(),
+            provider: first.provider.clone(),
+            model_digest: Some("c".repeat(64)),
+            generation_executed: true,
+            not_executed_reason: None,
+            appreciations_sha256: seed_digest.clone(),
+            corpus_version: "0.1.0".to_owned(),
+            built_at: first.generated_at,
+        };
+        let grounding = records
+            .iter()
+            .map(|record| (record.stable_id.clone(), record.grounding_digest.clone()))
+            .collect();
+        ensure_releasable(
+            &manifest,
+            &records,
+            &ReleaseExpectation {
+                corpus_version: &manifest.corpus_version,
+                template_version: APPRECIATION_TEMPLATE_VERSION,
+                grounding: &grounding,
+                seed_sha256: &seed_digest,
+            },
+        )
+        .expect("攻击样本应证明现有判据只能校验一致性，不能鉴别正文作者来源");
+
+        let mut forged_lock = lock();
+        forged_lock.seed_sha256 = seed_digest;
+        forged_lock.record_count = records.len();
+        let shortest = records
+            .iter()
+            .map(|record| record.text.chars().count())
+            .min()
+            .expect("攻击样本不应为空");
+        let summary = success_summary(&records, &manifest, &forged_lock, shortest);
+        for forbidden in ["真实模型输出", "确由模型生成", "推理已执行"] {
+            assert!(
+                !summary.contains(forbidden),
+                "一致性门禁不得输出不可证明的 `{forbidden}`：{summary}"
+            );
+        }
+        assert!(
+            summary.contains("不证明正文由该模型或任何模型生成"),
+            "成功文案必须主动披露来源证明边界：{summary}"
         );
     }
 
