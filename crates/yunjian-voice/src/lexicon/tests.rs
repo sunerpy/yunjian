@@ -6,8 +6,9 @@
 use std::collections::BTreeSet;
 
 use super::{
-    CiTunes, Confidence, LexiconError, PhonemeIndex, Polyphones, Poyin, RhythmSource, Roster,
-    Syllable, assert_coverage, compile_overrides, located_evidence,
+    CITUNE_TSV, CiTunes, Confidence, LexiconError, PhonemeIndex, Polyphones, Poyin, RhythmSource,
+    Roster, Syllable, assert_coverage, assert_tune_coverage, compile_overrides,
+    evidence_matches_source, located_evidence,
 };
 
 // ---------------------------------------------------------------- 依据校验
@@ -220,11 +221,161 @@ fn an_unknown_source_value_is_rejected() {
 
 #[test]
 fn a_zero_width_clause_is_rejected() {
-    let text = "词牌\t句式\t来源\t依据\n念奴娇\t4-0-5\tcorpus_modal\tn=135；据某锁定版转录本\n";
+    let text = "词牌\t句式\t来源\t依据\n念奴娇\t4-0-5\tcorpus_modal\t众数句式 n=135 实测；据某锁定版转录本\n";
     assert!(matches!(
         CiTunes::parse(text),
         Err(LexiconError::BadField { .. })
     ));
+}
+
+// ------------------------------------------------ 依据类型与所声明来源必须一致
+
+/// **这条钉住的是「依据合格」与「依据类型正确」的区别。** 随仓每一行都已过
+/// `located_evidence`，但那只证明能被翻到；这条要求实测行看起来就是实测、词谱行看起来就是
+/// 词谱，两者不可互换措辞。
+#[test]
+fn every_shipped_row_evidence_matches_its_declared_source() {
+    let tunes = CiTunes::shipped().expect("随仓句式表应可解析");
+    for tune in tunes.tunes() {
+        let row = tunes.get(&tune).expect("刚枚举出来的词牌应存在");
+        assert_eq!(
+            evidence_matches_source(row.source, &row.evidence),
+            Ok(()),
+            "{tune} 的依据与来源 {} 不符：{:?}",
+            row.source.as_str(),
+            row.evidence
+        );
+    }
+}
+
+/// **防洗白的那一半。** 把《全宋词》实测众数写成「《钦定词谱》卷五页三」能过
+/// `located_evidence`（卷与页都是合格定位符），却把统计推断冒充成了词谱权威。
+#[test]
+fn a_modal_row_dressed_up_as_a_citune_citation_is_rejected() {
+    let laundered = "《钦定词谱》卷五页三；据某影印本";
+    assert_eq!(located_evidence(laundered), Ok(()));
+
+    let text = format!("词牌\t句式\t来源\t依据\n念奴娇\t4-5\tcorpus_modal\t{laundered}\n");
+    match CiTunes::parse(&text).expect_err("洗白的实测依据应被拒") {
+        LexiconError::ProvenanceMismatch {
+            declared, reason, ..
+        } => {
+            assert_eq!(declared, "corpus_modal");
+            assert_eq!(reason, "实测依据引了词谱书名，等于把统计推断冒充词谱权威");
+        }
+        other => panic!("得到 {other:?}"),
+    }
+}
+
+/// 只写卷页不写书名也不行：光有卷页说不清是哪部书的卷页。
+#[test]
+fn a_modal_row_claiming_a_volume_locator_is_rejected() {
+    let text =
+        "词牌\t句式\t来源\t依据\n念奴娇\t4-5\tcorpus_modal\t卷五页三 n=135 实测；据某影印本\n";
+    match CiTunes::parse(text).expect_err("实测依据写卷页应被拒") {
+        LexiconError::ProvenanceMismatch { reason, .. } => {
+            assert_eq!(reason, "实测依据写了卷次或页码，等于把统计推断冒充词谱权威");
+        }
+        other => panic!("得到 {other:?}"),
+    }
+}
+
+/// 反方向同样要拦：一条声称词谱权威的行必须真的给出书名、卷次与页码。
+#[test]
+fn a_citune_row_must_carry_a_work_name_a_volume_and_a_page() {
+    for (evidence, want) in [
+        ("《全宋词》卷五页三；据某影印本", "词谱依据未写出词谱书名"),
+        ("《钦定词谱》页三；据某影印本", "词谱依据缺卷次"),
+        ("《钦定词谱》卷五；据某影印本", "词谱依据缺页码"),
+        (
+            "《钦定词谱》卷五页三 n=135 实测；据某影印本",
+            "词谱依据里出现实测口径，来源类型自相矛盾",
+        ),
+    ] {
+        assert_eq!(
+            evidence_matches_source(RhythmSource::CiTune, evidence),
+            Err(want),
+            "{evidence:?} 应因 {want} 被拒"
+        );
+    }
+    assert_eq!(
+        evidence_matches_source(RhythmSource::CiTune, "《钦定词谱》卷五页三；据某影印本"),
+        Ok(())
+    );
+}
+
+/// `char_count` 与 `punctuation` 是运行期推得的，不是数据行能声明的来源。
+#[test]
+fn runtime_only_sources_cannot_be_declared_by_a_row() {
+    for source in [RhythmSource::CharCount, RhythmSource::Punctuation] {
+        assert_eq!(
+            evidence_matches_source(source, "《钦定词谱》卷五页三；据某影印本"),
+            Err("该来源是运行期推得的切分方式，不能作为表内行的来源")
+        );
+    }
+}
+
+/// **这条守的是本项目栽过的那个坑：解释一条规则的文字命中这条规则。**
+/// `citune_rhythm.tsv` 顶部的声明里逐字写着「《钦定词谱》卷 X 页 Y」当反例，如果解析或校验
+/// 把注释行也读成数据行，那段声明本身就会被当成一条词谱依据——校验照绿，而表其实是空的。
+#[test]
+fn the_header_comment_block_is_not_read_as_a_row() {
+    assert!(
+        CITUNE_TSV.contains("《钦定词谱》"),
+        "顶部声明应仍带那个反例，否则这条测试失去意义"
+    );
+
+    let tunes = CiTunes::shipped().expect("随仓句式表应可解析");
+    assert_eq!(tunes.len(), 2, "表内应恰有 2 个数据行，注释行不计入");
+    for tune in tunes.tunes() {
+        let row = tunes.get(&tune).expect("刚枚举出来的词牌应存在");
+        assert!(
+            !row.evidence.contains("词谱"),
+            "{tune} 的依据引了词谱书名，但仓库内没有公有领域词谱：{:?}",
+            row.evidence
+        );
+    }
+}
+
+// ------------------------------------------------------------ 词牌覆盖闭合
+
+/// **覆盖是闭合而不是百分比。** 分母是名册里出现的词牌——方案要求覆盖宋词三百首所含词牌，
+/// 而该选本的收录名单没有任何随包资产，仓库能知道的成员就是名册标注的那些。
+#[test]
+fn tune_coverage_over_the_roster_is_closed() {
+    let tunes = CiTunes::shipped().expect("应可解析");
+    let roster = Roster::shipped().expect("应可解析");
+
+    let in_roster: BTreeSet<String> = roster
+        .entries()
+        .iter()
+        .filter_map(|entry| entry.ci_tune.clone())
+        .collect();
+    assert_eq!(
+        in_roster,
+        tunes.tunes(),
+        "名册词牌集与句式表词牌集必须相等：多出来的没有依据，少掉的没有句读"
+    );
+    assert_eq!(assert_tune_coverage(&tunes, &roster), Ok(()));
+}
+
+/// 名册加一支表外词牌就必须变红，否则这条闭合检查是装饰。
+#[test]
+fn a_roster_tune_absent_from_the_table_is_a_coverage_gap() {
+    let tunes = CiTunes::shipped().expect("应可解析");
+    let roster = Roster::parse(
+        "id\t选本\t作者\t题目\t词牌\t正文\t依据\n\
+         t1\t宋词三百首\t李清照\t声声慢·寻寻觅觅\t声声慢\t寻寻觅觅，冷冷清清。\
+         \t《宋词三百首》卷一；据某锁定版转录本\n",
+    )
+    .expect("名册应可解析");
+
+    match assert_tune_coverage(&tunes, &roster).expect_err("表外词牌应被报为缺口") {
+        LexiconError::TuneCoverageGap { missing } => {
+            assert_eq!(missing, BTreeSet::from(["声声慢".to_owned()]));
+        }
+        other => panic!("得到 {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------- 名册与覆盖
