@@ -1,0 +1,169 @@
+# 四份机器报告在冻结的 cf274e8 上一次性重跑 transcript
+# 分支 chore/refresh-machine-reports / 基线 cf274e8（本任务期间零产品代码改动）
+
+===== 0. 基线与前置 =====
+$ git rev-parse HEAD
+cf274e869872dca20bc324c96b4944397a4ed581
+$ git status --porcelain -- <10 条受保护路径>
+（空 —— mobile full 的 require_clean 前置成立）
+$ df -h /
+/dev/root  290G  276G  15G  96% /
+$ pactl list short modules | grep sine
+19  module-sine  sink=auto_null frequency=440
+$ pactl info | grep "Default Source"
+Default Source: auto_null.monitor
+$ ss -ltn | grep :4444 → 空（4444 free）
+$ ls /tmp/.X11-unix/ → 空（无残留 X99）
+工具齐备：Xvfb xdpyinfo openbox xprop tauri-driver WebKitWebDriver dbus-daemon dpkg-deb pactl ldd
+
+===== 1. 产物构建 =====
+$ npm ci --prefix app && npm run build --prefix app
+✓ built in 169ms；app/dist/index.html 394 字节
+$ cargo build -p yunjian-app --bin yunjian-desktop --features custom-protocol
+Finished dev profile in 24.08s；target/debug/yunjian-desktop 407481192 字节
+$ make bundle
+首轮失败：
+  [appimage/stderr] Failed to download runtime: server returned status code 0
+  ERROR: Failed to run plugin: appimage (exit code: 1)
+真因不是 linuxdeploy 崩了，是 appimagetool 取不到 type2-runtime。
+实测：直连 302 但 S3 连接 136 秒后 timeout；带代理立刻成功。
+$ strings linuxdeploy-plugin-appimage | grep -E "^LDAI_"
+LDAI_RUNTIME_FILE / LDAI_SIGN / LDAI_SIGN_ARGS / LDAI_SIGN_KEY / LDAI_UPD_INFO
+（环境变量名从 ELF 里读出，不凭记忆）
+$ curl（走代理）-o /config/appimage-runtime-x86_64 .../runtime-x86_64  → 944632 字节
+$ LDAI_RUNTIME_FILE=/config/appimage-runtime-x86_64 make bundle
+    binary        389M  target/debug/yunjian-desktop
+    deb           106M  云笺_0.1.0_amd64.deb
+    rpm           106M  云笺-0.1.0-1.x86_64.rpm
+    appimage      163M  云笺_0.1.0_amd64.AppImage
+安装包齐备：deb rpm appimage
+
+===== 2. 桌面验收 =====
+$ cargo run -p xtask -- acceptance --platform linux --set desktop
+汇总 PASS 18  FAIL 1  NOT EXECUTED 1  all_pass false
+报告 docs/reports/desktop-qa-2026-08-18.{json,md}  commit_sha=cf274e8…
+会话 display_kind=virtual DISPLAY=:99 WM=Openbox；WebDriver 会话建立成功（真实 tauri-driver）
+绘制门 主色 #f0f0f0 占 82.5452%，显著颜色区 3 个
+FAIL  shipped_appreciation_without_key
+      正文=「<<未生成：本条不是模型输出，需开放权重模型推理>>」
+      ai-source=「随包预生成」标签=「AI 赏析」说明=「AI 生成，未经人工审校」
+NOT EXECUTED  voice_round_succeeds_end_to_end
+      被测产物未编译 voice（2026-08-10 许可裁决），采集与 ASR 都不存在
+installer_runs PASS（本次有 .deb，从安装路径启动并映射窗口，_NET_WM_NAME=「云笺」）
+corpus_first_run_materialization PASS（起始 corpus-absent，20 条进度文本，收工渲染 corpus-facts）
+
+根因核实（不是产品缺陷）：
+$ sha256sum ~/.local/share/yunjian/appreciations.json
+e1db69261e4436954f726580fa782d2f7f43cb6dc8e872cd5904bebbce3bfd08   ← 旧占位
+$ sha256sum dataset/appreciations.json
+18aa82cd6cdf0a480f14cf216673ce864b4fc9ec15e3f49de95f676eb9ae4287   ← 真赏析
+$ cat ~/.local/share/yunjian/assets_manifest.json | grep -A1 appreciation_seed
+url  .../releases/download/corpus-v0.1.0/appreciations.json
+sha256  e1db6926…
+→ latest 指向 corpus-v0.1.0，其种子仍是旧占位。改它属于改写已发布 Release，需用户确认。
+
+===== 3. 移动真机（Device Farm，us-west-2，账号 891377171033）=====
+$ mise use -g gradle@8.13     （mise 装了四个版本但无全局默认，shim 报 No version is set）
+$ cd mobile/android && gradle :app:assembleDebug :app:assembleDebugAndroidTest
+BUILD SUCCESSFUL in 1m 12s
+$ apksigner verify --print-certs 两个 APK
+两者 Signer #1 SHA-256 digest 均为 be09fcb92b8748c069b59db51d648fb665574fe59be38ad65da2de3019e5da65
+（同签名 —— Device Farm 对公共设备强制重签，设备侧脚本要卸重签的那份装我们自己签的两个）
+
+上传时踩到网络策略分裂：aws devicefarm API 直连正常，但 S3 上传直连永远 timeout
+  curl: (28) Failed to connect to prod-us-west-2-uploads.s3.dualstack... after 136347 ms
+  （加 -4 强制 IPv4 仍 30 秒超时；单独给 curl 那一行前置 https_proxy 后立刻成功）
+$ aws devicefarm schedule-run --name refresh-cf274e8-full ...
+RUN_ARN=...run:9b17cc74-.../c1501f86-651d-405f-a1ae-63d55a37ab95
+$ aws devicefarm get-run
+COMPLETED  PASSED  total=3 passed=3  deviceMinutes.metered=20.25
+Setup Suite / Tests Suite / Teardown Suite 全部 COMPLETED PASSED
+
+$ 下载 CUSTOMER_ARTIFACT → full-acceptance.log（158 条 YUNJIAN-FULL）+ 10 张 PNG
+$ cp → docs/reports/mobile-qa-android-measurements.log 与 docs/reports/mobile-qa/
+$ cargo run -p xtask -- acceptance --platform android --set full
+真机回传已采纳：Pixel 8 / 15/35（ro.hardware=shiba）
+PASS 9  FAIL 1  NOT EXECUTED 10  all_pass=false  commit_sha=cf274e8…
+FAIL  reading_view_citations_and_ai_appreciation
+      appreciation_text=<<未生成：本条不是模型输出，需开放权重模型推理>>
+      unreviewed_disclosure=本段由 deepseek-r1:7b 生成，未经人工审校（来源：shipped）
+      → 与桌面同一根因，且在真机上实拍到了；交接预告的形态成立
+PASS  voice_recitation_round_succeeds_end_to_end
+      outcome_line=开口=true 停顿=0 时长=3000ms 单路RTF=0.23419242（移动端有 voice，桌面没有）
+PASS  corpus_first_run_materialization  duration_seconds=862.348  corpus_bytes=4769849344
+PASS  voice_permission_denied_degrades  appops_state=Uid mode: RECORD_AUDIO: ignore
+iOS 10 条 NOT EXECUTED —— 本机 Linux，无 macOS/Xcode；ios_full.enabled=false
+
+tested_sources 11 条（10 条 freshness_enforced=true + Cargo.lock 只记录）
+$ cargo test -p xtask the_committed_mobile_report_still_describes_the_current_sources
+test result: ok. 1 passed  ← PR #114 的 git-free 溯源断言首次真正通过
+
+===== 4. mobile-spike =====
+$ cargo run -p xtask -- acceptance --platform android --set spike
+verdict=uniffi_native；PASS 2 FAIL 1 NOT EXECUTED 1；commit_sha=cf274e8…
+PASS          microphone_capture      Pixel 8 / 15/35 / rms 非零 / 权限路径成立
+FAIL          corpus_materialization  duration_seconds=109.849 ≥ 60 秒阈值（数字未变）
+PASS          chinese_ime             targetSdk 35 / edge_to_edge / 遮挡 0 px / entered_text=云笺
+NOT EXECUTED  ios_testflight_submission  用户已决定不发商店，此条永不会有测量值
+physical_devices=[] —— 核实为 mobile.rs:456 写死 Vec::new()，harness 缺陷，未修
+
+===== 5. 净机验收 =====
+备料：dataset/appreciations.json（真种子）+ 语料 gz + 两份 .sha256
+$ cargo run -p xtask --release -- assets-manifest --base-url http://172.17.0.1:18075/corpus-v0.1.0
+数据集：generation_executed=true（正文是模型输出）
+$ python3 -m http.server 18075（本地镜像，v0.1.0/ + corpus-v0.1.0/ 两个前缀）
+$ make clean-install MIRROR_BASE=http://172.17.0.1:18075 ARTIFACTS_DIR=/config/refresh-logs/artifacts
+待发布数据集：0 次调用（来源 shipped），正文 368 字、与数据集逐字一致=true、含未生成标记=false
+声明 17 条 · PASS 6 · FAIL 1 · NOT EXECUTED 10 · all_pass=false
+报告 docs/reports/clean-install-2026-08-17.{json,md}  commit_sha=cf274e8…
+FAIL  install_script_installs  install.sh 非零退出：需要 curl 或 wget 之一来下载发布产物
+$ docker run --rm ubuntu:24.04 sh -c 'for c in curl wget ca-certificates tar gzip; ...'
+curl: MISSING  wget: MISSING  ca-certificates: MISSING  tar: OK  gzip: OK
+$ docker image inspect ubuntu:24.04 --format '{{.Id}}'
+sha256:561618e2c15bf2397621dd04f96926663a3b5616c189cf7e38db7e82f5c538ea
+  ← 与 08-14 那份报告记录的逐字节相同，所以差异不在镜像；08-14 为什么 PASS 仍未查出
+两条捷径仍拒绝：容器里 apt-get install curl 让掉「净」；改 install.sh 自带下载器
+等于把产品对用户环境的要求谈掉。
+shipped_dataset_is_model_output  NOT EXECUTED → PASS
+  generation_executed=true，模型 deepseek-r1:7b / 许可 MIT / 运行时 ollama  ← 交接要核实的那一项
+
+===== 6. 截图实际打开（6 张）=====
+desktop-qa/shipped-appreciation.png  虚线 AI 区，模型 deepseek-r1:7b，提示词模板 1.0.0,
+  来源「随包预生成」，正文确为占位标记，底部「本结果包含 AI 生成内容…请独立核验。」
+desktop-qa/corpus-first-run.png      设置面板语料事实表：0.1.0 / 474,043 首 / schema 2 /
+  2026-08-10T00:00:00Z；密钥「尚未存储」backend=absent persistence=none protection=os_encrypted
+desktop-qa/two-char-search.png       「明月」估计命中 7291 条本页 20 条，命中词高亮，
+  条目为真实唐词（三台令 / 調笑令 / 雜曲歌辭 轉應詞，冯延巳 / 戴叔倫）
+desktop-qa/tray-icon.png             32×32 红底白色竹简图形，四角透明
+desktop-qa/voice-degradation.png     背诵页选中「语音」后红框判词「本版本未编译语音 —— …
+  打字练习的评分与语音练习共用同一个内核，功能完整。」
+mobile-qa/reading_view_..._-reading.png  本次 run（22:29:13）Pixel 8：《春夜喜雨》正文正常，
+  赏析段占位标记，「本段由 deepseek-r1:7b 生成，未经人工审校（来源：shipped）」
+mobile-qa/voice_..._-voice.png       本次 run（22:34:20）：开口=true 停顿=0 时长=3000ms
+  单路RTF=0.23419242
+
+===== 7. 发现但按规定未修（两条 harness 缺陷）=====
+[1] mobile-qa-*.md 生成器仍写坏链
+    full.rs:31  const SCREENSHOT_DIR: &str = "docs/reports/mobile-qa";
+    full.rs:734 format!("[`{path}`]({path})")
+    $ lychee --offline docs/reports/mobile-qa-2026-08-18.md
+    🔍 10 Total  ✅ 0 OK  🚫 10 Errors（解析到 docs/reports/docs/reports/mobile-qa/...）
+    PR #118/#119 修的是 08-17 那个文件，不是生成器；守着它的测试
+    committed_mobile_qa_screenshot_links_resolve_from_the_report_directory 硬编码
+    文件名 mobile-qa-2026-08-17.md，对新报告零覆盖。
+    不在 make ci 六道之内，CI 仍绿。
+[2] mobile-spike.json 的 physical_devices 永远是 []
+    mobile.rs:456  build_report(platform, preflight, Vec::new(), &device)
+    同一份报告的 measurement 里明明有 device_model=Pixel 8 / os_build=15/35。
+    F1 指出的「麦克风判据声称 Android+iOS 却只记录 Pixel 8」同源：spike 的两平台共用
+    一条判据，而 iOS 侧永远没有测量值。
+
+===== 8. 验证 =====
+$ make fmt → cargo fmt --all + oxfmt 279 文件
+$ make ci
+门禁通过：fmt-check lint test mcp-conformance frontend-test pr-title-check
+CI_EXIT=0
+前端 36 test files / 428 tests 全绿；PR 标题校验器自检通过（真实历史 113 条 + 合成 25 条）
+$ cargo test --workspace --all-features --no-fail-fast
+total passed=1365 failed=0 ignored=9   TEST_EXIT=0
+（交接基线 1362 → 1365：四份新报告让此前无从判定的溯源断言进入判定）
