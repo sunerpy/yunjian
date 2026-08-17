@@ -46,10 +46,26 @@ MIT 单向兼容 GPL-3.0，**所以这不是许可冲突**；但一份开启语�
 
 **源码可得只满足一半，声明义务要求许可原文随分发物走。** 因此两类产物各自带上许可：
 
-| 产物                  | 随带什么                                                                                                | 落点               |
-| --------------------- | ------------------------------------------------------------------------------------------------------- | ------------------ |
-| 命令行归档（GPL-3.0） | [`packaging/licenses/`](packaging/licenses/) 整目录：MIT 原文、GPL-3.0 原文、`NOTICE.md` 署名与源码去处 | 归档内 `licenses/` |
-| 桌面安装包（MIT）     | 仓库根 [`LICENSE`](LICENSE)                                                                             | 安装包内 `LICENSE` |
+| 产物                       | 随带什么                                                                                                | 落点                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------- |
+| 命令行归档（GPL-3.0）      | [`packaging/licenses/`](packaging/licenses/) 整目录：MIT 原文、GPL-3.0 原文、`NOTICE.md` 署名与源码去处 | 归档内 `licenses/`        |
+| 桌面安装包（MIT）          | 仓库根 [`LICENSE`](LICENSE)                                                                             | 安装包内 `LICENSE`        |
+| Android APK/AAB（GPL-3.0） | [`packaging/licenses/`](packaging/licenses/) 整目录，同命令行归档                                       | APK 内 `assets/licenses/` |
+
+### 移动端为什么落在 GPL-3.0 一侧
+
+todo 69 明写 **`Voice ships on mobile in both branches`**：移动产品要与桌面同等能力，
+所以 Android 构建默认开 `native-voice`（Gradle 的 `yunjian.voice`，默认 `true`）。
+
+**边界与桌面同源，且已在 Android 产物上逐项核实**：`aarch64-linux-android` 的
+`libsherpa-onnx-c-api.so` 同样有 **50 个 `espeak_*` 导出符号**
+（`llvm-nm -D --defined-only ... | grep -c espeak` == 50），且它是
+`libyunjian_mobile.so` 的 `NEEDED` 依赖之一，与 `libonnxruntime.so` 一起打进
+APK 的 `lib/<abi>/`。**分发物里存在即触发义务**，与桌面那条判据一字不差。
+
+要产出一份 MIT 的移动构建，用 `-Pyunjian.voice=false`：那时 `.so` 不链接 sherpa-onnx，
+`startAsr` 返回「当前原生库未启用 native-voice」而不是静默降级，语音入口据此显示
+具体原因。**这条路径存在，但不是默认**——默认交付完整能力。
 
 **GPL-3.0 原文取自 `csukuangfj/espeak-ng` 的 `COPYING` 原样副本**（SHA-256
 `8ceb4b9e…`），即真正约束我们所再分发的那份代码的文件，不是随便一份抄本。

@@ -1,0 +1,52 @@
+# 云笺 Android 产品工程的依赖目录。
+#
+# 版本集中在这里而不是散在 `build.gradle.kts` 里：AGP 与 Kotlin、Kotlin 与 Compose
+# 编译器插件都有版本耦合，散着写时一次不同步的升级会报成「Compose 编译器不兼容」，
+# 而那条报错不指向真因。
+
+[versions]
+# AGP 8.9.x 是与 compileSdk 35 + Gradle 8.13 都对得上的组合。
+agp = "8.9.1"
+# Kotlin 2.x 起 Compose 编译器随 Kotlin 发布，由 `kotlin.compose` 插件接线。
+kotlin = "2.1.10"
+composeBom = "2025.02.00"
+coreKtx = "1.15.0"
+lifecycle = "2.8.7"
+activityCompose = "1.10.0"
+junit = "4.13.2"
+androidxTestCore = "1.6.1"
+androidxTestRunner = "1.6.2"
+androidxTestRules = "1.6.1"
+androidxTestExtJunit = "1.2.1"
+uiautomator = "2.3.0"
+jna = "5.15.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+
+# UniFFI 生成的 Kotlin 通过 JNA 调用 cdylib。**这不是可选依赖**：生成物 import
+# `com.sun.jna.*`，缺它连编译都过不去。`@aar` 是 Android 专用打包，含 JNA 自己的
+# 原生桥；用普通 jar 会在运行时报找不到 `libjnidispatch.so`。
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidxTestRules" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

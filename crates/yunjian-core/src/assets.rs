@@ -182,7 +182,32 @@ impl AssetResolver {
     }
 
     /// 同步两件工件；导入器成功后才发布新种子文件。
+    ///
+    /// 不报进度。要在界面上显示物化进度请用 [`Self::sync_with_progress`]——本方法只是
+    /// 给它传一个空回调，两者走的是**同一条**代码路径，不存在「带进度的那条另有实现」。
     pub fn sync<F>(&self, import: F) -> Result<AssetSync>
+    where
+        F: FnOnce(&VerifiedAsset, &AppreciationSeedManifest, &CorpusHandle) -> Result<()>,
+    {
+        self.sync_with_progress(import, &mut |_| {})
+    }
+
+    /// 同步两件工件，并把语料校验、解压与首启派生的进度逐条报出来。
+    ///
+    /// # 为什么要有这个重载
+    ///
+    /// 移动端首启要下载 212 MiB 归档并解压出数 GiB 语料，中间还有首启派生。桌面走
+    /// `fetch_corpus` -> [`CorpusHandle::open_with_progress`] 已经能报这些阶段，而
+    /// [`Self::sync`] 内部调的是无回调的 [`CorpusHandle::open`]，于是移动端只能盯着
+    /// 一个不动的转圈。给它加一个可选回调比让调用方旁观文件系统里程碑更诚实：旁观拿到的
+    /// 是「文件出现了」，报不出「正在核对归档摘要 / 已解压 40%」。
+    ///
+    /// 回调在**调用线程**上同步执行，不得在其中阻塞或再次进入本解析器。
+    pub fn sync_with_progress<F>(
+        &self,
+        import: F,
+        progress: &mut dyn FnMut(crate::MaterializationProgress<'_>),
+    ) -> Result<AssetSync>
     where
         F: FnOnce(&VerifiedAsset, &AppreciationSeedManifest, &CorpusHandle) -> Result<()>,
     {
@@ -215,7 +240,7 @@ impl AssetResolver {
             corpus_config.archive = Some(archive);
         }
 
-        let corpus = CorpusHandle::open(&corpus_config)?;
+        let corpus = CorpusHandle::open_with_progress(&corpus_config, progress)?;
         if corpus.meta().corpus_version != manifest.corpus.corpus_version
             || corpus.meta().schema_version != manifest.corpus.schema_version
         {

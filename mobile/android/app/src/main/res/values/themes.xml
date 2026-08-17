@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      父主题取 `Theme.Material3.DayNight.NoActionBar`：Compose 自己画所有内容，
+      系统 ActionBar 会在顶部多出一条与设计无关的栏，且会改变边到边的插入值计算。
+    -->
+    <style name="Theme.Yunjian" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

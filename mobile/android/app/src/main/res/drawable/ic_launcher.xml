@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 26 以下的回退图标。`mipmap-anydpi-v26/ic_launcher.xml` 只在 API 26+ 生效，
+  而 minSdk 是 26——这份存在只为让 aapt 在没有 v26 限定符的构型下也能解析到资源，
+  否则 `processDebugResources` 报 `resource mipmap/ic_launcher not found`。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#1B2A41"
+        android:pathData="M0,0 h108 v108 h-108 z" />
+    <path
+        android:fillColor="#F2E8DC"
+        android:pathData="M32,30 h44 a4,4 0 0 1 4,4 v40 a4,4 0 0 1 -4,4 h-44 a4,4 0 0 1 -4,-4 v-40 a4,4 0 0 1 4,-4 z" />
+    <path
+        android:fillColor="#1B2A41"
+        android:pathData="M40,42 h28 v3 h-28 z M40,52 h28 v3 h-28 z M40,62 h18 v3 h-18 z" />
+</vector>

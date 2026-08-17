@@ -34,6 +34,8 @@ pub(crate) struct Config {
     pub(crate) job_timeout_minutes: u32,
     pub(crate) android: PlatformConfig,
     pub(crate) ios: PlatformConfig,
+    pub(crate) android_full: PlatformConfig,
+    pub(crate) ios_full: PlatformConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +61,20 @@ impl Config {
         match platform {
             Platform::Android => Some(&self.android),
             Platform::Ios => Some(&self.ios),
+            Platform::Windows | Platform::MacOs | Platform::Linux => None,
+        }
+    }
+
+    /// todo 71 真机验收（`--set full`）用的产物与 testspec。
+    ///
+    /// 与 [`Self::platform`] 分开是必需的，不是整洁：spike 跑的是三个不依赖主界面的类，
+    /// full 跑的是 `FullAcceptanceTest`（必须拉起真界面），两者的 APK、测试包与 testspec
+    /// 都不同。共用一个段会让「跑 full 却上传了 spike 的 APK」成为一次静默的错误——
+    /// run 会 PASSED，而报告里那十条测量值一条也不会回来。
+    pub(crate) fn platform_full(&self, platform: Platform) -> Option<&PlatformConfig> {
+        match platform {
+            Platform::Android => Some(&self.android_full),
+            Platform::Ios => Some(&self.ios_full),
             Platform::Windows | Platform::MacOs | Platform::Linux => None,
         }
     }
@@ -233,12 +249,31 @@ pub(crate) struct RemoteStatus {
 
 pub(crate) fn status(root: &Path, config: &Config, platform: Platform) -> Option<RemoteStatus> {
     let entry = config.platform(platform)?;
+    Some(status_for(root, config, platform, entry))
+}
+
+/// `--set full` 的远端状态。读的是 `[*_full]` 段。
+pub(crate) fn status_full(
+    root: &Path,
+    config: &Config,
+    platform: Platform,
+) -> Option<RemoteStatus> {
+    let entry = config.platform_full(platform)?;
+    Some(status_for(root, config, platform, entry))
+}
+
+fn status_for(
+    root: &Path,
+    config: &Config,
+    platform: Platform,
+    entry: &PlatformConfig,
+) -> RemoteStatus {
     let missing = missing_artifacts(root, entry);
-    Some(RemoteStatus {
+    RemoteStatus {
         probe: probe(config, entry),
         reason: unexecuted_reason(platform.as_str(), entry, &missing),
         plan: schedule_plan(config, entry),
-    })
+    }
 }
 
 #[cfg(test)]
@@ -276,6 +311,30 @@ test_spec = ".aws/devicefarm/spike-ios.yml"
 test_type = "XCTEST_UI"
 build_command = "aws codebuild start-build --project-name yunjian-ios-spike"
 blocked_reason = "构建 .ipa 需 macOS 与 Xcode"
+
+[android_full]
+enabled = true
+device_pool_arn = "arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74/7c385981"
+app_artifact = "target/mobile/yunjian.apk"
+app_upload_type = "ANDROID_APP"
+test_package_artifact = "target/mobile/full-tests.zip"
+test_package_upload_type = "APPIUM_NODE_TEST_PACKAGE"
+test_spec = ".aws/devicefarm/full-android.yml"
+test_type = "APPIUM_NODE"
+build_command = "cd mobile/android && gradle :app:assembleDebug :app:assembleDebugAndroidTest"
+blocked_reason = ""
+
+[ios_full]
+enabled = false
+device_pool_arn = "arn:aws:devicefarm:us-west-2:891377171033:devicepool:9b17cc74/deadbeef"
+app_artifact = "target/mobile/yunjian.ipa"
+app_upload_type = "IOS_APP"
+test_package_artifact = "target/mobile/full-xcuitest.zip"
+test_package_upload_type = "XCTEST_UI_TEST_PACKAGE"
+test_spec = ".aws/devicefarm/full-ios.yml"
+test_type = "XCTEST_UI"
+build_command = "xcodebuild build-for-testing -scheme Yunjian"
+blocked_reason = "构建 .ipa 与 XCUITest bundle 需 macOS 与 Xcode 26"
 "#;
 
     #[test]
@@ -408,6 +467,58 @@ blocked_reason = "构建 .ipa 需 macOS 与 Xcode"
             !config.ios.enabled && !config.ios.blocked_reason.trim().is_empty(),
             "iOS 链路未打通时必须写明阻塞原因，不得留空冒充可执行"
         );
+        assert!(
+            !config.ios_full.enabled && !config.ios_full.blocked_reason.trim().is_empty(),
+            "iOS 真机验收链路未打通时必须写明阻塞原因"
+        );
+    }
+
+    /// full 段不得复用 spike 的任何产物或 testspec。
+    ///
+    /// 这条守的是一次**静默**错误：跑 `--set full` 却上传 spike 的 APK 时，Device Farm
+    /// 的 run 会 PASSED（那三个 spike 类确实能跑），而十条产品断言的测量值一条也不会
+    /// 回来，报告里只会看到十条 NOT EXECUTED，读起来像「设备没跑」而不是「配错了」。
+    #[test]
+    fn full_artifacts_never_alias_the_spike_ones() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("xtask 应当有父目录");
+        let config = load(root)
+            .expect("随仓库的 Device Farm 配置应当可解析")
+            .expect("mobile/device-farm.toml 应当存在");
+        for (spike, full, label) in [
+            (
+                &config.android.app_artifact,
+                &config.android_full.app_artifact,
+                "Android 应用产物",
+            ),
+            (
+                &config.android.test_package_artifact,
+                &config.android_full.test_package_artifact,
+                "Android 测试包",
+            ),
+            (
+                &config.android.test_spec,
+                &config.android_full.test_spec,
+                "Android testspec",
+            ),
+            (
+                &config.ios.app_artifact,
+                &config.ios_full.app_artifact,
+                "iOS 应用产物",
+            ),
+            (
+                &config.ios.test_spec,
+                &config.ios_full.test_spec,
+                "iOS testspec",
+            ),
+        ] {
+            assert_ne!(
+                spike, full,
+                "{label} 在 spike 与 full 之间重名；共用会让跑 full 时上传 spike 的产物，\
+                 run 照样 PASSED 而十条测量值一条不回"
+            );
+        }
     }
 
     #[test]

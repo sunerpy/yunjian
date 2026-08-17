@@ -14,9 +14,20 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use super::super::{Platform, Verdict, commit_sha, device_farm, read_app_version, today};
+use super::full_criteria::{CRITERIA, MeasurementSet};
 use crate::verify_sources::emit;
 
 const EVIDENCE_LOG: &str = ".omo/evidence/task-71-yunjian.log";
+
+/// 真机回传的测量日志。存在时据它判 verdict，缺失时十条仍是 `NOT EXECUTED`。
+///
+/// 路径由平台决定而不是一个通用名：两个平台的日志同名会让「Android 跑过、iOS 没跑」
+/// 变成「iOS 读到了 Android 的测量值」，而那种错误在报告里看不出来。
+const ANDROID_MEASUREMENTS: &str = "docs/reports/mobile-qa-android-measurements.log";
+const IOS_MEASUREMENTS: &str = "docs/reports/mobile-qa-ios-measurements.log";
+
+/// 回传截图的落点，写进报告的 `screenshot` 字段供人打开核对。
+const SCREENSHOT_DIR: &str = "docs/reports/mobile-qa";
 const DEVICE_PLACEHOLDER: &str = "NOT EXECUTED: 需物理设备";
 const ANDROID_DRIVER: &str = "adb devices -l";
 const IOS_DRIVER: &str = "xcrun devicectl list devices";
@@ -174,6 +185,7 @@ pub(super) fn run(root: &Path, requested: Platform) -> Result<()> {
 
     let probe = resolve_probe(root, requested)?;
     let mut report = build_report(root, Some((requested, probe)))?;
+    apply_measurements(root, requested, &mut report)?;
     merge_existing_other_platform(root, requested, &mut report)?;
     report.all_pass = derived_all_pass(&report);
     validate_full_report(&report)?;
@@ -191,6 +203,93 @@ pub(super) fn run(root: &Path, requested: Platform) -> Result<()> {
     ));
     if failed > 0 {
         bail!("移动端真机验收出现 {failed} 条 FAIL");
+    }
+    Ok(())
+}
+
+/// 有真机回传日志时，把十条断言从 `NOT EXECUTED` 换成实测 verdict。
+///
+/// # 为什么判定在这里而不在设备上
+///
+/// 设备侧只报测量值。这一步读回传日志、按 [`CRITERIA`] 判定，并且**先判设备身份**：
+/// 身份不满足物理设备时整节保持 `NOT EXECUTED`，即使测量值齐备也一样。
+/// 「池里有真机」与「这次回传来自真机」是两件事（PR #99）。
+fn apply_measurements(root: &Path, requested: Platform, report: &mut FullReport) -> Result<()> {
+    let relative = match requested {
+        Platform::Android => ANDROID_MEASUREMENTS,
+        Platform::Ios => IOS_MEASUREMENTS,
+        Platform::Windows | Platform::MacOs | Platform::Linux => bail!("full 只接受移动平台"),
+    };
+    let path = root.join(relative);
+    if !path.is_file() {
+        emit(&format!(
+            "  未找到 {relative}；{} 十条保持 NOT EXECUTED",
+            requested.as_str()
+        ));
+        return Ok(());
+    }
+    let log = fs::read_to_string(&path)
+        .with_context(|| format!("读取真机回传测量日志 {} 失败", path.display()))?;
+    let measurements = MeasurementSet::parse(&log);
+    if measurements.is_empty() {
+        emit(&format!(
+            "  {relative} 里没有任何 `YUNJIAN-FULL` 测量行；十条保持 NOT EXECUTED"
+        ));
+        return Ok(());
+    }
+
+    let identity = measurements.device_identity();
+    let requested_name = requested.as_str();
+    let Some(platform) = report
+        .platforms
+        .iter_mut()
+        .find(|platform| platform.platform == requested_name)
+    else {
+        bail!("报告里没有 `{requested_name}` 一节");
+    };
+
+    if !identity.is_physical() {
+        emit(&format!(
+            "  拒绝把回传当真机结果：{}；十条保持 NOT EXECUTED",
+            identity.rejection()
+        ));
+        for assertion in &mut platform.assertions {
+            assertion.detail = format!(
+                "NOT EXECUTED：回传存在但设备身份不满足物理设备（{}）；未使用模拟器、mock、宿主机结果或人工操作顶替物理设备",
+                identity.rejection()
+            );
+        }
+        return Ok(());
+    }
+
+    emit(&format!(
+        "  真机回传已采纳：{} / {}（ro.hardware={}）",
+        identity.model, identity.os_build, identity.hardware
+    ));
+    platform.physical_device_used = true;
+    platform.device_model = identity.model.clone();
+    platform.os_version = identity.os_build.clone();
+
+    for (assertion, criterion) in platform.assertions.iter_mut().zip(CRITERIA) {
+        debug_assert_eq!(assertion.id, criterion.id, "判据顺序必须与预声明一致");
+        let evaluation = measurements.evaluate(criterion);
+        assertion.verdict = evaluation.verdict;
+        assertion.detail = evaluation.detail;
+        // 截图只在 PASS 时是硬要求（校验器如此），但存在就写进去：一条 FAIL 附上图
+        // 比只有文字更容易定位。
+        if let Some(name) = measurements.screenshot_for(criterion.id) {
+            let candidate = root.join(SCREENSHOT_DIR).join(&name);
+            if candidate.is_file() {
+                assertion.screenshot = Some(format!("{SCREENSHOT_DIR}/{name}"));
+            } else if assertion.verdict == Verdict::Pass {
+                // PASS 却拿不到图时，把它降成 NOT EXECUTED 而不是留一条无图的 PASS：
+                // 「数字是结论，图是证据」，没有证据的结论不该进报告。
+                assertion.verdict = Verdict::NotExecuted;
+                assertion.detail = format!(
+                    "NOT EXECUTED：测量值满足判据，但截图 {SCREENSHOT_DIR}/{name} 没有回收到本地；PASS 必须带可打开的图"
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -297,8 +396,8 @@ fn unexecuted_platform(platform: Platform, probe: DriverProbe) -> FullPlatformRe
 /// 无论走哪条路，产物不齐时十项断言仍是 `NOT EXECUTED`：远端池可达证明的是「有真机」，
 /// 不是「真机上装过我们的应用」。
 fn resolve_probe(root: &Path, platform: Platform) -> Result<DriverProbe> {
-    let Some(status) =
-        device_farm::load(root)?.and_then(|config| device_farm::status(root, &config, platform))
+    let Some(status) = device_farm::load(root)?
+        .and_then(|config| device_farm::status_full(root, &config, platform))
     else {
         return Ok(probe_driver(platform));
     };

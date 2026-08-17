@@ -19,8 +19,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use yunjian_ai::{
-    AppreciationProvider, AppreciationRequest, GenAiProvider, GenAiProviderConfig, KeyStore,
-    KeyStoreConfig, NullProvider, ProviderKind,
+    AppreciationCache, AppreciationProvider, AppreciationRequest, CacheSource,
+    DEFAULT_APPRECIATION_CACHE_CAPACITY, GenAiProvider, GenAiProviderConfig, KeyStore,
+    KeyStoreConfig, NullProvider, ProviderId, ProviderKind,
 };
 #[cfg(feature = "native-voice")]
 use yunjian_core::operation::start_operation;
@@ -196,7 +197,17 @@ impl NativeOperation {
     }
 
     /// 幂等地关闭句柄并释放尚未消费的事件。
-    pub fn close(&self) {
+    ///
+    /// # 为什么不叫 `close`
+    ///
+    /// UniFFI 生成的 Kotlin 对象已经实现 `AutoCloseable`，其 `close()` 负责释放
+    /// **Rust 侧的对象句柄**。再导出一个自己的 `close` 会在同一个类里产生两个
+    /// `override fun close()`，Kotlin 编译器报 `Conflicting overloads`。
+    ///
+    /// 这个冲突只有在真正用 Kotlin 编译器编译生成物时才会暴露——`tests/architecture.rs`
+    /// 做的是文本断言（`contains("open class NativeFacade")`），编译不到这一层。
+    /// 本次把绑定接进 Gradle 才发现它。
+    pub fn shutdown(&self) {
         self.inner.close();
     }
 }
@@ -212,6 +223,264 @@ struct NativeFacadeConfig {
     base_url: Option<String>,
     model_override: Option<String>,
     keystore_service: Option<String>,
+    app_data_dir: PathBuf,
+}
+
+/// 首启语料物化的进度事件。
+///
+/// 与桌面 `fetch_corpus` 送出的形状**逐字对齐**（`crates/yunjian-app/src/ipc.rs`
+/// 的 `CorpusProgress`）：两个外壳读同一份内核事件，形状分叉会让两边的界面文案
+/// 无法互相参照，而移动端的判词正是照桌面那份写的。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "stage", rename_all = "snake_case")]
+enum NativeCorpusProgress {
+    AlreadyPresent {
+        path: String,
+    },
+    VerifyingArchive {
+        archive: String,
+        bytes: u64,
+    },
+    ArchiveVerified {
+        sha256: String,
+    },
+    Decompressing {
+        bytes_done: u64,
+        bytes_total: u64,
+    },
+    Materialized {
+        path: String,
+        corpus_version: String,
+    },
+    Deriving {
+        step: String,
+        done: u64,
+        total: u64,
+    },
+    DeriveFailed {
+        reason: String,
+    },
+    Ready {
+        path: String,
+        corpus_version: String,
+        derived: bool,
+    },
+}
+
+impl From<yunjian_core::MaterializationProgress<'_>> for NativeCorpusProgress {
+    fn from(progress: yunjian_core::MaterializationProgress<'_>) -> Self {
+        use yunjian_core::MaterializationProgress as Source;
+        match progress {
+            Source::AlreadyPresent { path } => Self::AlreadyPresent {
+                path: path.display().to_string(),
+            },
+            Source::VerifyingArchive { archive, bytes } => Self::VerifyingArchive {
+                archive: archive.display().to_string(),
+                bytes,
+            },
+            Source::ArchiveVerified { sha256 } => Self::ArchiveVerified {
+                sha256: sha256.to_owned(),
+            },
+            Source::Decompressing {
+                bytes_done,
+                bytes_total,
+            } => Self::Decompressing {
+                bytes_done,
+                bytes_total,
+            },
+            Source::Materialized {
+                path,
+                corpus_version,
+            } => Self::Materialized {
+                path: path.display().to_string(),
+                corpus_version: corpus_version.to_owned(),
+            },
+            // 送内核给的中文步骤名与 done/total 三个字段，而不是 `format!("{progress:?}")`：
+            // 后者把三样揉成一句 Rust 调试串，界面除了原样打印别无选择。桌面在
+            // PR #108 修过同一处。
+            Source::Deriving(progress) => Self::Deriving {
+                step: progress.step.display_name().to_owned(),
+                done: progress.done,
+                total: progress.total,
+            },
+            Source::DeriveFailed { reason } => Self::DeriveFailed {
+                reason: reason.to_owned(),
+            },
+            Source::Ready {
+                path,
+                corpus_version,
+                derived,
+            } => Self::Ready {
+                path: path.display().to_string(),
+                corpus_version: corpus_version.to_owned(),
+                derived,
+            },
+        }
+    }
+}
+
+/// 走生产路径下载、校验并原子物化语料与随包赏析种子，返回可拉取进度的句柄。
+///
+/// # 为什么是顶层函数而不是 [`NativeFacade`] 的方法
+///
+/// [`NativeFacade::new`] 要打开语料才能构造；首启时语料还不存在，于是「先构造门面再让它
+/// 去取语料」在时序上不成立。宿主的正确顺序是：`materialize_assets` -> 等到 `Done` ->
+/// 再构造门面。
+///
+/// 调用方仍需先完成 `YunjianAndroid.initialize(context)`：赏析种子要写进
+/// `appreciation.db`，而那条路径与钥匙串同处一个应用私有目录。
+#[uniffi::export]
+pub fn materialize_assets(config_json: String) -> Result<Arc<NativeOperation>, NativeError> {
+    ensure_android_context()?;
+    let config: NativeFacadeConfig = decode_json(&config_json, "NativeFacadeConfig")?;
+    let corpus_config = CorpusConfig {
+        path: config.corpus_path,
+        data_dir: config.corpus_data_dir,
+        archive: config.corpus_archive,
+    };
+    let app_data_dir = config.app_data_dir;
+    let handle = yunjian_core::operation::start_operation(move |reporter| {
+        let mut cancelled = false;
+        let synced = yunjian_ai::sync_shipped_assets_with_progress(
+            corpus_config,
+            &app_data_dir,
+            &mut |progress| {
+                if reporter.is_cancelled() || reporter.is_closed() {
+                    cancelled = true;
+                    return;
+                }
+                reporter.progress(NativeCorpusProgress::from(progress));
+            },
+        );
+        if cancelled {
+            return Ok(());
+        }
+        match synced {
+            Ok(assets) => {
+                reporter.item(ShippedAssetsSummary {
+                    corpus_version: assets.corpus.meta().corpus_version.clone(),
+                    poem_count: assets.corpus.meta().poem_count,
+                    shipped_records: assets.seed.record_count,
+                    stale_records: assets.seed.stale_count,
+                    seed_path: assets.seed_path.display().to_string(),
+                });
+                Ok(())
+            }
+            Err(error) => Err(error.to_string()),
+        }
+    });
+    Ok(NativeOperation::from_operation(handle))
+}
+
+/// 随包赏析的展示载荷。
+///
+/// `reviewed` 恒为 `false` 并且**没有可以写 `true` 的入口**：随包数据集由
+/// `xtask pregenerate` 生成，那条路径把该字段钉死在 `false`（未经人工审校）。
+/// 留一个可写的字段等于允许某天有人把它翻成 `true` 而无人审校。
+#[derive(Debug, Clone, Serialize)]
+struct ShippedAppreciationOut {
+    text: String,
+    model: String,
+    provider: String,
+    generated_at: u64,
+    template_version: String,
+    grounding_digest: String,
+    source: &'static str,
+    reviewed: bool,
+}
+
+/// 按需下载并校验一个语音模型，返回它在设备上的目录。
+///
+/// # 为什么必须由 Rust 侧下载，而不是由外部工具把权重塞进来
+///
+/// 权重是**按需下载**的（安装包不含任何权重，见 `LICENSES.md`），下载后要逐字节校验
+/// SHA-256 才算就位。真机上试过让 `adb push` 直接放进应用的外部私有目录：文件属主是
+/// `shell`，应用（另一个 uid）读不到，`isDirectory` 报 `false`，看起来像「权重没推上去」，
+/// 实际是推上去了但读不了。走产品自己这条路径既没有属主问题，也顺带证明了按需下载可用。
+///
+/// `cache_root` 由 `YUNJIAN_MODEL_DIR` 决定，而 Android 上那个默认值指向编译期的仓库
+/// 路径、在设备上不存在，所以根目录必须由宿主显式给出。
+///
+/// 与 [`materialize_assets`] 同样返回可拉进度的句柄：whisper tiny 116 MiB、
+/// streaming zipformer 531 MiB，都不是能让界面干等的量级。
+#[cfg(feature = "native-voice")]
+#[uniffi::export]
+pub fn fetch_voice_model(
+    cache_root: String,
+    model_name: String,
+) -> Result<Arc<NativeOperation>, NativeError> {
+    ensure_android_context()?;
+    let handle = yunjian_core::operation::start_operation(move |reporter| {
+        let cache = yunjian_voice::models::ModelCache::at(&cache_root);
+        let mut cancelled = false;
+        let outcome = cache.ensure(&model_name, &mut |progress| {
+            if reporter.is_cancelled() || reporter.is_closed() {
+                cancelled = true;
+                return;
+            }
+            reporter.progress(NativeModelProgress::from(progress));
+        });
+        if cancelled {
+            return Ok(());
+        }
+        match outcome {
+            Ok(dir) => {
+                reporter.item(NativeModelReady {
+                    directory: dir.display().to_string(),
+                });
+                Ok(())
+            }
+            Err(error) => Err(error.to_string()),
+        }
+    });
+    Ok(NativeOperation::from_operation(handle))
+}
+
+/// 模型下载进度。四个变体与 [`yunjian_voice::models::FetchProgress`] 一一对应。
+#[cfg(feature = "native-voice")]
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "stage", rename_all = "snake_case")]
+enum NativeModelProgress {
+    Downloading { bytes_done: u64, bytes_total: u64 },
+    Verifying { bytes: u64 },
+    Verified,
+    Unpacking,
+}
+
+#[cfg(feature = "native-voice")]
+impl From<yunjian_voice::models::FetchProgress> for NativeModelProgress {
+    fn from(progress: yunjian_voice::models::FetchProgress) -> Self {
+        use yunjian_voice::models::FetchProgress as Source;
+        match progress {
+            Source::Downloading {
+                bytes_done,
+                bytes_total,
+            } => Self::Downloading {
+                bytes_done,
+                bytes_total,
+            },
+            Source::Verifying { bytes } => Self::Verifying { bytes },
+            Source::Verified => Self::Verified,
+            Source::Unpacking => Self::Unpacking,
+        }
+    }
+}
+
+/// 模型已就位。
+#[cfg(feature = "native-voice")]
+#[derive(Debug, Clone, Serialize)]
+struct NativeModelReady {
+    directory: String,
+}
+
+/// 物化完成后交给宿主的事实摘要。
+#[derive(Debug, Clone, Serialize)]
+struct ShippedAssetsSummary {
+    corpus_version: String,
+    poem_count: i64,
+    shipped_records: usize,
+    stale_records: usize,
+    seed_path: String,
 }
 
 /// Kotlin/Swift 可直接构造的生产门面。
@@ -222,6 +491,9 @@ pub struct NativeFacade {
     provider: GenAiProviderConfig,
     keystore: KeyStoreConfig,
     corpus_status_json: String,
+    app_data_dir: PathBuf,
+    corpus_version: String,
+    configured_provider: String,
 }
 
 #[uniffi::export]
@@ -240,9 +512,24 @@ impl NativeFacade {
             archive: config.corpus_archive,
         };
         let corpus = CorpusHandle::open(&corpus_config).map_err(native_error)?;
+        let corpus_version = corpus.meta().corpus_version.clone();
         let corpus_status_json = encode_json(&MobileFacade::corpus_status(&corpus))?;
         let scheduler = Scheduler::open(config.scheduler_path).map_err(native_error)?;
-        let kind = ProviderKind::parse(&config.provider).map_err(native_error)?;
+        // `none` 意为「不配置生成供应商」，它**不是** `ProviderKind` 的取值。
+        // 直接 `parse` 会让整个门面在首启时构造失败（真机实测：
+        // 「配置错误：未知的 AI 供应商 none」），于是检索、阅读、背诵全都用不了——
+        // 而这三件与 AI 供应商毫无关系。桌面在 `prepare_appreciation` 里同样把
+        // `PROVIDER_NONE` 挡在 parse 之前。
+        //
+        // 落到一个占位 kind 上只为让 `GenAiProviderConfig` 有值；随包赏析走
+        // `shipped_appreciation`（不碰 provider），生成路径由 `appreciate` 自己
+        // 在缺 key 时报错。
+        let configured = config.provider.trim();
+        let kind = if configured.eq_ignore_ascii_case(yunjian_core::config::PROVIDER_NONE) {
+            ProviderKind::OpenAI
+        } else {
+            ProviderKind::parse(configured).map_err(native_error)?
+        };
         let mut provider = GenAiProviderConfig::new(kind);
         if let Some(base_url) = config.base_url {
             provider = provider.with_base_url(base_url);
@@ -274,6 +561,9 @@ impl NativeFacade {
             provider,
             keystore,
             corpus_status_json,
+            app_data_dir: config.app_data_dir,
+            corpus_version,
+            configured_provider: configured.to_owned(),
         }))
     }
 
@@ -332,6 +622,58 @@ impl NativeFacade {
     pub fn keystore_delete(&self, account: String) -> Result<String, NativeError> {
         ensure_android_context()?;
         encode_json(&self.inner.keystore_delete(&account).map_err(native_error)?)
+    }
+
+    /// 读取随包赏析；命中时**不需要也不触碰** API key。
+    ///
+    /// # 为什么必须与 [`Self::appreciate`] 分开
+    ///
+    /// 随包赏析是一份已经随发布物交付的数据，取它只需要读本地 `appreciation.db`。
+    /// 把它藏在生成路径后面会让「没配 key 就看不到随包赏析」成为事实——桌面端一度
+    /// 如此，靠 `prepare_appreciation` 把 `AppreciationCache::lookup` 提到 key 检查
+    /// **之前**才修好（`crates/yunjian-app/src/ipc.rs`）。这里照同一顺序接线，并且
+    /// 因为是两个独立方法，宿主不可能"顺手"要求一个 key。
+    ///
+    /// 返回 `None` 表示这首诗没有随包赏析，不是错误。
+    pub fn shipped_appreciation(
+        &self,
+        poem_id: String,
+        model: String,
+    ) -> Result<Option<String>, NativeError> {
+        let detail = self
+            .inner
+            .poem_detail(PoemDetailRequest { poem_id })
+            .map_err(native_error)?;
+        let request = AppreciationRequest::new(detail, model);
+        let cache = AppreciationCache::open(
+            &self.app_data_dir,
+            self.corpus_version.clone(),
+            DEFAULT_APPRECIATION_CACHE_CAPACITY,
+        )
+        .map_err(native_error)?;
+        let lookup_provider =
+            ProviderId::new(self.configured_provider.as_str()).map_err(native_error)?;
+        let Some(hit) = cache
+            .lookup(&request, &lookup_provider)
+            .map_err(native_error)?
+        else {
+            return Ok(None);
+        };
+        encode_json(&ShippedAppreciationOut {
+            text: hit.appreciation.text,
+            model: hit.appreciation.model,
+            provider: hit.appreciation.provider.as_str().to_owned(),
+            generated_at: hit.appreciation.generated_at,
+            template_version: hit.appreciation.template_version,
+            grounding_digest: hit.appreciation.grounding_digest,
+            source: match hit.source {
+                CacheSource::Shipped => "shipped",
+                CacheSource::Local => "cache",
+                CacheSource::Generated => "generated",
+            },
+            reviewed: false,
+        })
+        .map(Some)
     }
 
     /// 生成完整 AI 赏析。
@@ -683,12 +1025,15 @@ impl NativeAsrOperation {
     }
 
     /// 关闭句柄、释放事件并唤醒正在等待 PCM 的识别线程。
-    pub fn close(&self) {
+    ///
+    /// 命名理由同 [`NativeOperation::shutdown`]：`close` 会与生成的 Kotlin
+    /// `AutoCloseable.close()` 撞成 `Conflicting overloads`。
+    pub fn shutdown(&self) {
         #[cfg(feature = "native-voice")]
         {
             self.stopped.store(true, Ordering::Release);
         }
-        self.operation.close();
+        self.operation.shutdown();
         #[cfg(feature = "native-voice")]
         self.finish_sender();
     }

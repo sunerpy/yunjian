@@ -173,6 +173,108 @@ fn generated_bindings_and_android_initializer_are_versioned() {
     assert!(crate_root.join("uniffi.toml").is_file());
 }
 
+/// Android 产品工程必须存在，且只能经 UniFFI 生成物调用 Rust。
+///
+/// 判据是源码扫描而不是「构建一次看看」：构建 Android 需要 SDK + NDK + Gradle，
+/// 而这条断言要在普通 `cargo test` 里跑。它拦的是三件会让「UniFFI 分支已落地」退回
+/// 声明的事——工程消失、绕过生成物直接 JNI、以及 `YunjianAndroid.initialize` 不在
+/// 任何 Rust 调用之前。
+#[test]
+fn android_shell_exists_and_only_calls_rust_through_the_bindings() {
+    let root = workspace_root();
+    let android = root.join("mobile/android");
+    for required in [
+        "settings.gradle.kts",
+        "build.gradle.kts",
+        "gradle.properties",
+        "gradle/libs.versions.toml",
+        "app/build.gradle.kts",
+        "app/src/main/AndroidManifest.xml",
+        "app/src/main/java/top/onethinker/yunjian/YunjianApplication.kt",
+        "app/src/main/java/top/onethinker/yunjian/MainActivity.kt",
+        "app/src/main/java/top/onethinker/yunjian/YunjianRepository.kt",
+        "app/src/androidTest/java/top/onethinker/yunjian/FullAcceptanceTest.kt",
+    ] {
+        assert!(
+            android.join(required).is_file(),
+            "Android 产品工程缺 {required}；缺了它 `UNIFFI_NATIVE_BINDING = true` 只是一句声明"
+        );
+    }
+
+    let application = std::fs::read_to_string(
+        android.join("app/src/main/java/top/onethinker/yunjian/YunjianApplication.kt"),
+    )
+    .expect("读取 YunjianApplication.kt");
+    assert!(
+        application.contains("YunjianAndroid.initialize(this)"),
+        "Application.onCreate 必须先交出 application context；\
+         漏掉它会让 ndk-context 在钥匙串路径上取不到 JavaVM"
+    );
+
+    // 除 UniFFI 生成的初始化器之外，产品源码不得自己声明 `external fun`：那意味着绕过
+    // 生成物直接接 JNI，而方案要求移动端只经 `yunjian-mobile` 的绑定调用领域逻辑。
+    let mut offenders = Vec::new();
+    let mut sources = Vec::new();
+    collect_files(&android.join("app/src"), &mut sources);
+    for source in sources {
+        if source.extension().and_then(|ext| ext.to_str()) != Some("kt") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&source)
+            .unwrap_or_else(|error| panic!("读取 {} 失败：{error}", source.display()));
+        // 剔除注释再判：本项目已六次踩「解释一条规则的文字命中这条规则」。
+        let code = text
+            .lines()
+            .filter(|line| {
+                !line.trim_start().starts_with("//") && !line.trim_start().starts_with('*')
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if code.contains("external fun") {
+            offenders.push(source.display().to_string());
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "Android 产品源码不得自己声明 external fun（绕过 UniFFI 生成物直接接 JNI）：{offenders:?}"
+    );
+}
+
+/// 开着语音的 Android 构建必须把许可原文打进 APK。
+///
+/// GPL-3.0 的声明义务要求原文随分发物走，「源码可得」只满足一半。这条断言看的是
+/// 构建脚本真的接了那个目录，因为漏掉它的表现不是构建失败而是**合规缺口**——
+/// 一份看起来正常的 APK 里少一份声明，没有任何红色能提示它。
+#[test]
+fn android_build_ships_the_license_payload() {
+    let root = workspace_root();
+    let script = std::fs::read_to_string(root.join("mobile/android/app/build.gradle.kts"))
+        .expect("读取 app/build.gradle.kts");
+    let code = script
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//") && !line.trim_start().starts_with('*'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        code.contains("packaging/licenses"),
+        "Android 构建必须把 packaging/licenses/ 搬进产物"
+    );
+    assert!(
+        code.contains("assets.srcDir") && code.contains("licenseAssets"),
+        "许可载荷必须经 assets 源集进 APK，否则它不在分发物里"
+    );
+    assert!(
+        code.contains("dependsOn(cargoNdkBuild, copyLicenseAssets)"),
+        "许可拷贝必须挂在 preBuild 上；不挂就只在手动执行时生效"
+    );
+    for required in ["LICENSE-GPL-3.0.txt", "LICENSE-MIT.txt", "NOTICE.md"] {
+        assert!(
+            root.join("packaging/licenses").join(required).is_file(),
+            "许可载荷缺 {required}"
+        );
+    }
+}
+
 #[test]
 fn domain_crates_contain_no_uniffi_dependency() {
     let root = workspace_root();

@@ -22,6 +22,7 @@ use super::{Platform, Verdict, commit_sha, device_farm, os_build, today};
 use crate::verify_sources::emit;
 
 mod full;
+mod full_criteria;
 
 #[cfg(test)]
 pub(crate) use full::{FULL_DECLARED, build_unexecuted_full_report, validate_full_report_json};
