@@ -8483,17 +8483,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "yunjian-spike"
-version = "0.1.0"
-dependencies = [
- "jni 0.21.1",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "yunjian-core",
-]
-
-[[package]]
 name = "yunjian-voice"
 version = "0.1.0"
 dependencies = [
