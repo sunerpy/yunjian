@@ -38,9 +38,10 @@ pub use keystore::{
 };
 pub use pregenerate::{
     ANTHOLOGY_TAGS, CoverageSelector, DATASET_SCHEMA_VERSION, DISCLOSURE_MARKERS, DatasetManifest,
-    LOCAL_CACHE_TABLE, NOT_GENERATED_MARKER, OPEN_WEIGHT_LICENSES, OPEN_WEIGHT_PROVIDERS,
-    OpenWeightModel, PregeneratedDataset, PregeneratedRecord, SHIPPED_TABLE, closed_api_provider,
-    ensure_disclosure, ensure_readable_table, existing_pregenerated_ids, sha256_hex,
+    LOCAL_CACHE_TABLE, MIN_APPRECIATION_CHARS, MODEL_DIGEST_HEX_LEN, NOT_GENERATED_MARKER,
+    OPEN_WEIGHT_LICENSES, OPEN_WEIGHT_PROVIDERS, OpenWeightModel, PregeneratedDataset,
+    PregeneratedRecord, ReleaseExpectation, SHIPPED_TABLE, closed_api_provider, ensure_disclosure,
+    ensure_readable_table, ensure_releasable, existing_pregenerated_ids, sha256_hex,
 };
 pub use provider::{
     APPRECIATION_TEMPLATE, APPRECIATION_TEMPLATE_FILE, APPRECIATION_TEMPLATE_VERSION, AiProvider,

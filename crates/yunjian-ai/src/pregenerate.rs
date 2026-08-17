@@ -35,8 +35,33 @@
 //! [`existing_pregenerated_ids`] 只读 [`SHIPPED_TABLE`]，[`ensure_readable_table`] 对
 //! [`LOCAL_CACHE_TABLE`] 硬失败。用户拿自己的 key 生成的赏析是**他的** Output，
 //! 未经同意收进公开数据集是越界的，与它质量如何无关。
+//!
+//! # 生成期允许如实降级，发布期不允许
+//!
+//! 上面那套门禁管的是「这条内容我们凭什么可以发」，它在没有推理条件的机器上也要能跑完
+//! ——所以未执行推理时产物如实标 `generation_executed=false`、每条正文写
+//! [`NOT_GENERATED_MARKER`]，这是**正确行为**：本地开发与 CI 的管线校验都需要它。
+//!
+//! 但「允许生成一份占位」与「允许把占位发出去」是两件事，而此前只有前者被表达出来，
+//! 于是每一次 Release 都发出了 16 条占位。[`ensure_releasable`] 补的正是后者：它是**发布
+//! 侧**的裁决，`generation_executed=false` 在这里是硬失败。两个判据分处两个函数而不是
+//! 合成一个开关，因为它们回答的是不同的问题——「这次跑没跑推理」与「这份产物能不能发」。
+//!
+//! # 为什么发布侧不只看 `generation_executed`
+//!
+//! `generation_executed` 是产物**自述**的一个布尔值，手写一份 JSON 就能把它写成 `true`。
+//! 所以发布侧不采信任何自述字段，而是拿**待发布语料**把能重算的都重算一遍：覆盖集必须与
+//! 语料解析出的那一组 `stable_id` 相等，每条的 `grounding_digest` 必须等于用同一个
+//! [`crate::provider::AppreciationRequest`] 对同一首诗重新渲染出来的那个值
+//! （见 [`ReleaseExpectation`]）。伪造者要过这道门就必须真的跑通整条抽子集 + 渲染事实块的
+//! 管线，绕不过去；跑通之后他仅剩 `text` 一个自由度，而那时他做的事已经是「人手写赏析」，
+//! 与「倒一份占位」不是同一个代价量级。
+//!
+//! **不声称密码学上不可伪造。** 没有可信签名方时，「这段文字出自某个 7B 权重」本身无法证明。
+//! 能做的是把每一条可重算的性质都重算、把最便宜的伪造形态（占位、把一段话复制 16 份、
+//! 长度不足的存根）逐个堵死，并把剩下那部分如实说清楚——见 `dataset/README.md`。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags};
@@ -76,6 +101,16 @@ pub const LOCAL_CACHE_TABLE: &str = "appreciation_cache";
 /// 但那种情况下产物**不能长得像**真跑过。这个标记让「本条不是模型输出」写在
 /// 数据里而不是只写在报告里，[`PregeneratedDataset::push`] 双向校验它。
 pub const NOT_GENERATED_MARKER: &str = "<<未生成：本条不是模型输出，需开放权重模型推理>>";
+
+/// 发布侧接受的赏析正文字符数下界。
+///
+/// [`PregeneratedDataset::push`] 只拒绝**空**正文与恰好等于 [`NOT_GENERATED_MARKER`] 的正文，
+/// 于是一条 `"略"` 能过它。实测 16 条真输出是 187–506 字，这个下界离最短的那条还有一倍余量，
+/// 因此它拒绝的只会是存根而不会是短赏析。
+pub const MIN_APPRECIATION_CHARS: usize = 80;
+
+/// 权重摘要的十六进制长度（SHA-256）。
+pub const MODEL_DIGEST_HEX_LEN: usize = 64;
 
 /// 覆盖集使用的选本标签。**显式声明覆盖目标**，不尝试全语料。
 ///
@@ -372,6 +407,13 @@ pub struct DatasetManifest {
     pub model_license: String,
     /// 本地运行时标识。
     pub provider: String,
+    /// 运行时自报的权重摘要（十六进制，无 `sha256:` 前缀）；未执行推理时为 `None`。
+    ///
+    /// 它回答的是「哪个权重摘要产生了这份产物」——`model` 只是一个标签（`deepseek-r1:7b`
+    /// 可以指向任何字节），而摘要能与公开的权重仓库互相核对。未执行推理时**没有**这个值可写，
+    /// 所以它同时是一个结构性证据：[`ensure_releasable`] 要求发布物必须带它。
+    #[serde(default)]
+    pub model_digest: Option<String>,
     /// 本次是否真的执行了推理。
     pub generation_executed: bool,
     /// 未执行推理时的原因；执行了则为 `None`。
@@ -485,6 +527,249 @@ pub fn ensure_disclosure(readme: &str) -> Result<()> {
         "数据集披露缺少要点 {missing:?}；随包 AI 赏析未经领域专家审校，\
          缺披露的数据集不得打包发布"
     )))
+}
+
+/// 若正文恰好是某个单元重复 k(>=2) 次，返回那个 k。
+///
+/// # 为什么判据是「精确整除的重复」而不是相似度
+///
+/// 它拦的是一种实测存在的伪造形态：一句敷衍话重复六遍，正好越过字数下界。
+/// 而**相似度阈值在这里量出来是反的**：真种子 16 条两两最大共同前缀占比 0.191，
+/// 那份模板伪造只有 0.160——按前缀相似度设阈会先红掉真产物。所以这里只用一条精确的结构
+/// 性质：真种子 16 条的重复倍数全是 1，模板伪造是 6，两者不重叠且不需要挑阈值。
+fn self_repetition(text: &str) -> Option<usize> {
+    let chars = text.chars().collect::<Vec<_>>();
+    let len = chars.len();
+    (1..=len / 2)
+        .filter(|unit| len % unit == 0)
+        .find(|unit| chars.chunks(*unit).all(|chunk| chunk == &chars[..*unit]))
+        .map(|unit| len / unit)
+}
+
+/// 发布侧从**待发布语料**重算出来的、种子必须与之逐项吻合的事实。
+///
+/// 每一项都刻意是「由别的代码路径独立算出来的值」而不是种子自述的字段：只比自述字段等于
+/// 什么都不比。[`ReleaseExpectation::grounding`] 尤其如此——它既是覆盖集（键集），
+/// 也是每首诗的事实块摘要（值），而两者都只能由打开语料、抽子集、渲染
+/// [`crate::provider::AppreciationRequest`] 得到。
+#[derive(Debug, Clone, Copy)]
+pub struct ReleaseExpectation<'a> {
+    /// 本次待发布语料的 `corpus_version`。
+    pub corpus_version: &'a str,
+    /// 当前代码里的提示词模板版本（[`crate::provider::APPRECIATION_TEMPLATE_VERSION`]）。
+    pub template_version: &'a str,
+    /// 由待发布语料重算出的 `stable_id -> grounding_digest`。键集即覆盖集。
+    pub grounding: &'a BTreeMap<String, String>,
+    /// 种子文件字节的实测 SHA-256。
+    pub seed_sha256: &'a str,
+}
+
+/// 裁决一份种子能否随这次发布发出去。
+///
+/// 这是**发布门禁**，与 [`PregeneratedDataset::push`] 那道生成期门禁互补而不重叠：
+/// 生成期允许如实降级出一份占位（本地开发与 CI 校验管线都需要），发布期一律拒绝。
+///
+/// # Errors
+///
+/// 以下任一不成立即返回 [`Error::PregenerationRejected`]，且理由点名真因：
+///
+/// - `schema_version` 与本代码的 [`DATASET_SCHEMA_VERSION`] 不同；
+/// - `generation_executed` 不为 `true`，或它为 `true` 却带着 `not_executed_reason`；
+/// - `model_digest` 缺失或不是 [`MODEL_DIGEST_HEX_LEN`] 位小写十六进制；
+/// - 模型、许可或运行时不过 [`OpenWeightModel::new`]；
+/// - `template_version`、`corpus_version`、`appreciations_sha256`、`record_count`
+///   与 [`ReleaseExpectation`] 或记录实况对不上；
+/// - 任一记录不过逐条生成期门禁（空字段、`reviewed=true`、重复 `stable_id`、许可越界）；
+/// - 任一正文**含有** [`NOT_GENERATED_MARKER`]、短于 [`MIN_APPRECIATION_CHARS`]、
+///   与另一条逐字相同、或是同一段文字重复多次凑出的长度；
+/// - 任一记录的溯源字段与清单不一致；
+/// - 记录的 `stable_id` 集合不等于 [`ReleaseExpectation::grounding`] 的键集；
+/// - 任一记录的 `grounding_digest` 不等于重算值。
+pub fn ensure_releasable(
+    manifest: &DatasetManifest,
+    records: &[PregeneratedRecord],
+    expected: &ReleaseExpectation<'_>,
+) -> Result<()> {
+    let reject = |message: String| Err(Error::PregenerationRejected(message));
+
+    if manifest.schema_version != DATASET_SCHEMA_VERSION {
+        return reject(format!(
+            "种子 schema 版本 {} 与本代码的 {DATASET_SCHEMA_VERSION} 不同；\
+             跨 schema 的种子不得发布",
+            manifest.schema_version
+        ));
+    }
+
+    if !manifest.generation_executed {
+        return reject(format!(
+            "种子清单 `generation_executed=false`：{}。这份产物的每条正文都是未生成标记，\
+             不是模型输出——生成期允许如实降级出它，发布期不允许把它发给用户",
+            manifest
+                .not_executed_reason
+                .as_deref()
+                .unwrap_or("清单未给出原因")
+        ));
+    }
+    if let Some(reason) = manifest.not_executed_reason.as_deref() {
+        return reject(format!(
+            "种子清单同时声明 `generation_executed=true` 与未执行原因 `{reason}`；\
+             两者只能有一个成立，这份清单是被改过的"
+        ));
+    }
+
+    let Some(digest) = manifest.model_digest.as_deref() else {
+        return reject(
+            "种子清单没有 `model_digest`：真跑过推理的运行时报得出权重摘要，没跑过的报不出。\
+             缺它的产物无法回答「由哪个权重产生」，不得发布"
+                .to_owned(),
+        );
+    };
+    if digest.len() != MODEL_DIGEST_HEX_LEN
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return reject(format!(
+            "种子清单的 `model_digest` `{digest}` 不是 {MODEL_DIGEST_HEX_LEN} 位小写十六进制；\
+             它必须能与公开权重仓库的摘要逐字互校"
+        ));
+    }
+
+    OpenWeightModel::new(&manifest.model, &manifest.model_license, &manifest.provider)?;
+
+    if manifest.template_version != expected.template_version {
+        return reject(format!(
+            "种子按模板 {} 生成，本次发布的代码用模板 {}；提示词换了而种子没重生成，\
+             发出去的正文与应用的缓存键对不上",
+            manifest.template_version, expected.template_version
+        ));
+    }
+    if manifest.corpus_version != expected.corpus_version {
+        return reject(format!(
+            "种子声明 corpus_version {}，本次待发布语料是 {}；\
+             版本不一致的种子会被导入侧的兼容矩阵拒绝",
+            manifest.corpus_version, expected.corpus_version
+        ));
+    }
+    if manifest.appreciations_sha256 != expected.seed_sha256 {
+        return reject(format!(
+            "种子文件实测摘要 {} 与清单声明 {} 不同；清单描述的不是这个文件",
+            expected.seed_sha256, manifest.appreciations_sha256
+        ));
+    }
+    if manifest.record_count != records.len() {
+        return reject(format!(
+            "清单声明 {} 条，种子文件里实有 {} 条",
+            manifest.record_count,
+            records.len()
+        ));
+    }
+    if records.is_empty() {
+        return reject("种子里没有任何记录；空种子发出去等于没有随包赏析".to_owned());
+    }
+
+    // 逐条先过生成期那道门禁，不在这里另抄一遍空字段、`reviewed`、重复键与许可的判据：
+    // 两处判据一旦分叉就会出现「生成时被拒、发布时放行」的缝，而那条缝的方向恰好最危险。
+    let mut replay = PregeneratedDataset::new(true);
+    for record in records {
+        replay.push(record.clone())?;
+    }
+
+    let mut seen_texts = BTreeSet::new();
+    for record in records {
+        let text = record.text.trim();
+        if text.contains(NOT_GENERATED_MARKER) {
+            return reject(format!(
+                "记录 `{}` 的正文含未生成标记；`push` 只拦逐字相等，\
+                 发布侧要拦的是「标记被塞在一段话里」这种形态",
+                record.stable_id
+            ));
+        }
+        let chars = text.chars().count();
+        if chars < MIN_APPRECIATION_CHARS {
+            return reject(format!(
+                "记录 `{}` 的正文只有 {chars} 字，短于发布下界 {MIN_APPRECIATION_CHARS} 字；\
+                 那不是一段赏析",
+                record.stable_id
+            ));
+        }
+        if !seen_texts.insert(text.to_owned()) {
+            return reject(format!(
+                "记录 `{}` 的正文与另一条逐字相同；把一段话复制成整份数据集是最省事的伪造形态，\
+                 而真实推理不会对不同的诗给出同一段文字",
+                record.stable_id
+            ));
+        }
+        if let Some(times) = self_repetition(text) {
+            return reject(format!(
+                "记录 `{}` 的正文是同一段文字重复 {times} 次凑出来的长度；\
+                 那是为了越过字数下界而拼的模板，不是赏析",
+                record.stable_id
+            ));
+        }
+
+        for (field, actual, declared) in [
+            ("model", record.model.as_str(), manifest.model.as_str()),
+            (
+                "model_license",
+                record.model_license.as_str(),
+                manifest.model_license.as_str(),
+            ),
+            (
+                "provider",
+                record.provider.as_str(),
+                manifest.provider.as_str(),
+            ),
+            (
+                "template_version",
+                record.template_version.as_str(),
+                expected.template_version,
+            ),
+        ] {
+            if actual != declared {
+                return reject(format!(
+                    "记录 `{}` 的 {field} 是 `{actual}`，与清单/本代码声明的 `{declared}` 不同",
+                    record.stable_id
+                ));
+            }
+        }
+
+        let Some(recomputed) = expected.grounding.get(&record.stable_id) else {
+            return reject(format!(
+                "记录 `{}` 不在本次待发布语料解析出的覆盖集里；\
+                 种子只能覆盖这次真的要发的那些作品",
+                record.stable_id
+            ));
+        };
+        if &record.grounding_digest != recomputed {
+            return reject(format!(
+                "记录 `{}` 的 grounding_digest 是 {}，而用待发布语料重算得到 {recomputed}；\
+                 这条赏析不是对着这次要发的文本写的",
+                record.stable_id, record.grounding_digest
+            ));
+        }
+    }
+
+    let present = records
+        .iter()
+        .map(|record| record.stable_id.clone())
+        .collect::<BTreeSet<_>>();
+    let missing = expected
+        .grounding
+        .keys()
+        .filter(|id| !present.contains(*id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return reject(format!(
+            "待发布语料解析出 {} 首，种子只覆盖 {} 首，缺 {missing:?}；\
+             部分覆盖的种子会让用户在剩下那些作品上看不到随包赏析",
+            expected.grounding.len(),
+            present.len()
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
