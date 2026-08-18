@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "generated_date": "2026-08-17",
-  "commit_sha": "8a589760263cf7edf13dca3a91d7f3baed7e270b",
+  "generated_date": "2026-08-18",
+  "commit_sha": "889bdbd0955ecbea588db0fb93c55b3a2a823f02",
   "binding_verdict": "uniffi_native",
   "all_pass": false,
-  "executed_pass": 4,
-  "failed": 1,
+  "executed_pass": 5,
+  "failed": 0,
   "not_executed": 2,
   "apk_ceiling_bytes": 83886080,
   "universal_apk_default": false,
   "build_commands": {
-    "android": "cd mobile/android && for abi in arm64-v8a armeabi-v7a x86 x86_64; do gradle -Pyunjian.abis=$abi :app:assembleRelease; done && gradle -Pyunjian.abis=arm64-v8a,armeabi-v7a,x86,x86_64 :app:bundleRelease",
+    "android": "cd mobile/android && mkdir -p ../../target/mobile/dist && for abi in arm64-v8a armeabi-v7a x86 x86_64; do gradle -Pyunjian.abis=$abi :app:assembleRelease || exit 1; cp app/build/outputs/apk/release/app-release.apk ../../target/mobile/dist/yunjian-$abi-release.apk || exit 1; done && gradle -Pyunjian.abis=arm64-v8a,armeabi-v7a,x86,x86_64 :app:bundleRelease && cp app/build/outputs/bundle/release/app-release.aab ../../target/mobile/dist/yunjian-release.aab",
     "ios": "cd mobile/ios && xcodegen generate && xcodebuild archive -scheme Yunjian -destination 'generic/platform=iOS' -archivePath build/Yunjian.xcarchive && xcodebuild -exportArchive -archivePath build/Yunjian.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath build/export"
   },
   "tool_probes": {
@@ -19,8 +19,8 @@
       "detail": "No such file or directory (os error 2)"
     },
     "gradle": {
-      "available": false,
-      "detail": "exit=Some(1); stdout=; stderr=mise ERROR No version is set for shim: gradle\nSet a global default version with one of the following:\nmise use -g gradle@8.13.0\nmise ERROR Version: 2026.7.7 linux-x64 (2026-07-15)\nmise ERROR Run with --verbose or MISE_VERBOSE=1 for more information"
+      "available": true,
+      "detail": "exit=Some(0); stdout=------------------------------------------------------------\nGradle 8.13\n------------------------------------------------------------\n\nBuild time:    2025-02-25 09:22:14 UTC\nRevision:      073314332697ba45c16c0a0ce1891fa6794179ff\n\nKotlin:        2.0.21\nGroovy:        3.0.22\nAnt:           Apache Ant(TM) version 1.10.15 compiled on August 25 2024\nLauncher JVM:  21.0.10 (Amazon.com Inc. 21.0.10+7-LTS)\nDaemon JVM:    /config/.local/share/mise/installs/java/corretto-21.0.10.7.1 (no JDK specified, using current Java home)\nOS:            Linux 6.17.0-1019-aws amd64; stderr="
     },
     "sdkmanager": {
       "available": false,
@@ -39,7 +39,7 @@
     {
       "kind": "apk",
       "path": "target/mobile/dist/yunjian-arm64-v8a-release.apk",
-      "bytes": 42699280,
+      "bytes": 48296448,
       "abi": "arm64-v8a",
       "archive_entries_scanned": 115,
       "forbidden_entries": []
@@ -47,7 +47,7 @@
     {
       "kind": "apk",
       "path": "target/mobile/dist/yunjian-armeabi-v7a-release.apk",
-      "bytes": 30656370,
+      "bytes": 34637334,
       "abi": "armeabi-v7a",
       "archive_entries_scanned": 115,
       "forbidden_entries": []
@@ -55,15 +55,23 @@
     {
       "kind": "aab",
       "path": "target/mobile/dist/yunjian-release.aab",
-      "bytes": 86503972,
+      "bytes": 66306282,
       "abi": null,
-      "archive_entries_scanned": 153,
+      "archive_entries_scanned": 145,
+      "forbidden_entries": []
+    },
+    {
+      "kind": "apk",
+      "path": "target/mobile/dist/yunjian-x86-release.apk",
+      "bytes": 49228774,
+      "abi": "x86",
+      "archive_entries_scanned": 115,
       "forbidden_entries": []
     },
     {
       "kind": "apk",
       "path": "target/mobile/dist/yunjian-x86_64-release.apk",
-      "bytes": 46852187,
+      "bytes": 50729915,
       "abi": "x86_64",
       "archive_entries_scanned": 115,
       "forbidden_entries": []
@@ -72,14 +80,14 @@
   "assertions": [
     {
       "id": "android_per_abi_apks",
-      "verdict": "FAIL",
-      "detail": "要求四个单 ABI APK 且禁 universal；实际 3 个（arm64-v8a, armeabi-v7a, x86_64），universal=false；缺 x86；x86 的 i686-linux-android 是否有上游 sherpa-onnx 预编译产物见 crates/yunjian-voice/build.rs 的 PREBUILT_TARGETS，没有时带 voice 的该 ABI 产物需源码编译 sherpa-onnx（cmake >= 3.13 与 C++17），这是分发 ABI 集与「移动端默认开 voice」两个决定之间的冲突，需用户裁量",
+      "verdict": "PASS",
+      "detail": "四个 split APK 齐备：arm64-v8a, armeabi-v7a, x86, x86_64",
       "executable_when": null
     },
     {
       "id": "android_aab",
       "verdict": "PASS",
-      "detail": "产物存在：target/mobile/dist/yunjian-release.aab（86503972 bytes）",
+      "detail": "产物存在：target/mobile/dist/yunjian-release.aab（66306282 bytes）",
       "executable_when": null
     },
     {
@@ -91,19 +99,19 @@
     {
       "id": "artifact_sizes_measured",
       "verdict": "NOT EXECUTED",
-      "detail": "产物集不完整：APK 3 / 4，AAB 1 / 1，iOS archive 0 / 1；未用估算补空值",
+      "detail": "产物集不完整：APK 4 / 4，AAB 1 / 1，iOS archive 0 / 1；未用估算补空值",
       "executable_when": "在 Android 与 macOS 签名 runner 上完成构建，把全部产物下载到同一目录后重跑"
     },
     {
       "id": "apk_ceiling",
       "verdict": "PASS",
-      "detail": "3 个 APK 均不超过 83886080 bytes",
+      "detail": "4 个 APK 均不超过 83886080 bytes",
       "executable_when": null
     },
     {
       "id": "packaged_assets",
       "verdict": "PASS",
-      "detail": "扫描 4 个 ZIP 产物，未发现 corpus .db 或语音模型",
+      "detail": "扫描 5 个 ZIP 产物，未发现 corpus .db 或语音模型",
       "executable_when": null
     },
     {
