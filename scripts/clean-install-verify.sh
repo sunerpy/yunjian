@@ -101,17 +101,28 @@ phase_online() {
     YUNJIAN_BASE_URL="${YUNJIAN_MIRROR_BASE}" \
     YUNJIAN_INSTALL_DIR="${HOME}/.local/bin" \
     sh /work/scripts/install.sh >/tmp/install.log 2>&1; then
-    if [ -x "${BIN}" ]; then
+    # 判据是**跑得起来**，不是 `-x`。`-x` 只看权限位：2026-08-18 在 `alpine:3.20`
+    # （musl）上实测，`install.sh` 回退到 gnu 归档后退出 0、装出的文件 `-x` 为真，
+    # 而执行它得到 `sh: not found`（缺 glibc 的 ELF interpreter）。用 `-x` 判 PASS
+    # 会把一次装不出可用产品的安装记成成功。
+    #
+    # 退出码必须取自 `${BIN}` 本身。写成 `if v="$("${BIN}" --version | head -1)"`
+    # 会拿到 `head` 的退出码——它在被测文件根本跑不起来时照样是 0，于是那条
+    # 「装出来但跑不起来」的失败会被这层管道吃掉，重新变成 PASS。
+    if "${BIN}" --version >/tmp/version.log 2>&1; then
       observe install_script_installs PASS \
-        "install.sh 退出 0，$(${BIN} --version 2>/dev/null | head -1) 已装到 ${BIN}"
+        "install.sh 退出 0，$(head -1 /tmp/version.log) 已装到 ${BIN} 且可执行"
+    elif [ -e "${BIN}" ]; then
+      observe install_script_installs FAIL \
+        "install.sh 退出 0 并落下 ${BIN}，但执行它失败：$(flatten </tmp/version.log)"
     else
-      observe install_script_installs FAIL "install.sh 退出 0 但 ${BIN} 不可执行"
+      observe install_script_installs FAIL "install.sh 退出 0 但 ${BIN} 不存在"
     fi
   else
     observe install_script_installs FAIL "install.sh 非零退出：$(tail -5 /tmp/install.log | flatten)"
   fi
 
-  if [ ! -x "${BIN}" ]; then
+  if ! "${BIN}" --version >/dev/null 2>&1; then
     observe search_before_fetch_exits_3 "NOT EXECUTED" "没有可执行文件，后续断言无法执行"
     observe corpus_fetch_downloads_both "NOT EXECUTED" "没有可执行文件"
     observe assets_status_reports_both "NOT EXECUTED" "没有可执行文件"
@@ -261,7 +272,7 @@ phase_online() {
 # ----------------------------------------------------------------- offline 段
 
 phase_offline() {
-  if [ ! -x "${BIN}" ]; then
+  if ! "${BIN}" --version >/dev/null 2>&1; then
     observe offline_no_network_proved "NOT EXECUTED" "没有可执行文件"
     observe offline_dictionary_commands "NOT EXECUTED" "没有可执行文件"
     return 0

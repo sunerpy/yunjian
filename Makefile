@@ -293,9 +293,27 @@ corpus-artifact: ## 构建并打包语料工件（需三个上游检出，约 25
 #
 # `MIRROR_BASE` 指向一个提供发布资产的 HTTP 前缀。用本地镜像而不是 GitHub 是刻意的：
 # 验的是安装脚本与工件，不是 GitHub 的可用性；且切 tag 之前就能先验一遍。
-CLEAN_INSTALL_IMAGE := ubuntu:24.04
+#
+# 净机镜像必须**自带** curl 或 wget：`install.sh` 二者都没有时在第一步就中止，而在容器里
+# 装一个会让掉「净」这个性质（被我们改造过的容器验不了「用户在干净机器上装得上」）。
+# 2026-08-18 逐个实测：`ubuntu:24.04` 与 `debian:12` 两者都没有；`fedora:41` 自带 curl
+# （glibc 2.40）；`alpine:3.20` 自带 BusyBox wget（musl）。缺省取 fedora，
+# 用 `CLEAN_INSTALL_IMAGE=alpine:3.20 CLEAN_INSTALL_SLUG=alpine` 再跑一遍验 musl 侧。
+CLEAN_INSTALL_IMAGE ?= fedora:41
+CLEAN_INSTALL_SLUG ?=
 CLEAN_INSTALL_PROFILE := $(CURDIR)/target/clean-install-profile
-CLEAN_INSTALL_OBS := $(CURDIR)/target/clean-install-observed
+# 观测目录按镜像分开。共用一个目录时后一个镜像的 `rm -f *.tsv` 会把前一个的观测删掉，
+# 于是前一份报告再也重算不出来——同一天在两个净镜像上各跑一遍是常态，这个覆盖必然发生。
+CLEAN_INSTALL_OBS := $(CURDIR)/target/clean-install-observed$(if $(CLEAN_INSTALL_SLUG),-$(CLEAN_INSTALL_SLUG),)
+
+# 容器里要清掉的代理变量。docker CLI 会把 `~/.docker/config.json` 里的 `proxies.default`
+# 注入**每个**容器，本机注的是 `http://127.0.0.1:1080`——那个地址在容器命名空间里指向容器
+# 自己，于是 wget/curl 报「can't connect to remote host (127.0.0.1)」，读起来像本地镜像挂了。
+# 清掉它是**移除宿主带进来的污染**而不是改造净机：一台真实的干净机器不会有一个指向不存在
+# 代理的 http_proxy。`-e http_proxy=` 置空不够——实测 BusyBox wget 对空值仍走代理路径，
+# 必须在容器内 `unset`。
+CLEAN_INSTALL_UNSET_PROXY := unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY \
+	all_proxy ALL_PROXY no_proxy NO_PROXY;
 
 clean-install: ## 在净容器里验收安装、取数、离线可用与 provider 计数（需 docker + MIRROR_BASE）
 	@test -n "$(MIRROR_BASE)" -a -n "$(ARTIFACTS_DIR)" || { \
@@ -313,18 +331,32 @@ clean-install: ## 在净容器里验收安装、取数、离线可用与 provide
 	@mkdir -p "$(CLEAN_INSTALL_PROFILE)"
 	@docker run --rm -v "$(CLEAN_INSTALL_PROFILE)":/p $(CLEAN_INSTALL_IMAGE) \
 		sh -c 'rm -rf /p/* /p/.[!.]* 2>/dev/null; test "$$(ls -A /p | wc -l)" = 0'
+	@echo "==> 探测净机自带的下载器（不安装任何东西）"
+	@downloader=$$(docker run --rm $(CLEAN_INSTALL_IMAGE) \
+		sh -c 'command -v curl || command -v wget || echo NONE'); \
+	if [ "$$downloader" = NONE ]; then \
+		echo "净机 $(CLEAN_INSTALL_IMAGE) 既无 curl 也无 wget：install.sh 会在第一步中止。" >&2; \
+		echo "不要在容器里装一个——那让掉「净」这个性质。换一个自带下载器的镜像：" >&2; \
+		echo "  make clean-install CLEAN_INSTALL_IMAGE=fedora:41 ...      # 自带 curl（glibc）" >&2; \
+		echo "  make clean-install CLEAN_INSTALL_IMAGE=alpine:3.20 ...    # 自带 wget（musl）" >&2; \
+		exit 1; \
+	fi; \
+	echo "$$downloader" > "$(CLEAN_INSTALL_OBS)/downloader.txt"; \
+	echo "自带 $$downloader"
 	@echo "==> 联网净机容器"
 	@docker run --rm -v "$(CURDIR)":/work:ro -v "$(CLEAN_INSTALL_OBS)":/observed \
 		-v "$(CLEAN_INSTALL_PROFILE)":/root \
 		-e YUNJIAN_PHASE=online -e YUNJIAN_MIRROR_BASE="$(MIRROR_BASE)" \
 		-e YUNJIAN_OBSERVED=/observed/online.tsv \
-		$(CLEAN_INSTALL_IMAGE) sh -c 'export HOME=/root; sh /work/scripts/clean-install-verify.sh'
+		$(CLEAN_INSTALL_IMAGE) sh -c '$(CLEAN_INSTALL_UNSET_PROXY) export HOME=/root; \
+			sh /work/scripts/clean-install-verify.sh'
 	@echo "==> 断网净机容器（--network none）"
 	@docker run --rm --network none -v "$(CURDIR)":/work:ro -v "$(CLEAN_INSTALL_OBS)":/observed \
 		-v "$(CLEAN_INSTALL_PROFILE)":/root \
 		-e YUNJIAN_PHASE=offline -e YUNJIAN_MIRROR_BASE="$(MIRROR_BASE)" \
 		-e YUNJIAN_OBSERVED=/observed/offline.tsv \
-		$(CLEAN_INSTALL_IMAGE) sh -c 'export HOME=/root; sh /work/scripts/clean-install-verify.sh'
+		$(CLEAN_INSTALL_IMAGE) sh -c '$(CLEAN_INSTALL_UNSET_PROXY) export HOME=/root; \
+			sh /work/scripts/clean-install-verify.sh'
 	@echo "==> 裁决并写报告"
 	@$(CARGO) run -p xtask --release -- clean-install-report \
 		--observed "$(CLEAN_INSTALL_OBS)/online.tsv" \
@@ -332,8 +364,14 @@ clean-install: ## 在净容器里验收安装、取数、离线可用与 provide
 		--artifacts-dir "$(ARTIFACTS_DIR)" \
 		--image "$(CLEAN_INSTALL_IMAGE)" \
 		--image-digest "$$(docker image inspect $(CLEAN_INSTALL_IMAGE) --format '{{.Id}}')" \
+		--bundled-downloader "$$(cat "$(CLEAN_INSTALL_OBS)/downloader.txt")（镜像预装，未在容器里安装任何软件包）" \
+		--os-release "$$(docker run --rm $(CLEAN_INSTALL_IMAGE) \
+			sh -c '. /etc/os-release 2>/dev/null && echo "$$PRETTY_NAME" || echo unknown')" \
+		--kernel "$$(docker run --rm $(CLEAN_INSTALL_IMAGE) uname -sr)" \
+		--preexisting-home-entries 0 \
 		--offline-isolation 'docker run --network none' \
 		--date "$$(date -u +%Y-%m-%d)" \
+		--slug "$(CLEAN_INSTALL_SLUG)" \
 		--commit-sha "$$(git rev-parse HEAD)"
 
 hooks: ## 安装 git hooks：pre-commit 做格式化，pre-push 跑门禁

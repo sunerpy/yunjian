@@ -263,6 +263,10 @@ enum Commands {
         /// 镜像摘要。
         #[arg(long, default_value = "")]
         image_digest: String,
+        /// 净机**自带**的下载器（`install.sh` 要 curl 或 wget 之一）。为了让验收变绿而
+        /// 在容器里装一个会让掉「净」这个性质，所以这里记的是镜像原本就有什么。
+        #[arg(long, default_value = "")]
+        bundled_downloader: String,
         /// 容器内自报的系统。
         #[arg(long, default_value = "")]
         os_release: String,
@@ -281,6 +285,9 @@ enum Commands {
         /// 报告日期，构成文件名。
         #[arg(long)]
         date: String,
+        /// 文件名后缀，用来区分同一天在不同净镜像上的多次跑批；留空则不加后缀。
+        #[arg(long, default_value = "")]
+        slug: String,
         /// 被测提交。
         #[arg(long, default_value = "")]
         commit_sha: String,
@@ -489,12 +496,14 @@ fn main() -> anyhow::Result<()> {
             artifacts_dir,
             image,
             image_digest,
+            bundled_downloader,
             os_release,
             kernel,
             preexisting_home_entries,
             offline_isolation,
             out_dir,
             date,
+            slug,
             commit_sha,
         }) => clean_install_report::run(
             observed,
@@ -503,12 +512,14 @@ fn main() -> anyhow::Result<()> {
             artifacts_dir,
             image,
             image_digest,
+            bundled_downloader,
             os_release,
             kernel,
             preexisting_home_entries,
             offline_isolation,
             out_dir,
             date,
+            slug,
             commit_sha,
         ),
         Some(Commands::AssetsManifest {

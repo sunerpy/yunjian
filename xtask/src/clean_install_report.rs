@@ -14,22 +14,37 @@
 //! 沿用 todo 67：**零 FAIL 且零 NOT EXECUTED**。任何一条未执行都让它变 `false`，
 //! 并在报告顶部显著列出未执行项。它**不能**被读成「这个产品在所有环境上都过了」。
 //!
-//! # 联网段当前在本机跑不起来，且不该用装包绕过
+//! # 净机必须**自带**下载器，而不是被我们装上下载器
 //!
 //! 2026-08-17 实测：`ubuntu:24.04`（digest `sha256:561618e2…`，与 2026-08-14 那份报告
 //! 记录的**同一个**）里 curl、wget、ca-certificates **都不在场**，于是 `install.sh` 在
 //! `detect_downloader` 就中止（「需要 curl 或 wget 之一来下载发布产物」），
-//! `install_script_installs` FAIL，其后八条连锁 NOT EXECUTED。
+//! `install_script_installs` FAIL，其后十条连锁 NOT EXECUTED。
 //!
 //! **不能在容器里 `apt-get install curl` 绕过**：那让掉的正是「净」这个性质 ——
 //! 一个被我们改造过的容器验不了「用户在一台干净机器上按 README 装得上」。
 //! 同理也不能把 `install.sh` 改成自带下载器：产品对用户环境的要求是它的一部分，
 //! 为了让验收变绿而放宽要求等于把门禁谈掉。
 //!
-//! 所以宿主段那三条断言（两个 checksum 与统一清单解析）可以就地重算，而联网/断网段
-//! 需要一个**自带 curl 或 wget 的净机**。`provider_zero_calls_for_shipped_poem` 的每个
-//! 分支因此另配了一组只吃合成计数的注入测试（见本文件末尾）：判据的每一次改动都必须有人
-//! 证明它真的会红，而这件事不该依赖一次要 docker + 本地镜像 + 完整安装的端到端跑。
+//! 出路因此是**换一个自带下载器的净镜像**。2026-08-18 逐个实测：
+//!
+//! | 镜像 | 自带下载器 | libc |
+//! | --- | --- | --- |
+//! | `ubuntu:24.04` | 无 | glibc |
+//! | `debian:12` | 无 | glibc |
+//! | `fedora:41` | `curl` | glibc 2.40 |
+//! | `alpine:3.20` | BusyBox `wget` | musl |
+//!
+//! 于是 `CLEAN_INSTALL_IMAGE` 变成可覆盖的，并在两个镜像上各跑一遍：`fedora:41` 验
+//! 「静态 musl 产物落在 glibc 发行版上跑得起来」，`alpine:3.20` 验「落在 musl 发行版上
+//! 跑得起来」。**发布矩阵里 Linux 只有 musl 两条腿**（见 `release-please.yml`），
+//! 所以本地镜像也只放 musl 归档——放一份线上不存在的 gnu 归档会让验收验的不是发布产物。
+//! `bundled_downloader` 是报告里的一个显式字段：净机自带什么下载器必须写下来，
+//! 否则「这次为什么能装上」下一次就无从复现。
+//!
+//! `provider_zero_calls_for_shipped_poem` 的每个分支另配了一组只吃合成计数的注入测试
+//! （见本文件末尾）：判据的每一次改动都必须有人证明它真的会红，而这件事不该依赖一次要
+//! docker + 本地镜像 + 完整安装的端到端跑。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -194,6 +209,10 @@ struct Environment {
     image: String,
     /// 镜像摘要，比 tag 更能定位到底跑的是哪一版。
     image_digest: String,
+    /// 净机**自带**的下载器。`install.sh` 要求 curl 或 wget 二者有其一，而这个要求是
+    /// 产品对用户环境的一部分：镜像里没有就装不上，我们也不会为了让验收变绿去装一个。
+    /// 因此「这次能装上是因为镜像自带什么」必须落在报告里，否则下一次无从复现。
+    bundled_downloader: String,
     /// 容器内自报的系统。
     os_release: String,
     /// 内核。
@@ -239,12 +258,14 @@ pub fn run(
     artifacts_dir: PathBuf,
     image: String,
     image_digest: String,
+    bundled_downloader: String,
     os_release: String,
     kernel: String,
     preexisting_home_entries: u32,
     offline_isolation: String,
     out_dir: PathBuf,
     date: String,
+    slug: String,
     commit_sha: String,
 ) -> Result<()> {
     emit("== 净机验收报告 ==");
@@ -438,6 +459,7 @@ pub fn run(
         environment: Environment {
             image,
             image_digest,
+            bundled_downloader,
             os_release,
             kernel,
             preexisting_home_entries,
@@ -454,7 +476,13 @@ pub fn run(
     };
 
     std::fs::create_dir_all(&out_dir)?;
-    let stem = format!("clean-install-{date}");
+    // 同一天在多个净镜像上各跑一遍是常态（一个 glibc、一个 musl），文件名里没有镜像
+    // 标识时后一次会静默覆盖前一次，两份结论只剩一份。
+    let stem = if slug.is_empty() {
+        format!("clean-install-{date}")
+    } else {
+        format!("clean-install-{date}-{slug}")
+    };
     let json_path = out_dir.join(format!("{stem}.json"));
     let mut json = serde_json::to_string_pretty(&report)?;
     json.push('\n');
@@ -657,6 +685,11 @@ fn render_markdown(report: &Report) -> String {
     let _ = writeln!(out, "| --- | --- |");
     let _ = writeln!(out, "| 镜像 | `{}` |", report.environment.image);
     let _ = writeln!(out, "| 镜像摘要 | `{}` |", report.environment.image_digest);
+    let _ = writeln!(
+        out,
+        "| 自带下载器 | {} |",
+        report.environment.bundled_downloader
+    );
     let _ = writeln!(out, "| 容器内系统 | {} |", report.environment.os_release);
     let _ = writeln!(out, "| 内核 | `{}` |", report.environment.kernel);
     let _ = writeln!(
@@ -677,7 +710,16 @@ fn render_markdown(report: &Report) -> String {
         "> [!NOTE]\n\
          > 净机是**容器**而不是全新物理机：内核与宿主共用。因此「无先前状态」「无 GPU」\n\
          > 「首启派生真的跑了一遍」这些事实在这里成立；而依赖特定发行版包管理、桌面会话\n\
-         > 或真实硬件的事实不成立，本报告不对它们下结论。\n"
+         > 或真实硬件的事实不成立，本报告不对它们下结论。\n\
+         >\n\
+         > 容器里**没有安装任何软件包**。`install.sh` 要求机器上有 curl 或 wget 之一，\n\
+         > 这个要求是产品对用户环境的一部分：为了让验收变绿而 `apt-get install curl`\n\
+         > 等于把要求谈掉，之后这份报告就不再能回答「用户在一台干净机器上装得上吗」。\n\
+         > 上表「自带下载器」一栏记的就是镜像**原本**有什么。\n\
+         >\n\
+         > 净机取的是**本地镜像**里那份待发布工件，即下面「工件清单」列出的那些摘要。\n\
+         > 因此本报告的结论只对这些摘要成立：某个已发布 Release 若指向的是**别的**摘要，\n\
+         > 用户下载到的就不是这里验过的东西，那件事要另行核实，本报告不代它下结论。\n"
     );
 
     let _ = writeln!(out, "## 汇总\n");
