@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-18",
+  "commit_sha": "3f5853fc67f83e875db246567f1101f11ace36fc",
+  "app_version": "0.1.0",
+  "environment": {
+    "image": "fedora:41",
+    "image_digest": "sha256:f1a3fab47bcb3c3ddf3135d5ee7ba8b7b25f2e809a47440936212a3a50957f3d",
+    "bundled_downloader": "/usr/bin/curl（镜像预装，未在容器里安装任何软件包）",
+    "os_release": "Fedora Linux 41 (Container Image)",
+    "kernel": "Linux 6.17.0-1019-aws",
+    "preexisting_home_entries": 0,
+    "offline_isolation": "docker run --network none"
+  },
+  "all_pass": true,
+  "declared": 17,
+  "passed": 17,
+  "failed": 0,
+  "not_executed": 0,
+  "artifacts": [
+    {
+      "name": "appreciations.json",
+      "bytes": 22612,
+      "sha256": "18aa82cd6cdf0a480f14cf216673ce864b4fc9ec15e3f49de95f676eb9ae4287"
+    },
+    {
+      "name": "appreciations.json.sha256",
+      "bytes": 85,
+      "sha256": "55ee35db8bbb8edc18aebe1309e01bf49425aa9b90195f72819ee1eeb833c006"
+    },
+    {
+      "name": "assets_manifest.json",
+      "bytes": 508,
+      "sha256": "33aed7595a9a2e62bd67ba619314912ca1e223d71b6badf16ef8fdc929e17170"
+    },
+    {
+      "name": "yunjian-corpus-0.1.0.db.gz",
+      "bytes": 221353721,
+      "sha256": "18d2e438d43bec61b7549a96b635c9a2a25e95badd31634fc9da74fad961c723"
+    },
+    {
+      "name": "yunjian-corpus-0.1.0.db.gz.sha256",
+      "bytes": 93,
+      "sha256": "8f63219ffa2005e6b1109d0593f7abad85b9c34ad82cc0e3362ef65deb879b8b"
+    }
+  ],
+  "provider_calls": {
+    "cold_calls": 1,
+    "cold_calls_after_repeat": 1,
+    "cold_poem": "0000168330a10ebb",
+    "cold_source": "generated",
+    "fixture_seed": true,
+    "fixture_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）",
+    "released_seed_calls": 0,
+    "released_seed_generation_executed": true,
+    "released_seed_import_path": "AppreciationCache::replace_shipped_seed",
+    "released_seed_model": "deepseek-r1:7b",
+    "released_seed_model_license": "MIT",
+    "released_seed_poem": "062f574ab2986a9b",
+    "released_seed_record_count": 16,
+    "released_seed_source": "shipped",
+    "released_seed_text_chars": 368,
+    "released_seed_text_has_marker": false,
+    "released_seed_text_head": "《春夜喜雨》是唐代诗人杜甫的一首七言绝句，此诗以简洁明快的笔触描绘了春夜雨后的景象，表达了诗人对自然之美的热爱和对生活的…",
+    "released_seed_text_matches_dataset": true,
+    "shipped_calls": 0,
+    "shipped_poem": "00001539ed2f02b5",
+    "shipped_source": "shipped",
+    "shipped_text": "随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）"
+  },
+  "assertions": [
+    {
+      "id": "corpus_artifact_checksum",
+      "what": "语料工件的 SHA-256 与随附 `.sha256` 一致（`sha256sum -c`）",
+      "phase": "host",
+      "verdict": "PASS",
+      "detail": "yunjian-corpus-0.1.0.db.gz（221353721 字节）实测 sha256 18d2e438d43bec61b7549a96b635c9a2a25e95badd31634fc9da74fad961c723 与 yunjian-corpus-0.1.0.db.gz.sha256 记录一致"
+    },
+    {
+      "id": "seed_artifact_checksum",
+      "what": "赏析种子的 SHA-256 与随附 `.sha256` 一致",
+      "phase": "host",
+      "verdict": "PASS",
+      "detail": "appreciations.json（22612 字节）实测 sha256 18aa82cd6cdf0a480f14cf216673ce864b4fc9ec15e3f49de95f676eb9ae4287 与 appreciations.json.sha256 记录一致"
+    },
+    {
+      "id": "assets_manifest_accepted_by_app_parser",
+      "what": "统一资产清单被应用运行期那个解析器接受（`AssetsManifest::parse`）",
+      "phase": "host",
+      "verdict": "PASS",
+      "detail": "`AssetsManifest::parse` 接受 /config/refresh-logs/artifacts/assets_manifest.json；语料 schema 2 / corpus 0.1.0，种子模板 1.0.0 / 16 条"
+    },
+    {
+      "id": "install_script_installs",
+      "what": "净机上 `install.sh` 校验摘要后装出可执行的 `yunjian`",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "install.sh 退出 0，yunjian 0.1.0 已装到 /root/.local/bin/yunjian 且可执行"
+    },
+    {
+      "id": "search_before_fetch_exits_3",
+      "what": "未取语料就 `search` 退出 3（而非 1）且消息指名 `corpus fetch`",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "退出码 3 且消息指名 corpus fetch：2026-08-18T01:52:50.266868615Z INFO yunjian_core::logger: 日志已初始化 level=\"info\" json=false timezone=\"local\" to_file=true dir=/root/.local/share/yunjian/logs 2026-08-18T01:52:50.267032775Z ERROR yunjian_cli: 命令失败 code=CorpusUnavailable 语料库错误：找不"
+    },
+    {
+      "id": "corpus_fetch_downloads_both",
+      "what": "`corpus fetch` 下载并校验语料与赏析种子两件工件后退出 0",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "corpus fetch 退出 0：语料库：/root/.local/share/yunjian/corpus/corpus.db 数据版本：0.1.0 · schema 2 · 474162 首 · 构建于 2026-08-10T00:00:00Z 索引形态：detail=full · 派生分发=first_launch · 随包范围=tang-song 来源：本次从归档落地（本次运行落地） 派生结构：就绪"
+    },
+    {
+      "id": "assets_status_reports_both",
+      "what": "`assets status --json` 报出语料版本、种子版本与记录数",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "assets status --json：{\"schema_version\":1,\"command\":\"assets.status\",\"status\":\"ok\",\"warnings\":[],\"data\":{\"corpus_path\":\"/root/.local/share/yunjian/corpus/corpus.db\",\"corpus_version\":\"0.1.0\",\"record_count\":16,\"seed_corpus_version\":\"0.1.0\",\"seed_template_version\":\"1.0.0\",\"stale_count\":0}}"
+    },
+    {
+      "id": "search_returns_results",
+      "what": "`search 明月` 返回结果并退出 0",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "search 明月 退出 0：{\"schema_version\":1,\"command\":\"search\",\"status\":\"ok\",\"warnings\":[],\"data\":{\"filters\":{\"author\":null,\"dynasty\":null,\"rhyme_book\":null},\"hits\":[{\"author\":\"冯延巳\",\"dynasty\":\"唐\",\"matched_line_index\":8,\"poem_id\":\"28f16b71dd668b70\",\"snippet\":{\"highlights\":[{\"end\":2,\"start\":0}],\"text\":\"明月\"},"
+    },
+    {
+      "id": "recite_scores_round",
+      "what": "`recite <id> --mode cloze` 对一轮打字作答给出评分并退出 0",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "recite 28f16b71dd668b70 --mode cloze 退出 0 并给出评分：{\"schema_version\":1,\"command\":\"recite\",\"status\":\"ok\",\"warnings\":[],\"data\":{\"answer\":\"床前明月光疑是地上霜举头望明月低头思故乡\",\"author\":\"冯延巳\",\"database\":\"/root/.local/share/yunjian/recite.db\",\"dynasty\":\"唐\",\"first_attempt\":true,\""
+    },
+    {
+      "id": "mcp_handshake_and_tools_list",
+      "what": "`yunjian mcp` 完成 `initialize` 握手并回应 `tools/list`",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "initialize 回了 serverInfo，tools/list 回了工具表（退出码 0）：rmcp search_poem"
+    },
+    {
+      "id": "shipped_hit_without_key",
+      "what": "**没有配置任何 API key** 时，随包集里的作品返回 `source=shipped`",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "未配置任何 key，appreciate_poem(062f574ab2986a9b) 返回 source=shipped：{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"rmcp\",\"version\":\"3.1.2\"}}} {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"disclosure\\\":\\\"本结果包"
+    },
+    {
+      "id": "cold_poem_without_key_asks_for_config",
+      "what": "没有 key 时，随包集外的作品如实返回 `configuration_required` 并给出设置路径",
+      "phase": "online",
+      "verdict": "PASS",
+      "detail": "冷诗 28f16b71dd668b70 无 key 时返回 configuration_required 并给出设置路径：{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"rmcp\",\"version\":\"3.1.2\"}}} {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"disclosure\\\":\\\"本"
+    },
+    {
+      "id": "offline_no_network_proved",
+      "what": "对照实验证明断网容器确实无网络（向宿主镜像的 TCP 连接失败）",
+      "phase": "offline",
+      "verdict": "PASS",
+      "detail": "对照实验：用产品自己的 HTTP 客户端访问 http://172.17.0.1:18075 失败（corpus fetch 退出 3：2026-08-18T02:00:29.869249388Z INFO yunjian_core::logger: 日志已初始化 level=\"info\" json=false timezone=\"local\" to_file=true dir=/root/.local/share/yunjian/logs 2026-08-18T02:00:29.869506103Z ERROR yunj"
+    },
+    {
+      "id": "offline_dictionary_commands",
+      "what": "断网下 `search` / `show` / `author` / `rhyme` / `corpus status` 全部退出 0",
+      "phase": "offline",
+      "verdict": "PASS",
+      "detail": "断网下全部退出 0：[search 明月 --limit 3=0][author 李白=0][rhyme 七阳 --book pingshui=0][corpus status=0][show 28f16b71dd668b70=0]"
+    },
+    {
+      "id": "provider_zero_calls_for_shipped_poem",
+      "what": "provider 调用计数器确认随包集的作品发生 **0** 次模型调用",
+      "phase": "host",
+      "verdict": "PASS",
+      "detail": "`xtask provider-calls` 两路都实测 0 次调用。fixture 那一路：随包首 00001539ed2f02b5，来源 shipped，正文 `随包赏析 fixture 正文（验证缓存路径用，非模型输出，永不发布）`（永不发布，证明的是缓存路径）。待发布数据集那一路：062f574ab2986a9b 首，来源 shipped，经 `AppreciationCache::replace_shipped_seed` 导入 16 条后命中，正文 368 字且与 `dataset/appreciations.json` 逐字一致、不含未生成标记，首段「《春夜喜雨》是唐代诗人杜甫的一首七言绝句，此诗以简洁明快的笔触描绘了春夜雨后的景象，表达了诗人对自然之美的热爱和对生活的…」"
+    },
+    {
+      "id": "provider_one_call_for_cold_poem",
+      "what": "provider 调用计数器确认冷诗发生**恰好 1** 次模型调用（重复请求后仍是 1）",
+      "phase": "host",
+      "verdict": "PASS",
+      "detail": "冷诗 0000168330a10ebb 首次解析 1 次调用（来源 generated），重复请求后累计仍为 1（第二次走用户缓存）"
+    },
+    {
+      "id": "shipped_dataset_is_model_output",
+      "what": "随包数据集的正文是开放权重模型的真实输出（`generation_executed=true`）",
+      "phase": "host",
+      "verdict": "PASS",
+      "detail": "数据集清单 `generation_executed=true`，模型 deepseek-r1:7b / 许可 MIT / 运行时 ollama"
+    }
+  ]
+}

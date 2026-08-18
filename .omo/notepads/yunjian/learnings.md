@@ -488,3 +488,92 @@ PASS，是因为当时的用户数据目录里放的是 fixture 种子；PR #118
 `appreciation-seed-v1` 之后，这条开始真的去比对「正文是不是占位标记」。
 **如果我采信「历史最好 19 PASS」并去追那 1 条，我会去修一个不存在的回归**——
 而真正的事实是「已发布 Release 的种子还是旧的」，那是一次需要用户确认的外部变更。
+
+## [2026-08-18] 净机验收：镜像必须**自带**下载器，且「装上了」不等于「跑得起来」
+
+**选的镜像与理由**（两个都跑，覆盖两条不同的产物路径）：
+
+| 镜像 | 摘要 | 自带下载器 | libc | 验的是 |
+| --- | --- | --- | --- | --- |
+| `fedora:41` | `sha256:f1a3fab47bcb3c3ddf3135d5ee7ba8b7b25f2e809a47440936212a3a50957f3d` | `/usr/bin/curl` | glibc 2.40 | 静态 musl 产物落在 **glibc** 发行版上 |
+| `alpine:3.20` | `sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc` | BusyBox `/usr/bin/wget` | musl | 静态 musl 产物落在 **musl** 发行版上 |
+
+两份都是 **17 PASS / 0 FAIL / 0 NOT EXECUTED**，绑定 `3f5853f`。
+**容器里没装任何包**，断网段仍是 `docker run --network none`。
+
+### `install.sh` 对 musl 的处理结论（实测，不是读代码猜的）
+
+`detect_target_candidates()` **不区分 musl 与 glibc**：只看 `uname -s`/`uname -m`，
+Linux 一律吐出 `<arch>-unknown-linux-musl <arch>-unknown-linux-gnu` 两个候选，musl 在前。
+
+- **对 alpine 用户没有缺陷**：musl 优先命中，而发布矩阵 Linux 只有 musl 两条腿
+  （`release-please.yml` 的 `x86_64/aarch64-unknown-linux-musl`，走 `cargo-zigbuild`），
+  所以首候选就是对的。
+- **但 gnu 回退分支上有一个真实缺陷，我实测复现了**：本地镜像里只放 gnu 归档时，
+  alpine 上 `install.sh` **退出 0**、装出的文件 `-x` 为真，而执行它得到
+  `sh: /root/.local/bin/yunjian: not found`（缺 glibc 的 ELF interpreter）。
+  `install.sh` 装完**不验一次能不能跑**，于是「装上了一个跑不起来的产品」被记成成功。
+  文档说 gnu 候选「仅用于兼容旧版发布」，所以这条路径对老 Release 是可达的。
+  **本次没有改 install.sh**（改它等于动产品对环境的契约，属用户决策），
+  但把验收判据从 `-x` 改成真的执行 `--version`——否则验收自己会替这个缺陷背书。
+
+### 「退出码 0 不等于成功」第三次栽在管道上
+
+我第一版写的是 `if v="$("${BIN}" --version 2>&1 | head -1)"`。**那个 `if` 判的是 `head`**，
+`head` 在被测文件根本跑不起来时照样退 0，于是刚修好的那条判据被管道重新吃掉。
+改成 `if "${BIN}" --version >/tmp/version.log 2>&1`，退出码取自被测文件本身。
+**判据放在管道左边，退出码就不属于你。**
+
+### 宿主的代理会被 docker 注入**每一个**容器，且置空不够
+
+`~/.docker/config.json` 的 `proxies.default` 是 `http://127.0.0.1:1080`。docker CLI
+把它注入每个容器，而 `127.0.0.1` 在容器命名空间里指向**容器自己**，于是 wget/curl 报
+`can't connect to remote host (127.0.0.1): Connection refused`——**读起来像本地镜像挂了**，
+我第一反应就是去查 http.server 是不是没起。
+`-e http_proxy=` 置空**不管用**（实测 BusyBox wget 对空值仍走代理路径），必须在容器内
+`unset`。清它是**移除宿主带进来的污染**，不是改造净机：一台真实的干净机器不会有一个
+指向不存在代理的 `http_proxy`。
+
+### 报告文件名与观测目录都会静默互相覆盖
+
+同一天在两个镜像上各跑一遍是常态，而报告文件名只有日期、观测目录只有一个，
+后一次把前一次**删掉**（`rm -f "$(CLEAN_INSTALL_OBS)"/*.tsv`）。
+我就是这样丢了第一次 fedora 的观测，导致那份报告再也重算不出来。
+两处都按 `CLEAN_INSTALL_SLUG` 分开了。
+
+### 「验证而非采信」第十六次生效，这次否掉的又是我自己
+
+我用 `sed -i` 改跑批脚本，把 `make clean-install` 那一行改坏成两条命令，
+于是**以为在跑 fedora，实际跑的是 alpine**。发现它的唯一线索是日志里
+`自带 /usr/bin/wget`——而 fedora 自带的是 curl。**如果我采信脚本文件名，
+就会把一份 alpine 的报告当 fedora 报出去。** 已改成 `run-ci-image.sh <image> <slug>`
+显式传参，并在开头回显 `IMAGE=/SLUG=/HEAD=`。
+**教训：不要 `sed` 改自己的跑批脚本，重写；且让脚本自报它以为自己在做什么。**
+
+### `voice` 特性在本机构不出 musl 产物
+
+`cargo zigbuild --target x86_64-unknown-linux-musl --features voice,mcp` 在
+`alsa-sys` 的 build.rs 就中止：`pkg-config has not been configured to support
+cross-compilation`，且本机只有 glibc 的 `libasound.so`，`/usr/lib/x86_64-linux-musl/`
+下没有任何 alsa。发布管线是在 runner 上装 `musl-tools` 后构建的，本机没有这个条件。
+**本地镜像里那份 musl 归档因此是 `--features mcp`（无 voice）**，
+产物 `statically linked` / `NEEDED` 计数 0，在 alpine 与 fedora 里都跑得起来。
+这一点让本次验收**不覆盖 voice 路径**——发布前那条腿仍要靠 CI。
+
+### `shipped_hit_without_key` 的实测结果：PASS，但只对本地工件成立
+
+净机里 `appreciate_poem(062f574ab2986a9b)` 返回 `source=shipped`，正文 **368 字真实模型
+输出、不含未生成标记**（首句「《春夜喜雨》是唐代诗人杜甫的…」）。原因是**本地镜像服的是
+真种子** `18aa82cd…`。
+
+**而已发布的下载链仍是占位**，我逐跳实测过：
+```
+latest/download/assets_manifest.json → appreciation_seed.sha256 = e1db6926…
+corpus-v0.1.0/appreciations.json     → 实测 sha256 e1db6926…，16/16 条正文都是
+                                       「<<未生成：本条不是模型输出，需开放权重模型推理>>」
+appreciation-seed-v1/appreciations.json → 实测 18aa82cd…（真种子，但不在下载链上）
+```
+**所以今天从 GitHub 装的用户看到的仍是占位。** 本次没有为此改任何东西：让真赏析进入
+下载链需要发新语料 Release 或改写已发布资产，属不可逆动作。报告渲染里加了一条注记，
+明说「结论只对工件清单里那些摘要成立，某个 Release 若指向别的摘要要另行核实」——
+免得 `all_pass=true` 被读成「用户下载到的就是这份」。
