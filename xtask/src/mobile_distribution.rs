@@ -155,7 +155,11 @@ struct InspectedArtifact {
     forbidden_entries: Vec<String>,
 }
 
-pub(crate) fn run(artifacts_dir: Option<PathBuf>, smoke_json: Option<PathBuf>) -> Result<()> {
+pub(crate) fn run(
+    artifacts_dir: Option<PathBuf>,
+    smoke_json: Option<PathBuf>,
+    smoke_log: Option<PathBuf>,
+) -> Result<()> {
     let root = repo_root();
     let config = read_config(&root)?;
     validate_config(&root, &config)?;
@@ -173,7 +177,14 @@ pub(crate) fn run(artifacts_dir: Option<PathBuf>, smoke_json: Option<PathBuf>) -
         .iter()
         .map(|path| inspect_artifact(path, &model_names))
         .collect::<Result<Vec<_>>>()?;
-    let smoke = smoke_json.as_deref().map(read_smoke).transpose()?;
+    let smoke = match (smoke_json.as_deref(), smoke_log.as_deref()) {
+        (Some(_), Some(_)) => {
+            bail!("--smoke-json 与 --smoke-log 只能给一个，否则说不清观测来自哪份证据")
+        }
+        (Some(path), None) => Some(read_smoke(path)?),
+        (None, Some(path)) => Some(read_smoke_from_device_log(path)?),
+        (None, None) => None,
+    };
     let report = build_report(&root, &config, inspected, smoke);
     write_report(&root, &report)?;
 
@@ -301,6 +312,8 @@ fn validate_build_commands(root: &Path, config: &DistributionConfig) -> Result<(
                     );
                 }
             }
+            validate_loop_stops_on_failure(config.android.build_command.as_str())?;
+            validate_per_abi_artifacts_are_collected(config.android.build_command.as_str())?;
         }
         "tauri_mobile" => {
             if !config.android.build_command.contains("--split-per-abi")
@@ -316,6 +329,50 @@ fn validate_build_commands(root: &Path, config: &DistributionConfig) -> Result<(
             }
         }
         other => bail!("未知 binding verdict `{other}`：只接受 uniffi_native 或 tauri_mobile"),
+    }
+    Ok(())
+}
+
+/// 逐 ABI 的构建循环不得吞掉单个 ABI 的失败。
+///
+/// # 为什么这条是门禁而不是注释
+///
+/// 命令曾经是裸 `for abi in …; do gradle …; done`。x86 那一轮失败时循环照样走完，
+/// 整条命令**退出码 0**，产物集只有三个 APK——`android_per_abi_apks` 判 FAIL 的直接
+/// 成因就是这个被吞掉的失败。**退出码 0 不等于成功**，而这种缺口只会在下游的产物
+/// 计数上露头，读起来像构建时少做了一个。
+///
+/// 只认 `|| exit`，**`set -e` 在这里是个假修复**：POSIX 规定 `-e` 对 AND-OR 列表里
+/// 除最后一个之外的命令一律忽略，而这条命令的形状正是
+/// `cd … && <循环> && gradle bundleRelease`——循环不是最后一个。实测过：加了
+/// `set -e`，x86 那一轮失败后整条命令仍然退出 0，`bundleRelease` 照样跑。
+fn validate_loop_stops_on_failure(command: &str) -> Result<()> {
+    let has_loop = command.contains("for ") && command.contains("; do ");
+    if has_loop && !command.contains("|| exit") {
+        bail!(
+            "Android 构建命令里的逐 ABI 循环没有 `|| exit`：\
+             单个 ABI 失败时循环会走完、整条命令退出码 0，\
+             于是「构建成功」却只产出部分 APK。命令：{command}"
+        );
+    }
+    Ok(())
+}
+
+/// 逐 ABI 的循环必须把每轮的 APK 搬到带 ABI 名的目标上。
+///
+/// `assembleRelease` 固定写 `app/build/outputs/apk/release/app-release.apk`，四轮互相覆盖。
+/// 命令曾经不含搬运，照它跑完只剩最后一个 ABI 的 APK，而本模块扫的是
+/// `target/mobile/dist/yunjian-<abi>-release.apk`——搬运在命令之外手工做，没有记录。
+/// 「命令跑完得不到报告扫描的那个产物集」与被吞掉的失败是同一类缺陷：
+/// 报告看起来完好，而任何人照命令重跑都复现不出来。
+fn validate_per_abi_artifacts_are_collected(command: &str) -> Result<()> {
+    let has_loop = command.contains("for ") && command.contains("; do ");
+    if has_loop && !command.contains("yunjian-$abi") {
+        bail!(
+            "Android 构建命令的逐 ABI 循环没有把 APK 搬到带 ABI 名的目标（`yunjian-$abi`…）：\
+             assembleRelease 每轮写同一个 app-release.apk，四轮互相覆盖，\
+             照命令跑完只剩最后一个 ABI。命令：{command}"
+        );
     }
     Ok(())
 }
@@ -476,6 +533,63 @@ fn read_smoke(path: &Path) -> Result<SmokeObservation> {
     serde_json::from_str(&text).with_context(|| format!("解析 {} 失败", path.display()))
 }
 
+/// 从真机 instrumented 测量日志（`YUNJIAN-FULL …` 那套）导出 smoke 观测。
+///
+/// # 为什么要有这条路径
+///
+/// 之前 smoke 观测靠一份**手写、未入库**的 JSON 经 `--smoke-json` 传进来。于是
+/// `mobile-size.json` 里那条 PASS 没法重放：想重跑报告的人手上没有那份 JSON，
+/// 只能自己编一份——而编出来的东西与真机上发生过的事没有关系。这与「构建命令跑完
+/// 得不到报告扫描的产物集」是同一类缺陷：报告看起来完好，却复现不出来。
+///
+/// 日志本身是入库的真机产物（`docs/reports/mobile-qa-android-measurements.log`），
+/// 所以从它导出等于把唯一的事实来源接进来，而不是新增一份可以与它分叉的副本。
+///
+/// # 为什么不放宽任何一项
+///
+/// 物理设备判定沿用 `full_criteria::DeviceIdentity::is_physical`（按 `ro.hardware`、
+/// `ro.kernel.qemu`、fingerprint 的模拟器标记判），不在这里重写一套——重写就是第二份
+/// 会分叉的判据，而分叉的形态是模拟器被当成真机。三项行为断言各自要求日志里那条
+/// 明确为 `true` 的键；键缺失时返回 `false` 而不是当成通过，缺证据不等于通过。
+fn read_smoke_from_device_log(path: &Path) -> Result<SmokeObservation> {
+    use crate::acceptance::mobile::full_criteria::MeasurementSet;
+
+    let text = fs::read_to_string(path).with_context(|| format!("读取 {} 失败", path.display()))?;
+    let measurements = MeasurementSet::parse(&text);
+    if measurements.is_empty() {
+        bail!(
+            "{} 里没有一行 `YUNJIAN-FULL …` 测量：它不是真机 instrumented 日志",
+            path.display()
+        );
+    }
+    let identity = measurements.device_identity();
+    let flag = |assertion: &str, key: &str| measurements.get(assertion, key) == Some("true");
+    Ok(SmokeObservation {
+        physical_device: identity.is_physical(),
+        device_model: measurements
+            .get("install_and_launch", "device_model")
+            .unwrap_or(identity.model.as_str())
+            .to_owned(),
+        os_build: measurements
+            .get("install_and_launch", "os_build")
+            .unwrap_or(identity.os_build.as_str())
+            .to_owned(),
+        two_character_search: measurements
+            .get("two_char_search_returns_results", "hits")
+            .and_then(|hits| hits.parse::<u32>().ok())
+            .is_some_and(|hits| hits > 0),
+        typed_recitation_round: flag(
+            "typed_recitation_scores_correctly",
+            "answer_equals_reference",
+        ),
+        voice_session_start_stop: flag("voice_recitation_round_succeeds_end_to_end", "spoke")
+            && flag(
+                "voice_recitation_round_succeeds_end_to_end",
+                "native_voice_enabled",
+            ),
+    })
+}
+
 fn build_report(
     root: &Path,
     config: &DistributionConfig,
@@ -618,9 +732,12 @@ fn android_apk_outcome(apks: &[&InspectedArtifact]) -> Outcome {
                 if let Some(triple) = abi_rust_target(abi) {
                     let _ = write!(
                         detail,
-                        "；{abi} 的 {triple} 是否有上游 sherpa-onnx 预编译产物见 {VOICE_BUILD_SCRIPT} 的 PREBUILT_TARGETS，\
-                         没有时带 voice 的该 ABI 产物需源码编译 sherpa-onnx（cmake >= 3.13 与 C++17），\
-                         这是分发 ABI 集与「移动端默认开 voice」两个决定之间的冲突，需用户裁量"
+                        "；{abi} 的 {triple} 应在 {VOICE_BUILD_SCRIPT} 的 PREBUILT_TARGETS 里——\
+                         上游 sherpa-onnx 的 Android 归档一个包含四个 ABI，\
+                         `jniLibs/{abi}/` 就在里面；若该 triple 还不在 sherpa-rs-sys 的 \
+                         dist.json 映射表内，则由 {VOICE_BUILD_SCRIPT} 的 \
+                         UNMAPPED_ANDROID_TARGETS 那条路径补链接标志，\
+                         漏掉它时链接期只报 undefined symbol 而不指向真因"
                     );
                 }
             }
@@ -969,7 +1086,36 @@ fn today() -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
     use super::*;
+
+    static NEXT_SANDBOX: AtomicU32 = AtomicU32::new(0);
+
+    /// 与仓库其他测试同一个手法（见 `crates/yunjian-cli/tests/cli.rs`）：进程号 + 序号
+    /// 命名，Drop 时清掉。不为写几行假日志引一个新依赖。
+    struct Sandbox {
+        dir: PathBuf,
+    }
+
+    impl Sandbox {
+        fn new() -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "yunjian-mobile-distribution-{}-{}",
+                std::process::id(),
+                NEXT_SANDBOX.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("创建沙箱目录");
+            Self { dir }
+        }
+    }
+
+    impl Drop for Sandbox {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
 
     #[test]
     fn frozen_distribution_constants_cannot_be_relaxed_silently() {
@@ -1040,24 +1186,17 @@ mod tests {
             "映射必须逐个覆盖声明的四个 ABI，少一个就有 ABI 的成因说不出来"
         );
 
-        // 逐个断言收录状态，而不是「都在」或「都不在」：这三个在清单里、x86 那个不在，
-        // 而后者正是 `android_per_abi_apks` 判 FAIL 的成因。
-        for triple in [
-            "aarch64-linux-android",
-            "armv7-linux-androideabi",
-            "x86_64-linux-android",
-        ] {
+        // 逐个断言收录状态，而不是数个数：四个 ABI 都必须在清单里，因为上游
+        // sherpa-onnx 的 Android 归档**一个包含四个 ABI**（`jniLibs/x86/*.so` 实测是
+        // `ELF 32-bit LSB shared object, Intel 80386`）。曾经这里断言 i686 **不在**
+        // 清单里，并把 `android_per_abi_apks` 的 FAIL 归因成「上游没有 x86 预编译，
+        // 需用户裁量」——那个前提是错的，产物一直在同一个包里。
+        for (_, triple) in ABI_RUST_TARGETS {
             assert!(
                 prebuilt.contains(triple),
                 "`{triple}` 应在上游预编译清单里；它不在说明清单或解析器变了"
             );
         }
-        // 上游哪天补上 i686，这条会红——届时应重跑四 ABI 构建，而不是改判词。
-        assert!(
-            !prebuilt.contains("i686-linux-android"),
-            "上游已提供 i686-linux-android 预编译产物：现在可以真的构建四个 ABI 了，\
-             请重跑分发构建并重算 mobile-size.json"
-        );
     }
 
     #[test]
@@ -1082,10 +1221,148 @@ mod tests {
             outcome.detail
         );
         assert!(
-            outcome.detail.contains("i686-linux-android") && outcome.detail.contains("需用户裁量"),
-            "判词必须带上成因与下一步，否则读者只看到「实际 1 个」：{}",
+            outcome.detail.contains("i686-linux-android")
+                && outcome.detail.contains("UNMAPPED_ANDROID_TARGETS"),
+            "判词必须带上成因与可执行的下一步，否则读者只看到「实际 1 个」：{}",
             outcome.detail
         );
+    }
+
+    /// 逐 ABI 循环吞掉单个 ABI 的失败正是 `android_per_abi_apks` 判 FAIL 的直接成因，
+    /// 所以「循环会不会停」必须是一条会变红的门禁，而不是命令旁边的一句注释。
+    #[test]
+    fn a_failure_swallowing_abi_loop_is_rejected() {
+        let swallowing = "cd mobile/android && for abi in arm64-v8a x86; do gradle -Pyunjian.abis=$abi :app:assembleRelease; done";
+        let err = validate_loop_stops_on_failure(swallowing).expect_err("吞失败的循环必须被拒");
+        assert!(
+            format!("{err:#}").contains("退出码 0"),
+            "判词要说清为什么这很危险：{err:#}"
+        );
+
+        let stopping = "cd mobile/android && for abi in arm64-v8a x86; do gradle -Pyunjian.abis=$abi :app:assembleRelease || exit 1; done";
+        validate_loop_stops_on_failure(stopping).expect("带 `|| exit 1` 的循环应通过");
+
+        // 没有循环的命令不该被这条门禁牵连——tauri_mobile 分支就是单条命令。
+        validate_loop_stops_on_failure("cargo tauri android build --apk --aab")
+            .expect("没有循环的命令与这条门禁无关");
+    }
+
+    /// 入库的那份真机日志必须能导出一个六项齐全的观测，否则 `mobile-size.json` 里
+    /// 那条 smoke PASS 又变回不可复现。
+    #[test]
+    fn the_committed_device_log_yields_a_complete_smoke_observation() {
+        let smoke = read_smoke_from_device_log(
+            &repo_root().join("docs/reports/mobile-qa-android-measurements.log"),
+        )
+        .expect("入库的真机日志必须能导出观测");
+        assert!(smoke.physical_device, "日志来自 Pixel 8，不是模拟器");
+        assert!(
+            smoke.device_model.contains("Pixel 8"),
+            "型号应来自日志：{}",
+            smoke.device_model
+        );
+        assert_eq!(smoke.os_build, "15/35");
+        assert!(smoke.two_character_search, "两字检索有 20 条命中");
+        assert!(smoke.typed_recitation_round, "打字背诵答案与参考一致");
+        assert!(smoke.voice_session_start_stop, "语音会话真的开口并结束");
+        assert_eq!(
+            smoke_outcome(Some(&smoke)).verdict,
+            Verdict::Pass,
+            "六项齐备时才是 PASS"
+        );
+    }
+
+    /// 模拟器日志必须导出 `physical_device=false`，从而让 smoke 判 FAIL 而不是 PASS。
+    /// 判据委派给 `DeviceIdentity::is_physical`，这条测试守住那次委派没被绕开。
+    #[test]
+    fn an_emulator_log_never_yields_a_physical_device() {
+        let sandbox = Sandbox::new();
+        let path = sandbox.dir.join("emulator.log");
+        fs::write(
+            &path,
+            "YUNJIAN-FULL device_identity model=sdk_gphone64_x86_64\n\
+             YUNJIAN-FULL device_identity os_build=15/35\n\
+             YUNJIAN-FULL device_identity ro_hardware=ranchu\n\
+             YUNJIAN-FULL device_identity ro_kernel_qemu=1\n\
+             YUNJIAN-FULL device_identity fingerprint=google/sdk_gphone64_x86_64/emu:15/x:user/test-keys\n\
+             YUNJIAN-FULL two_char_search_returns_results hits=20\n\
+             YUNJIAN-FULL typed_recitation_scores_correctly answer_equals_reference=true\n\
+             YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end spoke=true\n\
+             YUNJIAN-FULL voice_recitation_round_succeeds_end_to_end native_voice_enabled=true\n",
+        )
+        .expect("写假日志");
+
+        let smoke = read_smoke_from_device_log(&path).expect("能解析");
+        assert!(!smoke.physical_device, "ranchu + qemu=1 是模拟器");
+        assert_eq!(
+            smoke_outcome(Some(&smoke)).verdict,
+            Verdict::Fail,
+            "模拟器观测不得算 PASS"
+        );
+    }
+
+    /// 键缺失时返回 `false` 而不是当成通过。缺证据不等于通过——这条是本仓库
+    /// 反复记录的那类错误里最贵的一种。
+    #[test]
+    fn missing_behaviour_keys_are_not_treated_as_passing() {
+        let sandbox = Sandbox::new();
+        let path = sandbox.dir.join("partial.log");
+        fs::write(
+            &path,
+            "YUNJIAN-FULL device_identity model=Pixel 8\n\
+             YUNJIAN-FULL device_identity os_build=15/35\n\
+             YUNJIAN-FULL device_identity ro_hardware=shiba\n\
+             YUNJIAN-FULL device_identity ro_kernel_qemu=unset\n\
+             YUNJIAN-FULL device_identity fingerprint=google/shiba/shiba:15/x:user/release-keys\n",
+        )
+        .expect("写假日志");
+
+        let smoke = read_smoke_from_device_log(&path).expect("能解析");
+        assert!(smoke.physical_device, "身份齐备");
+        assert!(!smoke.two_character_search, "没有 hits 就不是通过");
+        assert!(!smoke.typed_recitation_round, "没有答案比对就不是通过");
+        assert!(!smoke.voice_session_start_stop, "没有开口记录就不是通过");
+    }
+
+    #[test]
+    fn a_log_without_any_measurement_line_is_rejected() {
+        let sandbox = Sandbox::new();
+        let path = sandbox.dir.join("noise.log");
+        fs::write(&path, "Gradle build finished\nadb: device offline\n").expect("写假日志");
+
+        let err = read_smoke_from_device_log(&path).expect_err("不是真机日志就该报错");
+        assert!(
+            format!("{err:#}").contains("YUNJIAN-FULL"),
+            "判词要指名缺的是什么：{err:#}"
+        );
+    }
+
+    #[test]
+    fn a_loop_that_lets_apks_overwrite_each_other_is_rejected() {
+        let overwriting = "cd mobile/android && for abi in arm64-v8a x86; do gradle -Pyunjian.abis=$abi :app:assembleRelease || exit 1; done";
+        let err = validate_per_abi_artifacts_are_collected(overwriting)
+            .expect_err("不搬运的循环必须被拒");
+        assert!(
+            format!("{err:#}").contains("互相覆盖"),
+            "判词要说清为什么只剩一个：{err:#}"
+        );
+
+        let collecting = "cd mobile/android && for abi in arm64-v8a x86; do gradle -Pyunjian.abis=$abi :app:assembleRelease || exit 1; cp app/build/outputs/apk/release/app-release.apk ../../target/mobile/dist/yunjian-$abi-release.apk || exit 1; done";
+        validate_per_abi_artifacts_are_collected(collecting).expect("带搬运的循环应通过");
+
+        validate_per_abi_artifacts_are_collected("cargo tauri android build --apk --aab")
+            .expect("没有循环的命令与这条门禁无关");
+    }
+
+    /// 仓库里那条真实命令必须自己就过这两道门禁。只测构造出来的字符串会让配置
+    /// 悄悄改回裸循环而门禁毫无察觉。
+    #[test]
+    fn the_shipped_android_command_survives_both_loop_gates() {
+        let config = read_config(&repo_root()).expect("读取分发配置");
+        validate_loop_stops_on_failure(&config.android.build_command)
+            .expect("仓库里的 Android 构建命令必须在单 ABI 失败时停下");
+        validate_per_abi_artifacts_are_collected(&config.android.build_command)
+            .expect("仓库里的 Android 构建命令必须把每个 ABI 的 APK 搬到各自的名字上");
     }
 
     #[test]

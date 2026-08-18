@@ -376,6 +376,12 @@ enum Commands {
         /// 物理设备 instrumented smoke 的 JSON 观测；不给就绝不把 smoke 写成 PASS。
         #[arg(long)]
         smoke_json: Option<std::path::PathBuf>,
+        /// 真机 instrumented 测量日志（`YUNJIAN-FULL …` 那套），由它导出 smoke 观测。
+        ///
+        /// 比 `--smoke-json` 更可复现：日志是入库的真机产物，而手写 JSON 谁都能编，
+        /// 编出来的东西与真机上发生过的事没有关系。两者只能给一个。
+        #[arg(long, conflicts_with = "smoke_json")]
+        smoke_log: Option<std::path::PathBuf>,
     },
 
     /// 桌面真机验收或移动端可行性门禁。移动门禁缺少物理设备、签名或商店凭据时
@@ -532,7 +538,8 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::MobileDistribution {
             artifacts_dir,
             smoke_json,
-        }) => mobile_distribution::run(artifacts_dir, smoke_json),
+            smoke_log,
+        }) => mobile_distribution::run(artifacts_dir, smoke_json, smoke_log),
         Some(Commands::Acceptance { platform, set }) => acceptance::run(&platform, &set),
         None => Ok(()),
     }

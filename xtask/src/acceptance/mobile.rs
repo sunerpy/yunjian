@@ -22,7 +22,7 @@ use super::{Platform, Verdict, commit_sha, device_farm, os_build, today};
 use crate::verify_sources::emit;
 
 mod full;
-mod full_criteria;
+pub(crate) mod full_criteria;
 mod ios_project;
 mod provenance;
 
