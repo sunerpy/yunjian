@@ -32,8 +32,27 @@ abis = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"]
 formats = ["apk", "aab"]
 # 工程没有 `splits { abi { … } }`，所以「每 ABI 一个 APK」靠**分别构建**取得：
 # 一次 `-Pyunjian.abis=<单个 ABI>` 出一个只含该 ABI 的 APK。AAB 天然多 ABI，一次出。
-build_command = "cd mobile/android && for abi in arm64-v8a armeabi-v7a x86 x86_64; do gradle -Pyunjian.abis=$abi :app:assembleRelease; done && gradle -Pyunjian.abis=arm64-v8a,armeabi-v7a,x86,x86_64 :app:bundleRelease"
-native_build_note = "ANDROID_NDK_HOME must point to a complete NDK r26+ and cargo-ndk must be installed; cc-rs needs target C/C++ compilers, not only a Cargo linker. i686-linux-android has no upstream sherpa-onnx prebuilt (see crates/yunjian-voice/build.rs PREBUILT_TARGETS), so a voice-enabled x86 APK requires building sherpa-onnx from source"
+#
+# ## 循环里的 `|| exit 1` 不是装饰
+#
+# 这条命令曾经写成裸 `for … do gradle …; done`。x86 那一轮失败时循环照样走完、整条
+# 命令**退出码 0**，于是「构建成功」却只产出三个 APK——`android_per_abi_apks` 判 FAIL
+# 的直接成因就是这个被吞掉的失败，而报告读起来像构建时偷懒少做了一个。
+#
+# 用 `|| exit 1` 而不是开头加一句 `set -e`，因为**`set -e` 在这个形状下是假修复**：
+# POSIX 规定 `-e` 对 AND-OR 列表里除最后一个之外的命令一律忽略，而这条命令是
+# `cd … && <循环> && gradle bundleRelease`，循环不是最后一个。实测过：加了 `set -e`，
+# x86 那一轮失败后整条命令仍然退出 0，`bundleRelease` 照样跑。
+# `|| exit 1` 没有这类边界条件。`xtask` 有一条断言守住它不被改回去。
+#
+# ## 每轮都要把产物搬走
+#
+# `assembleRelease` 固定写 `app/build/outputs/apk/release/app-release.apk`，四轮**互相覆盖**。
+# 曾经这条命令不含搬运，于是照它跑完只剩最后一个 ABI 的 APK，而报告扫的是
+# `target/mobile/dist/yunjian-<abi>-release.apk`——搬运是在命令之外手工做的，
+# 没有记录。**命令跑完得不到报告扫描的那个产物集**，与被吞掉的失败是同一类缺陷。
+build_command = "cd mobile/android && mkdir -p ../../target/mobile/dist && for abi in arm64-v8a armeabi-v7a x86 x86_64; do gradle -Pyunjian.abis=$abi :app:assembleRelease || exit 1; cp app/build/outputs/apk/release/app-release.apk ../../target/mobile/dist/yunjian-$abi-release.apk || exit 1; done && gradle -Pyunjian.abis=arm64-v8a,armeabi-v7a,x86,x86_64 :app:bundleRelease && cp app/build/outputs/bundle/release/app-release.aab ../../target/mobile/dist/yunjian-release.aab"
+native_build_note = "ANDROID_NDK_HOME must point to a complete NDK r26+ and cargo-ndk must be installed; cc-rs needs target C/C++ compilers, not only a Cargo linker. Upstream sherpa-onnx ships all four ABIs in one Android archive (jniLibs/x86 included), but sherpa-rs-sys's dist.json maps only three triples, so i686-linux-android gets no rustc-link-lib and would fail at cdylib link time with undefined symbols. crates/yunjian-voice/build.rs closes that gap for the unmapped triple: it reuses the already-extracted shared archive from any Android triple's cache, emits the link flags, and stages the two .so into target/<triple>/release where gradle picks them up. Building a mapped ABI first (arm64-v8a is enough) is what puts that archive in the cache"
 
 [ios]
 project = "mobile/ios"
